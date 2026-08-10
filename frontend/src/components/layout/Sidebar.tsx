@@ -9,7 +9,6 @@ const navItems = [
   { path: "/history", label: "History", icon: Clock },
   { path: "/analytics", label: "Analytics", icon: BarChart3 },
   { path: "/profile", label: "Profile", icon: User },
-  { path: "/settings", label: "Settings", icon: Settings },
 ];
 
 export default function Sidebar() {

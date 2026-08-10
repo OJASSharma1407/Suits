@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
-import { Search, LayoutDashboard, Bookmark, Clock, BarChart3, Settings, User } from "lucide-react";
+import { Search } from "lucide-react";
 
 export function CommandPalette() {
   const [isOpen, setIsOpen] = useState(false);
@@ -40,19 +40,6 @@ export function CommandPalette() {
     }
   };
 
-  const navItems = [
-    { name: "Go to Dashboard", path: "/dashboard", icon: LayoutDashboard },
-    { name: "Search Cases", path: "/search", icon: Search },
-    { name: "View Bookmarks", path: "/bookmarks", icon: Bookmark },
-    { name: "View History", path: "/history", icon: Clock },
-    { name: "View Analytics", path: "/analytics", icon: BarChart3 },
-    { name: "Profile", path: "/profile", icon: User },
-    { name: "Settings", path: "/settings", icon: Settings },
-  ];
-
-  const filteredNav = navItems.filter((item) =>
-    item.name.toLowerCase().includes(query.toLowerCase())
-  );
 
   return (
     <>
@@ -98,41 +85,8 @@ export function CommandPalette() {
                 </button>
               </div>
             )}
-
-            {filteredNav.length > 0 && (
-              <div className="px-2 py-1.5">
-                <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 mb-2 px-1">
-                  Navigation
-                </div>
-                {filteredNav.map((item) => (
-                  <button
-                    key={item.path}
-                    onClick={() => {
-                      navigate(item.path);
-                      setIsOpen(false);
-                      setQuery("");
-                    }}
-                    className="w-full flex items-center gap-3 px-3 py-2 text-sm rounded-xl hover:bg-gray-100 transition-colors text-left"
-                    style={{ color: "var(--text-primary)" }}
-                  >
-                    <item.icon size={16} style={{ color: "var(--text-muted)" }} />
-                    {item.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {!query.trim() && filteredNav.length === 0 && (
-              <div className="p-8 text-center text-sm text-gray-500">
-                No commands found.
-              </div>
-            )}
           </div>
-          
-          <div className="px-4 py-2 bg-gray-50 border-t text-[10px] text-gray-400 flex items-center justify-between" style={{ borderColor: "var(--border)" }}>
-            <span>Use ↑↓ to navigate</span>
-            <span>esc to close</span>
-          </div>
+
         </div>
       </div>
     </>

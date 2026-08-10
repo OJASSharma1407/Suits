@@ -48,29 +48,6 @@ export default function Navbar() {
         </Link>
       </div>
 
-      {/* Quick Search Hint */}
-      <button
-        onClick={() => {
-          const event = new KeyboardEvent("keydown", { key: "k", ctrlKey: true });
-          window.dispatchEvent(event);
-        }}
-        className="hidden md:flex items-center gap-2 px-4 py-2 rounded-full cursor-pointer"
-        style={{
-          background: "var(--surface-container)",
-          border: "1px solid var(--border)",
-          color: "var(--text-muted)",
-          fontSize: "13px",
-        }}
-      >
-        <Search size={14} />
-        <span>Search…</span>
-        <kbd
-          className="ml-4 px-1.5 py-0.5 rounded text-[10px] font-mono"
-          style={{ background: "var(--surface-container-high)", border: "1px solid var(--border)" }}
-        >
-          ⌘K
-        </kbd>
-      </button>
 
       <div className="flex items-center gap-2">
         <div className="relative">
