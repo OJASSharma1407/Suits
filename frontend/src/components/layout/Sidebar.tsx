@@ -8,7 +8,6 @@ const navItems = [
   { path: "/bookmarks", label: "Bookmarks", icon: Bookmark },
   { path: "/history", label: "History", icon: Clock },
   { path: "/analytics", label: "Analytics", icon: BarChart3 },
-  { path: "/profile", label: "Profile", icon: User },
 ];
 
 export default function Sidebar() {
