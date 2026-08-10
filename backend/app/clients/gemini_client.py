@@ -6,7 +6,8 @@ Handles prompt submission, response parsing, and token tracking with automatic m
 from typing import Any
 
 import structlog
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 from app.core.config import settings
 
@@ -22,10 +23,11 @@ class GeminiClient:
     def _ensure_configured(self) -> bool:
         if not self._configured:
             key = settings.gemini_api_key
-            if not key or key.startswith("your-") or key.strip() == "":
+            if not key or key.strip() == "":
+                logger.warning("gemini_api_key_missing", hint="Set GEMINI_API_KEY in .env")
                 return False
             try:
-                genai.configure(api_key=key)
+                self.client = genai.Client(api_key=key)
                 self._configured = True
                 return True
             except Exception as exc:
@@ -65,21 +67,21 @@ class GeminiClient:
             logger.warning("gemini_api_key_unconfigured_using_fallback")
             return self._get_fallback_analysis()
 
-        # Try active supported Gemini models in sequence
-        model_candidates = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash-exp", "gemini-pro"]
+        # User specifically requested ONLY gemini-2.5-flash
+        model_candidates = ["gemini-flash-latest"]
         last_error = ""
 
         for model_name in model_candidates:
             try:
-                model = genai.GenerativeModel(
-                    model_name,
-                    system_instruction=system_prompt,
-                    generation_config=genai.GenerationConfig(
+                response = self.client.models.generate_content(
+                    model=model_name,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
                         temperature=temperature,
                         max_output_tokens=max_output_tokens,
                     ),
                 )
-                response = model.generate_content(user_prompt)
                 if response and response.text:
                     logger.info("gemini_success", model=model_name)
                     return response.text
@@ -89,6 +91,154 @@ class GeminiClient:
                 continue
 
         return self._get_fallback_analysis(error_msg=last_error)
+
+    async def generate_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.2,
+        max_output_tokens: int = 8192,
+    ) -> dict[str, Any]:
+        """Send a prompt to Gemini and return a parsed JSON dict.
+
+        Uses response_mime_type='application/json' to guarantee valid JSON output.
+        Falls back to empty dict on failure.
+        """
+        if not self._ensure_configured():
+            logger.warning("gemini_api_key_unconfigured_json_fallback")
+            return {}
+
+        import json
+
+        model_candidates = ["gemini-flash-latest"]
+        last_error = ""
+
+        for model_name in model_candidates:
+            try:
+                response = self.client.models.generate_content(
+                    model=model_name,
+                    contents=user_prompt,
+                    config=types.GenerateContentConfig(
+                        system_instruction=system_prompt,
+                        temperature=temperature,
+                        max_output_tokens=max_output_tokens,
+                        response_mime_type="application/json",
+                    ),
+                )
+                if response and response.text:
+                    logger.info("gemini_json_success", model=model_name)
+                    return json.loads(response.text)
+            except Exception as exc:
+                last_error = str(exc)
+                logger.warning("gemini_json_model_failed", model=model_name, error=last_error)
+                continue
+
+        logger.error("gemini_json_all_models_failed", error=last_error)
+        return {}
+
+    async def extract_markdown_from_pdf(self, pdf_bytes: bytes) -> str:
+        """Extract and format court order text from PDF bytes using Gemini's vision capability.
+
+        Sends the PDF as an inline binary part and asks Gemini to produce clean Markdown.
+        Falls back to a simple error message if the API is unavailable.
+        """
+        if not self._ensure_configured():
+            logger.warning("gemini_api_key_unconfigured_pdf_fallback")
+            return "*AI PDF extraction is unavailable: Gemini API key is not configured.*"
+
+        if not pdf_bytes:
+            return "*No PDF content was available for this order.*"
+
+        prompt_text = (
+            "You are a legal document transcription expert. "
+            "The attached document is an official Indian court order in PDF format.\n\n"
+            "Your task:\n"
+            "1. Transcribe the FULL and COMPLETE text of the order faithfully.\n"
+            "2. Format the output as clean, well-structured Markdown.\n"
+            "3. Use `#` headings for the court name, `##` for the case title, `###` for sections like CORAM, ORDER, etc.\n"
+            "4. Preserve all party names, dates, judge names, and legal citations exactly as written.\n"
+            "5. Use `**bold**` for party names and judge names.\n"
+            "6. Use numbered lists for court directions/orders.\n"
+            "7. Do NOT summarize — transcribe the complete text.\n"
+            "8. If the document is not a court order, state that clearly."
+        )
+
+        pdf_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
+
+        model_candidates = ["gemini-flash-latest"]
+        last_error = ""
+
+        for model_name in model_candidates:
+            try:
+                response = self.client.models.generate_content(
+                    model=model_name,
+                    contents=[prompt_text, pdf_part],
+                    config=types.GenerateContentConfig(
+                        temperature=0.1,
+                        max_output_tokens=8192,
+                    ),
+                )
+                if response and response.text:
+                    logger.info("gemini_pdf_extraction_success", model=model_name, size_bytes=len(pdf_bytes))
+                    return response.text
+            except Exception as exc:
+                last_error = str(exc)
+                logger.warning("gemini_pdf_model_failed", model=model_name, error=last_error)
+                continue
+
+        logger.error("gemini_pdf_all_models_failed", error=last_error)
+        return f"*PDF extraction failed. The court order could not be processed at this time.*"
+
+    async def generate_suggested_questions(
+        self,
+        case_context: str,
+        last_ai_response: str,
+        n: int = 4,
+    ) -> list[str]:
+        """Generate contextual follow-up questions based on case context and last AI reply."""
+        if not self._ensure_configured():
+            return [
+                "What happened next in this case?",
+                "What laws were cited?",
+                "Summarize the court's reasoning.",
+                "Who are the parties involved?",
+            ]
+
+        prompt = (
+            f"Based on the case details below and the assistant's last response, "
+            f"generate exactly {n} short, specific follow-up questions a user might ask next.\n"
+            f"Output ONLY a JSON array of strings with no extra text.\n\n"
+            f"## Case Context\n{case_context}\n\n"
+            f"## Last AI Response\n{last_ai_response}"
+        )
+
+        import json
+        model_candidates = ["gemini-flash-latest"]
+        for model_name in model_candidates:
+            try:
+                response = self.client.models.generate_content(
+                    model=model_name,
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=0.6,
+                        max_output_tokens=512,
+                        response_mime_type="application/json",
+                    ),
+                )
+                if response and response.text:
+                    questions = json.loads(response.text)
+                    if isinstance(questions, list):
+                        return [str(q) for q in questions[:n]]
+            except Exception as exc:
+                logger.warning("gemini_suggest_failed", model=model_name, error=str(exc))
+                continue
+
+        return [
+            "What happened next in this case?",
+            "What laws were cited?",
+            "Summarize the court's reasoning.",
+            "Who are the parties involved?",
+        ]
 
     async def generate_with_context(
         self,

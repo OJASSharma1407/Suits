@@ -104,11 +104,11 @@ export default function CaseDashboardPage() {
   const handleDownloadPDF = async (filename: string) => {
     if (!cnr) return;
     try {
-      const blob = await caseService.downloadOrderPDF(cnr, filename);
+      const { blob, filename: safeFilename } = await caseService.downloadOrderPDF(cnr, filename);
       const url = window.URL.createObjectURL(new Blob([blob]));
       const link = document.createElement("a");
       link.href = url;
-      link.setAttribute("download", `${cnr}_${filename}`);
+      link.setAttribute("download", safeFilename);
       document.body.appendChild(link);
       link.click();
       link.remove();

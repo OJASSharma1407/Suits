@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import String, Text, DateTime, ForeignKey, Enum as SAEnum
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.types import Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
 
@@ -20,10 +20,10 @@ class Message(Base):
     __tablename__ = "messages"
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        Uuid(as_uuid=True, native_uuid=False), primary_key=True, default=uuid.uuid4
     )
     conversation_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("conversations.id", ondelete="CASCADE"),
+        Uuid(as_uuid=True, native_uuid=False), ForeignKey("conversations.id", ondelete="CASCADE"),
         nullable=False, index=True,
     )
     role: Mapped[MessageRole] = mapped_column(SAEnum(MessageRole), nullable=False)

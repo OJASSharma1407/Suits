@@ -94,17 +94,16 @@ class AIService:
         )
         await self.conversation_repo.add_message(assistant_msg)
 
-        # Generate suggested follow-up questions
-        suggested = [
-            "What happened next in this case?",
-            "What laws were cited?",
-            "Summarize the court's reasoning.",
-            "Who are the parties involved?",
-        ]
+        # Generate suggested follow-up questions dynamically via Gemini
+        suggested = await gemini_client.generate_suggested_questions(
+            case_context=case_context or "",
+            last_ai_response=ai_response,
+            n=4,
+        )
 
         return ChatResponse(
             answer=ai_response,
             suggested_questions=suggested,
-            sources=[f"eCourts Case: {cnr}"],
+            sources=[f"Indian Kanoon Document: {cnr}"],
             conversation_id=conversation_id,
         )

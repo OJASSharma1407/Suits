@@ -27,7 +27,16 @@ export const caseService = {
     const res = await api.get(`/orders/${cnr}/download/${filename}`, {
       responseType: "blob",
     });
-    return res.data;
+    
+    let extractedFilename = `${cnr}_${filename}`;
+    const disposition = res.headers['content-disposition'];
+    if (disposition && disposition.indexOf('filename=') !== -1) {
+        const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
+        if (filenameMatch && filenameMatch.length === 2) {
+            extractedFilename = filenameMatch[1];
+        }
+    }
+    return { blob: res.data, filename: extractedFilename };
   },
 
   getCourtStructure: async () => {

@@ -35,9 +35,19 @@ async def download_order_pdf(cnr: str, filename: str, user: CurrentUser, db: DbS
     service = OrderService(db)
     pdf_bytes = await service.download_pdf(cnr, filename)
 
+    # Check magic bytes to determine if it's actually a PDF or an HTML page
+    is_pdf = pdf_bytes.startswith(b'%PDF-')
+    ext = '.pdf' if is_pdf else '.html'
+    media_type = 'application/pdf' if is_pdf else 'text/html; charset=utf-8'
+
     safe_filename = f"{cnr}_{filename}"
+    if not safe_filename.lower().endswith(ext):
+        # Remove any existing .pdf or .html extension just in case, though it shouldn't have one
+        import re
+        safe_filename = re.sub(r'\.(pdf|html|txt)$', '', safe_filename, flags=re.IGNORECASE) + ext
+
     return Response(
         content=pdf_bytes,
-        media_type="application/pdf",
+        media_type=media_type,
         headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
     )

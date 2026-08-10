@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     ecourts_api_key: str = Field(default="")
     ecourts_base_url: str = Field(default="https://api.ecourts.gov.in/partner")
 
+    # Indian Kanoon API
+    kanoon_api_token: str = Field(default="")
+
     # Gemini AI
     gemini_api_key: str = Field(default="")
 

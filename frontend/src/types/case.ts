@@ -30,6 +30,7 @@ export interface OrderItem {
   order_type: "interim" | "judgment";
   filename: string | null;
   order_url: string | null;
+  is_stub: boolean;
 }
 
 export interface CaseStatistics {

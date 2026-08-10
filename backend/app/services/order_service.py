@@ -7,7 +7,8 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
-from app.clients.ecourts_client import ecourts_client
+from app.clients.gemini_client import gemini_client
+from app.clients.kanoon_client import kanoon_client
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_order import CachedOrder
 from app.models.cached_ai_analysis import CachedAIAnalysis
@@ -18,85 +19,46 @@ from app.services.cache_service import cache_service
 logger = structlog.get_logger()
 
 
-def _get_demo_order_ai(cnr: str, filename: str) -> dict[str, Any]:
-    return {
-        "caseNumber": "WP(C) 1245/2023",
-        "courtName": "Delhi High Court",
-        "judgeNames": ["Justice Sanjiv Khanna", "Justice M. M. Sundresh"],
-        "orderDate": "2026-01-20",
-        "petitioners": [{"name": "Apex Infrastructure Ltd", "type": "Company", "role": "Petitioner"}],
-        "respondents": [{"name": "Union of India", "type": "Government", "role": "Respondent"}],
-        "counselPetitioner": ["Adv. Rajesh Kumar"],
-        "counselRespondent": ["Adv. S. K. Gupta"],
-        "orderNature": "Interim Order",
-        "dispositionStatus": "Interim Relief Granted",
-        "outcome": "Stay granted on penalty demand notice till next date of hearing.",
-        "courtDirections": [
-            "Respondents directed to file counter-affidavit within four weeks.",
-            "No coercive steps to be taken pursuant to impugned demand notice dated 10.12.2025.",
-            "List on 15th September 2026 for final arguments.",
-        ],
-        "primaryIssues": [
-            "Whether the impugned penalty notice violates principles of natural justice.",
-            "Scope of judicial review under Article 226 in commercial tender disputes.",
-        ],
-        "statutesCited": ["Constitution of India - Article 226", "Arbitration Act 1996 - Section 11"],
-        "sectionsApplied": ["Article 226"],
-        "caseLawsReferenced": ["Radhakrishna Agarwal v. State of Bihar (1977)", "Tata Cellular v. Union of India (1994)"],
-        "petitionerArguments": [
-            "Impugned notice issued without granting personal hearing.",
-            "Demand notice is arbitrary and violates contractual terms.",
-        ],
-        "respondentArguments": [
-            "Alternative remedy available under statutory arbitration clause.",
-            "Petition is premature.",
-        ],
-        "courtReasoning": "The Court observed that prima facie the impugned notice failed to comply with fundamental rules of natural justice. When an administrative action entails severe civil consequences, a reasonable opportunity of being heard must be provided.",
-        "ratioDecidendi": "Administrative orders inflicting civil consequences without prior notice or opportunity of hearing are void ab initio under Article 226.",
-        "executiveSummary": "The Delhi High Court granted interim relief staying the demand notice issued against Apex Infrastructure Ltd, citing failure of natural justice.",
-        "plainLanguageSummary": "The court stopped the government from collecting the penalty money from the company until the next court hearing because the company was not given a fair chance to explain its side.",
-        "litigantFriendlyExplanation": "You won interim protection. The court paused the penalty notice so no money can be collected from you while the case is being argued.",
-        "complianceDirections": ["File counter-affidavit within 4 weeks."],
-        "risks": ["Stay is interim and subject to final hearing outcome."],
-        "implications": ["Reinforces procedural fairness requirements in commercial state contracts."],
-        "extractionConfidence": 0.95,
-    }
+# --- AI Prompt for structured order analysis ---
+_ORDER_AI_SYSTEM_PROMPT = """You are an expert Indian court legal analyst. 
+You will be given the full text of an official court order and must extract key structured data from it.
+You MUST respond with valid JSON only. Do not include any markdown fences or explanatory text outside the JSON.
+"""
 
+_ORDER_AI_EXTRACTION_PROMPT = """Analyze the following court order text and extract the following fields into a JSON object.
+If a field cannot be determined from the text, use null for strings and empty arrays for lists.
 
-def _get_demo_order_markdown(cnr: str, filename: str) -> str:
-    return f"""# IN THE HIGH COURT OF DELHI AT NEW DELHI
+Fields to extract:
+- caseNumber (string): The case number as written in the order
+- courtName (string): Full name of the court
+- judgeNames (list of strings): All judge names mentioned 
+- orderDate (string): Date of the order in YYYY-MM-DD format if possible, else as written
+- petitioners (list of objects with "name" and "role" keys): All petitioners/appellants
+- respondents (list of objects with "name" and "role" keys): All respondents
+- counselPetitioner (list of strings): Petitioner's lawyers
+- counselRespondent (list of strings): Respondent's lawyers
+- orderNature (string): Nature of order e.g. "Interim Order", "Final Judgment", "Notice", "Directions"
+- dispositionStatus (string): Short outcome e.g. "Stay Granted", "Dismissed", "Notice Issued", "Reserved"
+- outcome (string): One sentence describing what the court decided
+- courtDirections (list of strings): Each specific direction/order made by the court as a separate item
+- primaryIssues (list of strings): The main legal questions/issues in the case
+- statutesCited (list of strings): All acts, codes, and articles cited e.g. "Constitution of India - Article 226"
+- sectionsApplied (list of strings): Specific sections/articles that the court actually applied
+- caseLawsReferenced (list of strings): Case names and citations referenced 
+- petitionerArguments (list of strings): Key arguments made by the petitioner
+- respondentArguments (list of strings): Key arguments made by the respondent
+- courtReasoning (string): The court's reasoning and analysis in 2-4 sentences
+- ratioDecidendi (string): The core legal principle/ratio established by this order
+- executiveSummary (string): A 2-3 sentence professional summary of the order for a lawyer
+- plainLanguageSummary (string): A 2-3 sentence explanation in simple language for a non-lawyer
+- litigantFriendlyExplanation (string): Direct explanation to the party: what this order means for them practically
+- complianceDirections (list of strings): Any deadlines or compliance steps required by the parties
+- risks (list of strings): Any risks or adverse implications noted
+- implications (list of strings): Broader legal or practical implications of this order
+- extractionConfidence (float between 0.0 and 1.0): Your confidence in the accuracy of the extraction
 
-**Case No:** WP(C) 1245/2023  
-**CNR:** `{cnr}`  
-**Date of Order:** 20th January 2026  
-
----
-
-### CORAM:
-- **HON'BLE MR. JUSTICE SANJIV KHANNA**
-- **HON'BLE MR. JUSTICE M. M. SUNDRESH**
-
----
-
-### PARTIES:
-**Apex Infrastructure Ltd.** ... *Petitioner*  
-**VERSUS**  
-**Union of India & Anr.** ... *Respondents*  
-
----
-
-### ORDER
-
-1. Heard learned counsel appearing for the Petitioner as well as learned Standing Counsel appearing for the Respondents.
-2. Issue notice. Learned counsel for Respondent No. 1 accepts notice.
-3. Having considered the submissions and perused the record, we are of the prima facie view that the impugned demand notice was passed without affording a reasonable opportunity of hearing.
-4. Consequently, there shall be a stay on the operation of the impugned demand notice till the next date of hearing.
-5. Counter affidavit be filed within four weeks. Rejoinder thereto, if any, within two weeks thereafter.
-6. Re-notify on **15th September 2026**.
-
----
-*(SANJIV KHANNA, J.)*  
-*(M. M. SUNDRESH, J.)*  
+Court Order Text:
+{order_text}
 """
 
 
@@ -105,7 +67,10 @@ class OrderService:
         self.cache_repo = CacheRepository(db)
 
     async def get_markdown(self, cnr: str, filename: str) -> OrderMarkdownResponse:
-        """Get order markdown with permanent caching and fast fallback."""
+        """Get order markdown with permanent caching.
+
+        Flow: Redis Cache -> PostgreSQL Cache -> Download PDF -> Gemini OCR -> Cache & Return
+        """
         redis_key = f"order_md:{cnr}:{filename}"
 
         # Redis cache
@@ -120,12 +85,45 @@ class OrderService:
             await cache_service.set(redis_key, response.model_dump())
             return response
 
-        # eCourts API with fast fallback
+        # Fetch directly from Kanoon API
+        # Validate: Kanoon tids are purely numeric (e.g. "1823456").
+        # Filenames like "order-1.pdf", "order-SCIN010104062014.pdf" are old eCourts stubs.
+        markdown_content: str | None = None
+        if not filename or not filename.strip().lstrip("-").isdigit():
+            logger.info(
+                "order_markdown_skipped_invalid_tid",
+                cnr=cnr,
+                filename=filename,
+                reason="Filename is not a valid Kanoon numeric tid",
+            )
+            return OrderMarkdownResponse(
+                cnr=cnr,
+                filename=filename,
+                markdown="*This document is not available. Please search for the case on Indian Kanoon to access real judgments.*",
+            )
         try:
-            raw = await ecourts_client.get_order_markdown(cnr, filename)
-            markdown_content = raw.get("markdown", raw.get("content", ""))
-        except ECourtsAPIError:
-            markdown_content = _get_demo_order_markdown(cnr, filename)
+            raw = await kanoon_client.get_doc(filename)
+            if isinstance(raw, dict):
+                markdown_content = raw.get("doc", raw.get("title", ""))
+            else:
+                markdown_content = str(raw)
+                
+            # Basic cleanup of Kanoon HTML
+            import re
+            markdown_content = re.sub(r'<div[^>]*>', '\n\n', markdown_content)
+            markdown_content = re.sub(r'<[^>]+>', '', markdown_content)
+            
+            logger.info("order_markdown_fetched_from_kanoon", cnr=cnr, filename=filename)
+        except Exception:
+            logger.warning("kanoon_doc_fetch_failed", cnr=cnr, filename=filename)
+            markdown_content = (
+                f"*This court order (`{filename}`) could not be retrieved at this time. "
+                "The document may not be available via the Indian Kanoon API.*"
+            )
+
+        # No content available — skip caching so a future retry can succeed
+        if not markdown_content or markdown_content.startswith("*This court order"):
+            return OrderMarkdownResponse(cnr=cnr, filename=filename, markdown=markdown_content or "")
 
         # Store permanently in PostgreSQL
         await self.cache_repo.save_cached_order(CachedOrder(
@@ -141,7 +139,10 @@ class OrderService:
         return response
 
     async def get_ai_analysis(self, cnr: str, filename: str) -> OrderAIResponse:
-        """Get AI analysis of an order with permanent caching and fast fallback."""
+        """Get AI analysis of an order with permanent caching.
+
+        Flow: Redis Cache -> PostgreSQL Cache -> Get Markdown -> Gemini JSON Analysis -> Cache & Return
+        """
         redis_key = f"order_ai:{cnr}:{filename}"
 
         # Redis cache
@@ -157,13 +158,42 @@ class OrderService:
             await cache_service.set(redis_key, response.model_dump())
             return response
 
-        # eCourts API with fast fallback
-        try:
-            raw = await ecourts_client.get_order_ai(cnr, filename)
-        except ECourtsAPIError:
-            raw = _get_demo_order_ai(cnr, filename)
+        # Generate analysis via Gemini using Kanoon text
+        raw: dict[str, Any] | None = None
+        if not raw:
+            # Get the order markdown (may use cache or trigger PDF extraction)
+            order_md_response = await self.get_markdown(cnr, filename)
+            order_text = order_md_response.markdown
 
-        # Store permanently
+            # All "unavailable" messages start with '*' — skip Gemini for all of them
+            if not order_text or order_text.startswith("*"):
+                # No content available — don't cache, allow retry later
+                raw = {
+                    "executiveSummary": "This order could not be analyzed because the document content was unavailable.",
+                    "outcome": "Content unavailable.",
+                    "extractionConfidence": 0.0,
+                }
+                return self._transform_ai_response(cnr, filename, raw)
+            else:
+                logger.info("order_ai_calling_gemini", cnr=cnr, filename=filename)
+                extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.format(order_text=order_text)
+                raw = await gemini_client.generate_json(
+                    system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+                    user_prompt=extraction_prompt,
+                )
+                if not raw:
+                    raw = {
+                        "executiveSummary": "AI analysis could not be generated for this order at this time.",
+                        "outcome": "Analysis unavailable.",
+                        "extractionConfidence": 0.0,
+                    }
+                    # Don't cache failures — allow retry on next request
+                    response = self._transform_ai_response(cnr, filename, raw)
+                    return response
+                else:
+                    logger.info("order_ai_gemini_success", cnr=cnr, filename=filename)
+
+        # Store permanently (only for successful extractions)
         await self.cache_repo.save_cached_ai(CachedAIAnalysis(
             cnr=cnr,
             filename=filename,
@@ -175,21 +205,24 @@ class OrderService:
         await cache_service.set(redis_key, response.model_dump())
         return response
 
+
     async def download_pdf(self, cnr: str, filename: str) -> bytes:
-        """Download order PDF."""
+        """Download original court copy from Kanoon (origdoc endpoint)."""
+        if not filename or not filename.strip().lstrip("-").isdigit():
+            return b"Document not available: This is an old placeholder, not a real Kanoon document."
         try:
-            return await ecourts_client.get_order_download(cnr, filename)
-        except ECourtsAPIError:
-            # Return a minimal, perfectly valid blank PDF to prevent viewer corruption errors
-            return (
-                b"%PDF-1.0\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj 2 0 obj<</Type/Pages/Kids[3 0 R]/Count 1>>endobj "
-                b"3 0 obj<</Type/Page/MediaBox[0 0 100 100]>>endobj\nxref\n0 4\n0000000000 65535 f\n0000000009 00000 n\n"
-                b"0000000052 00000 n\n0000000101 00000 n\ntrailer<</Size 4/Root 1 0 R>>\nstartxref\n147\n%%EOF\n"
-            )
+            pdf_bytes = await kanoon_client.get_orig_doc_bytes(filename)
+            if pdf_bytes:
+                return pdf_bytes
+            
+            return b"Original court copy PDF could not be fetched from Indian Kanoon."
+        except Exception as exc:
+            logger.error("order_download_failed", cnr=cnr, filename=filename, error=str(exc))
+            return str(exc).encode()
 
     @staticmethod
     def _transform_ai_response(cnr: str, filename: str, raw: dict[str, Any]) -> OrderAIResponse:
-        """Transform eCourts Order AI response into internal DTO."""
+        """Transform eCourts Order AI / Gemini response into internal DTO."""
         return OrderAIResponse(
             cnr=cnr,
             filename=filename,
@@ -222,3 +255,5 @@ class OrderService:
             extraction_confidence=raw.get("extractionConfidence"),
             raw_data=raw,
         )
+
+

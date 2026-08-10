@@ -41,9 +41,9 @@ export function ChatPanel({ messages, onSendMessage, isLoading }: ChatPanelProps
           <div className="flex justify-start">
             <div className="px-4 py-3 rounded-2xl rounded-tl-sm text-sm" style={{ background: "var(--surface-container)", color: "var(--text-primary)" }}>
               <div className="flex gap-1.5 items-center">
-                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: "var(--primary)" }} style-animation-delay="0ms"></span>
-                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: "var(--primary)" }} style-animation-delay="150ms"></span>
-                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: "var(--primary)" }} style-animation-delay="300ms"></span>
+                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: "var(--primary)", animationDelay: "0ms" }}></span>
+                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: "var(--primary)", animationDelay: "150ms" }}></span>
+                <span className="w-2 h-2 rounded-full animate-bounce" style={{ background: "var(--primary)", animationDelay: "300ms" }}></span>
               </div>
             </div>
           </div>

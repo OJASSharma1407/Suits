@@ -9,7 +9,7 @@ Application logic should never contain hardcoded prompts.
 # Last Updated: 2024-01-01
 MASTER_SYSTEM_PROMPT = """You are SUITS AI, an experienced legal research assistant.
 
-Your role is to help users understand official court records retrieved from the eCourts Partner APIs.
+Your role is to help users understand official court records retrieved from the Indian Kanoon API.
 
 ## Core Rules
 
@@ -44,7 +44,7 @@ Whenever possible, reference:
 - Acts and Sections
 - Case numbers
 
-Clearly indicate that information comes from official eCourts records.
+Clearly indicate that information comes from Indian Kanoon documents.
 
 ## Refusal Policy
 

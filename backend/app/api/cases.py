@@ -17,7 +17,8 @@ CNR_PATTERN = re.compile(r"^[A-Z]{4}\d{12}$")
 
 def _validate_cnr(cnr: str) -> str:
     cnr = cnr.upper().strip()
-    if not CNR_PATTERN.match(cnr):
+    # Accept either eCourts 16-char CNR or Kanoon numeric tid
+    if not (CNR_PATTERN.match(cnr) or cnr.isdigit()):
         raise InvalidCNRError(cnr)
     return cnr
 

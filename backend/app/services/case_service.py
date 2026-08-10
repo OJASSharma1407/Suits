@@ -7,7 +7,9 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
-from app.clients.ecourts_client import ecourts_client
+from app.clients.gemini_client import gemini_client
+from app.clients.kanoon_client import kanoon_client
+from app.prompts.kanoon_extractor import KANOON_EXTRACTION_SYSTEM_PROMPT, KANOON_EXTRACTION_USER_PROMPT
 from app.core.config import settings
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_case import CachedCase
@@ -118,13 +120,15 @@ def _build_orders(data: dict[str, Any]) -> list[OrderItem]:
     """Combine interim and judgment orders into a unified list."""
     orders: list[OrderItem] = []
     for idx, (o_dict, o_type) in enumerate(_get_orders_list(data), 1):
-        filename_val = _to_str(o_dict.get("orderUrl", o_dict.get("filename", o_dict.get("url", f"order-{idx}.pdf"))))
+        actual_url = _to_str(o_dict.get("orderUrl", o_dict.get("filename", o_dict.get("url"))))
+        filename_val = actual_url or f"order-{idx}.pdf"
         orders.append(OrderItem(
             order_date=_to_str(o_dict.get("orderDate", o_dict.get("date"))),
             description=_to_str(o_dict.get("description", o_dict.get("orderType"))),
             order_type=o_type,
-            filename=filename_val,
-            order_url=_to_str(o_dict.get("orderUrl", o_dict.get("url"))),
+            filename=filename_val if actual_url else None,
+            order_url=actual_url,
+            is_stub=not bool(actual_url),
         ))
     return orders
 
@@ -202,24 +206,8 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
         for h in _get_hearings_list(raw)
     ]
 
-    # FALLBACK: If live API returns orderCount > 0 or has case data but omits orders array, generate demo orders
-    try:
-        order_cnt_api = int(raw.get("orderCount", raw.get("judgmentCount", 0)) or 0)
-    except (ValueError, TypeError):
-        order_cnt_api = 0
-
-    if not orders_list:
-        count_to_gen = order_cnt_api if order_cnt_api > 0 else 5
-        filing_dt = _to_str(raw.get("filingDate", "2021-08-03")) or "2021-08-03"
-        for i in range(1, count_to_gen + 1):
-            o_type = "judgment" if i == count_to_gen else "interim"
-            orders_list.append(OrderItem(
-                order_date=filing_dt,
-                description=f"Court Order #{i} - Record of Proceedings",
-                order_type=o_type,
-                filename=f"order_{cnr_val}_{i}.pdf",
-                order_url=f"/api/orders/{cnr_val}/download/order_{i}.pdf",
-            ))
+    # We no longer generate fake orders if the API doesn't provide them.
+    # The UI will just show an empty order list gracefully.
 
     interim_cnt = sum(1 for o in orders_list if o.order_type == "interim")
     judgment_cnt = sum(1 for o in orders_list if o.order_type == "judgment")
@@ -328,22 +316,77 @@ class CaseService:
         # Tier 1: Redis
         cached_redis = await cache_service.get(redis_key)
         if cached_redis:
-            return _transform_case(cached_redis, is_cached=True)
+            if "caseStatus" in cached_redis or "judgments" in cached_redis or "interimOrders" in cached_redis:
+                return _transform_case(cached_redis, is_cached=True)
+            else:
+                logger.info("ignoring_partial_redis_cache", cnr=cnr)
 
         # Tier 2: PostgreSQL
         cached_pg = await self.cache_repo.get_cached_case(cnr)
         if cached_pg:
             raw = json.loads(cached_pg.response_json)
-            await cache_service.set(redis_key, raw, settings.cache_ttl_case)
-            return _transform_case(raw, is_cached=True)
+            # A fully extracted Kanoon case will have 'caseStatus' or 'judgments' mapped
+            # If it's a raw search result, it will only have 'tid', 'catids', 'title', etc.
+            if "caseStatus" in raw or "judgments" in raw or "interimOrders" in raw:
+                await cache_service.set(redis_key, raw, settings.cache_ttl_case)
+                return _transform_case(raw, is_cached=True)
+            else:
+                logger.info("ignoring_partial_search_cache", cnr=cnr)
 
-        # Tier 3: eCourts API with fast fallback
+        # Tier 3: Indian Kanoon API with Gemini Extraction
         try:
-            raw = await ecourts_client.get_case_details(cnr)
-            if isinstance(raw, dict) and "data" in raw and isinstance(raw["data"], dict):
-                raw = raw["data"]
-        except ECourtsAPIError as exc:
-            logger.warning("case_details_fallback", cnr=cnr, error=str(exc))
+            doc_raw = await kanoon_client.get_doc(cnr)
+            
+            # The raw response might be HTML/text or JSON depending on the API's actual return format.
+            # If Kanoon returned JSON, grab the doc text. Otherwise, it's already text.
+            doc_text = ""
+            if isinstance(doc_raw, dict):
+                doc_text = doc_raw.get("doc", doc_raw.get("title", str(doc_raw)))
+            else:
+                doc_text = str(doc_raw)
+                
+            import re
+            # Strip simple HTML tags to reduce token usage
+            doc_text = re.sub(r'<[^>]+>', ' ', doc_text)
+            # Truncate to reasonable length for Gemini (e.g., first 30,000 chars)
+            doc_text = doc_text[:30000]
+
+            logger.info("case_details_extracting_kanoon_metadata", tid=cnr)
+            extracted_json = await gemini_client.generate_json(
+                system_prompt=KANOON_EXTRACTION_SYSTEM_PROMPT,
+                user_prompt=KANOON_EXTRACTION_USER_PROMPT.format(doc_text=doc_text)
+            )
+            
+            # Kanoon doesn't give us hearing history, but it gives us the single document.
+            # We map this into our raw eCourts-like format so `_transform_case` works flawlessly.
+            raw = {
+                "cnr": cnr,
+                "caseNumber": extracted_json.get("caseNumber"),
+                "filingDate": extracted_json.get("filingDate"),
+                "decisionDate": extracted_json.get("decisionDate"),
+                "caseStatus": extracted_json.get("caseStatus", "DISPOSED"),
+                "caseType": extracted_json.get("caseType"),
+                "courtName": extracted_json.get("courtName"),
+                "petitioners": extracted_json.get("petitioners", []),
+                "respondents": extracted_json.get("respondents", []),
+                "petitionerAdvocates": extracted_json.get("petitionerAdvocates", []),
+                "respondentAdvocates": extracted_json.get("respondentAdvocates", []),
+                "judges": extracted_json.get("judges", []),
+                "actsAndSections": extracted_json.get("actsAndSections", []),
+                "judgmentCount": 1,
+                "orderCount": 1,
+                "interimOrders": [],
+                "judgments": [
+                    {
+                        "orderDate": extracted_json.get("decisionDate"),
+                        "description": "Judgment / Document Text",
+                        "filename": str(cnr) # use tid as filename so order_service can fetch it
+                    }
+                ]
+            }
+
+        except Exception as exc:
+            logger.warning("kanoon_case_fetch_failed", cnr=cnr, error=str(exc))
             raw = _get_demo_case_details(cnr)
 
         # Store in PostgreSQL cache
@@ -351,6 +394,9 @@ class CaseService:
         await self.cache_repo.save_cached_case(CachedCase(
             cnr=cnr,
             response_json=json.dumps(raw, default=str),
+            case_title=_make_case_title(raw),
+            case_status=raw.get("caseStatus"),
+            case_type=raw.get("caseType"),
             fetched_at=now,
             expires_at=now + timedelta(seconds=settings.cache_ttl_case),
         ))
@@ -363,19 +409,14 @@ class CaseService:
         return response
 
     async def refresh_case(self, cnr: str) -> RefreshResponse:
-        """Refresh case data from eCourts and invalidate caches."""
-        try:
-            raw = await ecourts_client.refresh_case(cnr)
-        except ECourtsAPIError:
-            raw = {"requestId": "REF-88912", "status": "COMPLETED", "message": "Demo data refreshed."}
-
+        """Refresh case data by invalidating caches (will re-fetch from Kanoon on next load)."""
         # Invalidate caches
         await self.cache_repo.invalidate_case(cnr)
         await cache_service.delete(f"case:{cnr}")
 
         return RefreshResponse(
-            request_id=_to_str(raw.get("requestId")),
-            status=_to_str(raw.get("status", "SUBMITTED")) or "SUBMITTED",
-            message=_to_str(raw.get("message", "Refresh request submitted.")) or "Refresh request submitted.",
+            request_id=f"REF-{cnr[:8]}",
+            status="COMPLETED",
+            message="Cache invalidated. Case will be re-fetched from Indian Kanoon on next load.",
             timestamp=datetime.now(timezone.utc).isoformat(),
         )

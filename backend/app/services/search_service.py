@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.ecourts_client import ecourts_client
+from app.clients.kanoon_client import kanoon_client
 from app.core.config import settings
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_case import CachedCase
@@ -98,6 +99,46 @@ def _extract_results_list(raw_response: Any) -> list:
     return []
 
 
+# Kanoon doctype identifiers per their documentation
+_COURT_CODE_TO_DOCTYPE: dict[str, str] = {
+    "SCIN": "supremecourt",
+    "DLHC": "delhi",
+    "BMBH": "bombay",
+    "CALHC": "kolkata",
+    "MDHC": "chennai",
+    "ALHC": "allahabad",
+    "APHC": "andhra",
+    "GUHC": "gauhati",
+    "JKHC": "jammu",
+    "KRHC": "kerala",
+    "ORRHC": "orissa",
+    "GUJHC": "gujarat",
+    "HPHC": "himachal_pradesh",
+    "JHHC": "jharkhand",
+    "KARHC": "karnataka",
+    "MPHC": "madhyapradesh",
+    "PHHC": "punjab",
+    "RAJHC": "rajasthan",
+}
+
+
+def _map_court_to_doctype(court_code: str | None) -> str | None:
+    """Map our court_code prefix to a Kanoon doctype filter string."""
+    if not court_code:
+        return None
+    for prefix, doctype in _COURT_CODE_TO_DOCTYPE.items():
+        if court_code.upper().startswith(prefix):
+            return doctype
+    return None
+
+
+def _year_to_fromdate(filing_year: int | None) -> str | None:
+    """Convert a filing year integer to Kanoon fromdate format (DD-MM-YYYY)."""
+    if not filing_year:
+        return None
+    return f"1-1-{filing_year}"
+
+
 def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
     """Convert a raw API response item (dict or str) safely into a SearchResultItem DTO."""
     if isinstance(item, str):
@@ -116,7 +157,8 @@ def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
     if not isinstance(item, dict):
         return None
 
-    cnr = str(item.get("cnr", item.get("caseNumberRecord", item.get("case_number", item.get("id", ""))))).strip()
+    # Support both eCourts cnr/id and Kanoon tid
+    cnr = str(item.get("tid", item.get("cnr", item.get("caseNumberRecord", item.get("case_number", item.get("id", "")))))).strip()
     if not cnr or cnr.lower() in RESERVED_METADATA_KEYS:
         return None
 
@@ -127,9 +169,21 @@ def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
     acts_and_sections = _ensure_list(item.get("actsAndSections", item.get("acts_and_sections")))
     ai_keywords = _ensure_list(item.get("aiKeywords", item.get("ai_keywords")))
 
-    case_title = item.get("case_title", item.get("caseTitle", item.get("title", _make_case_title(petitioners, respondents))))
+    # Indian Kanoon uses "title", eCourts uses "case_title"
+    case_title = item.get("title", item.get("case_title", item.get("caseTitle", _make_case_title(petitioners, respondents))))
+    
+    # Strip HTML tags from Kanoon title if present
+    import re
+    case_title = re.sub(r'<[^>]+>', '', str(case_title))
+    
     if not case_title or case_title == "Unknown vs Unknown":
-        case_title = f"Case {cnr}"
+        case_title = f"Document {cnr}"
+
+    # Kanoon publishdate mapping
+    decision_date = item.get("publishdate", item.get("decisionDate", item.get("decision_date")))
+    
+    # Kanoon docsource mapping
+    court_name = item.get("docsource", item.get("courtName", item.get("court_name")))
 
     return SearchResultItem(
         cnr=cnr,
@@ -139,14 +193,14 @@ def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
         case_status=item.get("caseStatus", item.get("case_status")),
         case_status_label=item.get("caseStatusLabel", item.get("case_status_label", item.get("caseStatus"))),
         filing_date=item.get("filingDate", item.get("filing_date")),
-        decision_date=item.get("decisionDate", item.get("decision_date")),
+        decision_date=decision_date,
         next_hearing_date=item.get("nextHearingDate", item.get("next_hearing_date")),
         petitioners=petitioners,
         respondents=respondents,
         advocates=advocates,
         judges=judges,
         court_code=item.get("courtCode", item.get("court_code")),
-        court_name=item.get("courtName", item.get("court_name")),
+        court_name=court_name,
         acts_and_sections=acts_and_sections,
         ai_keywords=ai_keywords,
     )
@@ -341,6 +395,30 @@ class SearchService:
         params = _build_search_params(request)
         cache_key = f"search:{hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()}"
 
+        # 0. Direct Kanoon tid lookup — if user typed a numeric id (e.g. 29724830)
+        #    short-circuit everything and return a single result pointing to that document
+        query_clean = (request.query or "").strip()
+        if query_clean.isdigit():
+            tid = query_clean
+            logger.info("search_direct_kanoon_tid", tid=tid)
+            try:
+                meta = await kanoon_client.get_doc_meta(tid)
+                title = meta.get("title", f"Document {tid}")
+                import re
+                title = re.sub(r'<[^>]+>', '', str(title))
+                court = meta.get("docsource", "Indian Kanoon")
+                date = meta.get("publishdate")
+                single = SearchResultItem(
+                    cnr=tid,
+                    case_title=title,
+                    court_name=court,
+                    decision_date=date,
+                )
+                return SearchResponse(results=[single], total_hits=1, page=1, page_size=1, total_pages=1, facets={})
+            except Exception as exc:
+                logger.warning("kanoon_direct_tid_failed", tid=tid, error=str(exc))
+                # Fall through to normal search
+
         # 1. Check Redis cache
         cached = await cache_service.get(cache_key)
         if cached:
@@ -386,12 +464,27 @@ class SearchService:
                 await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
                 return response
 
-        # 3. Not in Local Database -> Perform eCourts API Call
-        logger.info("search_local_db_miss_calling_ecourts_api", query=request.query)
+        # 3. Not in Local Database -> Perform Kanoon API Call
+        logger.info("search_local_db_miss_calling_kanoon_api", query=request.query)
 
         try:
-            raw_response = await ecourts_client.search_cases(params)
-            raw_results = _extract_results_list(raw_response)
+            # Indian Kanoon uses formInput with operators and filter suffixes
+            raw_response = await kanoon_client.search_docs(
+                query=request.query or "",
+                pagenum=request.page,  # client converts 1-indexed to 0-indexed
+                doctypes=_map_court_to_doctype(request.court_code),
+                fromdate=_year_to_fromdate(request.filing_year),
+            )
+            # Per docs: search results are in response["docs"], total in response["found"]
+            raw_docs = raw_response.get("docs", []) if isinstance(raw_response, dict) else []
+            found_val = raw_response.get("found", len(raw_docs)) if isinstance(raw_response, dict) else len(raw_docs)
+            if isinstance(found_val, str):
+                import re
+                nums = re.findall(r'\d+', found_val.replace(',', ''))
+                kanoon_total = int(nums[-1]) if nums else len(raw_docs)
+            else:
+                kanoon_total = int(found_val)
+            raw_results = _extract_results_list(raw_docs)
             results = []
 
             now = datetime.now(timezone.utc)
@@ -402,61 +495,17 @@ class SearchService:
 
                 results.append(search_item)
 
-                # Store legitimate API response into PostgreSQL local DB
-                filing_year_val = None
-                if search_item.filing_date and len(search_item.filing_date) >= 4:
-                    filing_year_val = search_item.filing_date[:4]
-                elif search_item.cnr and len(search_item.cnr) >= 4:
-                    filing_year_val = search_item.cnr[-4:]
+                # Removed eager caching of search results to CachedCase.
+                # Caching partial search results breaks CaseService which expects full extracted details.
 
-                await self.cache_repo.save_cached_case(CachedCase(
-                    cnr=search_item.cnr,
-                    response_json=json.dumps(item if isinstance(item, dict) else {"cnr": item}, default=str),
-                    case_title=search_item.case_title,
-                    case_status=search_item.case_status,
-                    case_type=search_item.case_type,
-                    court_code=search_item.court_code,
-                    filing_year=filing_year_val,
-                    fetched_at=now,
-                    expires_at=now + timedelta(seconds=settings.cache_ttl_case),
-                ))
-
-            # Direct CNR lookup fallback if search API returned no items but query matches CNR pattern
-            if not results and request.query:
-                clean_q = request.query.strip().upper()
-                if CNR_PATTERN.match(clean_q):
-                    try:
-                        case_raw = await ecourts_client.get_case_details(clean_q)
-                        if case_raw:
-                            single_item = _raw_to_search_item(case_raw)
-                            if single_item and single_item.cnr:
-                                results.append(single_item)
-                                now = datetime.now(timezone.utc)
-                                filing_year_val = None
-                                if single_item.filing_date and len(single_item.filing_date) >= 4:
-                                    filing_year_val = single_item.filing_date[:4]
-                                elif single_item.cnr and len(single_item.cnr) >= 4:
-                                    filing_year_val = single_item.cnr[-4:]
-
-                                await self.cache_repo.save_cached_case(CachedCase(
-                                    cnr=single_item.cnr,
-                                    response_json=json.dumps(case_raw if isinstance(case_raw, dict) else {"cnr": single_item.cnr}, default=str),
-                                    case_title=single_item.case_title,
-                                    case_status=single_item.case_status,
-                                    case_type=single_item.case_type,
-                                    court_code=single_item.court_code,
-                                    filing_year=filing_year_val,
-                                    fetched_at=now,
-                                    expires_at=now + timedelta(seconds=settings.cache_ttl_case),
-                                ))
-                    except Exception:
-                        pass
+            # Removed eCourts CNR fallback — Kanoon uses tid-based lookups
 
             results = _apply_filters(results, request)
-            total_hits = len(results)
+            # Use Kanoon's authoritative `found` count, not just the local slice count
+            total_hits = kanoon_total if kanoon_total > len(results) else len(results)
             page_size = request.page_size or 20
-            offset = ((request.page or 1) - 1) * page_size
-            paginated_results = results[offset : offset + page_size]
+            # Kanoon already returns the right page, no client-side slicing needed
+            paginated_results = results
 
             response = SearchResponse(
                 results=paginated_results,
@@ -472,54 +521,9 @@ class SearchService:
             return response
 
         except ECourtsAPIError as exc:
-            logger.warning("ecourts_api_failed_using_un-cached_fallback", error=str(exc))
-            q = (request.query or "").strip().lower()
-            matching_demo = []
-
-            # If query is a CNR pattern, create a dynamic CNR demo item
-            if request.query and CNR_PATTERN.match(request.query.strip().upper()):
-                cnr_val = request.query.strip().upper()
-                matching_demo.append(SearchResultItem(
-                    cnr=cnr_val,
-                    case_title=f"Case {cnr_val}",
-                    case_type="WP_C",
-                    case_type_label="Writ Petition (Civil)",
-                    case_status="PENDING",
-                    case_status_label="Pending",
-                    filing_date="2024-01-10",
-                    next_hearing_date="2026-10-15",
-                    petitioners=["Petitioner"],
-                    respondents=["Respondent"],
-                    advocates=["Adv. Counsel"],
-                    judges=["Hon'ble Bench"],
-                    court_code="DLHC01",
-                    court_name="High Court of Delhi",
-                    acts_and_sections=["Constitution of India"],
-                    ai_keywords=["Case Record"],
-                ))
-            else:
-                for d in DEMO_CASES_DATASET:
-                    item = _raw_to_search_item(d)
-                    if item and (not q or q in d["case_title"].lower() or q in d["cnr"].lower()
-                                 or any(q in p.lower() for p in d.get("petitioners", []))
-                                 or any(q in r.lower() for r in d.get("respondents", []))
-                                 or any(q in k.lower() for k in d.get("aiKeywords", []))):
-                        matching_demo.append(item)
-
-            matching_demo = _apply_filters(matching_demo, request)
-            page_size = request.page_size or 20
-            total_hits = len(matching_demo)
-            offset = ((request.page or 1) - 1) * page_size
-            paginated_demo = matching_demo[offset : offset + page_size]
-
-            return SearchResponse(
-                results=paginated_demo,
-                total_hits=total_hits,
-                page=request.page,
-                page_size=page_size,
-                total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 0,
-                facets={},
-            )
+            logger.error("kanoon_search_failed", error=str(exc))
+            from fastapi import HTTPException
+            raise HTTPException(status_code=502, detail="Search failed: Indian Kanoon API error (check your API token)") from exc
 
     async def get_capabilities(self) -> SearchCapabilitiesResponse:
         """Get search capabilities with 24-hour cache."""
@@ -528,27 +532,15 @@ class SearchService:
         if cached:
             return SearchCapabilitiesResponse(**cached)
 
-        try:
-            raw = await ecourts_client.get_search_capabilities()
-            response = SearchCapabilitiesResponse(
-                sortable_fields=raw.get("sortableFields", []),
-                facetable_fields=raw.get("facetableFields", []),
-                projectable_fields=raw.get("projectableFields", []),
-                name_match_modes=raw.get("nameMatchModes", []),
-                court_levels=raw.get("courtLevels", []),
-                max_page_size=raw.get("maxPageSize", 100),
-                multi_value_params=raw.get("multiValueParams", []),
-            )
-            await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_enums)
-            return response
-        except ECourtsAPIError:
-            # Fallback capabilities without caching
-            return SearchCapabilitiesResponse(
-                sortable_fields=["filingDate", "decisionDate", "nextHearingDate", "filingYear"],
-                facetable_fields=["caseStatus", "caseType", "courtCode", "filingYear"],
-                projectable_fields=["cnr", "petitioners", "respondents", "advocates", "judges"],
-                name_match_modes=["all", "any", "phrase", "fuzzy"],
-                court_levels=["High Court", "District Court", "Supreme Court"],
-                max_page_size=100,
-                multi_value_params=["petitioners", "respondents", "advocates", "judges"],
-            )
+        # Kanoon doesn't have a capabilities endpoint, so we return generic capabilities
+        response = SearchCapabilitiesResponse(
+            sortable_fields=["filingDate", "decisionDate", "nextHearingDate", "filingYear"],
+            facetable_fields=["caseStatus", "caseType", "courtCode", "filingYear"],
+            projectable_fields=["cnr", "petitioners", "respondents", "advocates", "judges"],
+            name_match_modes=["all", "any", "phrase", "fuzzy"],
+            court_levels=["supreme_court", "high_court", "district_court"],
+            max_page_size=100,
+            multi_value_params=["petitioners", "respondents", "advocates", "judges", "caseStatus", "caseType", "courtCode", "stateCode", "districtCode"],
+        )
+        await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_enums)
+        return response

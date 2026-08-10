@@ -4,7 +4,7 @@ import uuid
 from datetime import datetime, timezone
 
 from sqlalchemy import String, Text, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.types import Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database.base import Base
@@ -17,7 +17,7 @@ class CachedAIAnalysis(Base):
     )
 
     id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+        Uuid(as_uuid=True, native_uuid=False), primary_key=True, default=uuid.uuid4
     )
     cnr: Mapped[str] = mapped_column(String(16), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -26,7 +26,7 @@ class CachedAIAnalysis(Base):
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)
     )
     order_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("cached_orders.id", ondelete="CASCADE"),
+        Uuid(as_uuid=True, native_uuid=False), ForeignKey("cached_orders.id", ondelete="CASCADE"),
         nullable=True,
     )
 

@@ -39,6 +39,7 @@ class OrderItem(BaseModel):
     order_type: str = "interim"  # "interim" or "judgment"
     filename: str | None = None
     order_url: str | None = None
+    is_stub: bool = False  # True when this is a generated placeholder with no real eCourts document
 
 
 class CaseStatistics(BaseModel):
