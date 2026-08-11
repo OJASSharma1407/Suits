@@ -2,6 +2,7 @@
 
 import uuid
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 
 from app.dependencies.auth import CurrentUser, DbSession
 from app.schemas.chat import (
@@ -84,3 +85,41 @@ async def send_message(
     ai_service = AIService(db)
     response = await ai_service.chat(conversation_id, request.message, request.order_filename)
     return APIResponse(data=response)
+
+
+@router.post("/conversations/{conversation_id}/stream")
+async def stream_message(
+    conversation_id: uuid.UUID,
+    request: ChatMessageRequest,
+    user: CurrentUser,
+    db: DbSession,
+):
+    """Stream AI response tokens via Server-Sent Events.
+
+    The client should consume this with fetch() + ReadableStream (not EventSource,
+    since EventSource only supports GET).  Each event is a JSON object:
+      - ``{"token": "<text>"}`` — partial token
+      - ``{"done": true, "suggested_questions": [...]}`` — stream complete
+      - ``{"error": "<msg>"}`` — something went wrong
+    """
+    repo = ConversationRepository(db)
+    conversation = await repo.get_by_id(conversation_id)
+    if not conversation:
+        raise NotFoundError("Conversation")
+    if conversation.user_id != user.id:
+        raise ForbiddenError()
+
+    ai_service = AIService(db)
+    generator = ai_service.chat_stream(
+        conversation_id, request.message, request.order_filename
+    )
+
+    return StreamingResponse(
+        generator,
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",   # disable nginx buffering if used
+            "Connection": "keep-alive",
+        },
+    )

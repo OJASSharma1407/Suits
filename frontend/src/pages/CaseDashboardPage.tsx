@@ -35,6 +35,9 @@ export default function CaseDashboardPage() {
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const streamAbortRef = React.useRef<AbortController | null>(null);
 
   const fetchCase = async () => {
     if (!cnr) return;
@@ -121,7 +124,13 @@ export default function CaseDashboardPage() {
 
   const handleSendMessage = async (msg: string) => {
     if (!cnr) return;
+
+    // Abort any in-progress stream
+    streamAbortRef.current?.abort();
+    setStreamingContent("");
+    setSuggestedQuestions([]);
     setChatLoading(true);
+
     try {
       let activeConvoId = conversationId;
       if (!activeConvoId) {
@@ -129,12 +138,52 @@ export default function CaseDashboardPage() {
         activeConvoId = convo.id;
         setConversationId(activeConvoId);
       }
-      await chatService.sendMessage(activeConvoId, msg);
-      const updatedMessages = await chatService.getMessages(activeConvoId);
-      setMessages(updatedMessages);
+
+      // Optimistically add user message to UI
+      const userMsg: ChatMessage = {
+        id: `local-${Date.now()}`,
+        role: "user",
+        message: msg,
+        created_at: new Date().toISOString(),
+      };
+      setMessages((prev) => [...prev, userMsg]);
+
+      const convoId = activeConvoId;
+
+      // Start streaming — tokens arrive in real time
+      const abort = chatService.streamMessage(
+        convoId,
+        msg,
+        // onToken: append each new piece to the live buffer
+        (token) => {
+          setChatLoading(false); // hide typing dots once first token arrives
+          setStreamingContent((prev) => prev + token);
+        },
+        // onDone: stream finished — commit final message & reload from server
+        async (questions) => {
+          setStreamingContent("");
+          setSuggestedQuestions(questions);
+          setChatLoading(false);
+          try {
+            const updated = await chatService.getMessages(convoId);
+            setMessages(updated);
+          } catch {
+            // ignore refresh errors — the optimistic message is already shown
+          }
+        },
+        // onError
+        (err) => {
+          setStreamingContent("");
+          setChatLoading(false);
+          toast.error(`AI error: ${err}`);
+        },
+        // Pass the currently selected order filename, or the first order if none selected
+        selectedAI?.filename || caseData?.orders?.[0]?.filename
+      );
+
+      streamAbortRef.current = abort;
     } catch {
       toast.error("Failed to send message.");
-    } finally {
       setChatLoading(false);
     }
   };
@@ -251,6 +300,8 @@ export default function CaseDashboardPage() {
                 messages={messages}
                 onSendMessage={handleSendMessage}
                 isLoading={chatLoading}
+                streamingMessage={streamingContent}
+                suggestedQuestions={suggestedQuestions}
               />
             </div>
           </div>

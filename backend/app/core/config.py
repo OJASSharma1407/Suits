@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     # Indian Kanoon API
     kanoon_api_token: str = Field(default="")
 
-    # Gemini AI
-    gemini_api_key: str = Field(default="")
+    # OpenRouter API
+    openrouter_api_key: str = Field(default="")
 
     # Application
     environment: str = Field(default="development")

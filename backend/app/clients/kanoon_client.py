@@ -207,6 +207,8 @@ class KanoonClient:
         """Fetch the original court copy (PDF/HTML) as bytes.
         
         Per docs: POST /origdoc/<docid>/
+        Falls back to the public Indian Kanoon PDF generator if the API
+        returns HTML instead of a real PDF.
         """
         logger.info("kanoon_get_origdoc", tid=tid)
         client = await self._get_client()
@@ -219,22 +221,36 @@ class KanoonClient:
             response = await client.post(f"/origdoc/{tid}/", headers=headers)
             if response.status_code == 200:
                 content = response.content
-                if not content.startswith(b'%PDF-'):
-                    # The original doc is HTML/text, so let's use Kanoon's website PDF generator
-                    logger.info("kanoon_origdoc_is_html_falling_back_to_generator", tid=tid)
-                    import httpx
-                    async with httpx.AsyncClient(follow_redirects=True) as public_client:
+                if content.startswith(b'%PDF-'):
+                    return content
+
+                # API returned HTML — try the public PDF generator as a fallback
+                logger.info("kanoon_origdoc_is_html_falling_back_to_generator", tid=tid)
+                try:
+                    async with httpx.AsyncClient(
+                        follow_redirects=True,
+                        timeout=httpx.Timeout(10.0),
+                    ) as public_client:
                         pdf_resp = await public_client.get(
-                            "https://indiankanoon.org/doc/" + str(tid) + "/?type=pdf",
+                            f"https://indiankanoon.org/doc/{tid}/?type=pdf",
                             headers={
                                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                                 "Referer": f"https://indiankanoon.org/doc/{tid}/",
                                 "Origin": "https://indiankanoon.org",
-                                "Accept": "application/pdf,application/xhtml+xml,text/html,*/*"
-                            }
+                                "Accept": "application/pdf,application/xhtml+xml,text/html,*/*",
+                            },
                         )
                         if pdf_resp.status_code == 200 and b'%PDF-' in pdf_resp.content[:1024]:
                             return pdf_resp.content
+                        logger.warning(
+                            "kanoon_origdoc_generator_no_pdf",
+                            tid=tid,
+                            status=pdf_resp.status_code,
+                        )
+                except Exception as fallback_exc:
+                    logger.warning("kanoon_origdoc_generator_failed", tid=tid, error=str(fallback_exc))
+
+                # Couldn't get a real PDF — return the raw HTML so the caller can still use it
                 return content
             
             logger.error(

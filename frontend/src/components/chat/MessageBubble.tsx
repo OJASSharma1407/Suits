@@ -4,9 +4,11 @@ import type { ChatMessage } from "@/types/chat";
 
 interface MessageBubbleProps {
   message: ChatMessage;
+  /** When true, shows a blinking cursor at the end (streaming in progress) */
+  isStreaming?: boolean;
 }
 
-export function MessageBubble({ message }: MessageBubbleProps) {
+export function MessageBubble({ message, isStreaming = false }: MessageBubbleProps) {
   const isUser = message.role === "user";
 
   return (
@@ -25,13 +27,25 @@ export function MessageBubble({ message }: MessageBubbleProps) {
         ) : (
           <div className="prose prose-sm max-w-none prose-p:leading-relaxed prose-a:text-blue-600">
             <ReactMarkdown>{message.message}</ReactMarkdown>
+            {isStreaming && (
+              <span
+                className="inline-block w-[2px] h-[1em] ml-0.5 align-text-bottom animate-pulse rounded-sm"
+                style={{ background: "var(--primary)" }}
+                aria-label="AI is typing"
+              />
+            )}
           </div>
         )}
-        <div 
-          className={`text-[10px] mt-1.5 text-right ${isUser ? "opacity-70" : "opacity-50"}`}
-        >
-          {new Date(message.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-        </div>
+        {!isStreaming && (
+          <div
+            className={`text-[10px] mt-1.5 text-right ${isUser ? "opacity-70" : "opacity-50"}`}
+          >
+            {new Date(message.created_at).toLocaleTimeString([], {
+              hour: "2-digit",
+              minute: "2-digit",
+            })}
+          </div>
+        )}
       </div>
     </div>
   );

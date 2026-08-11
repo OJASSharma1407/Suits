@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
-from app.clients.gemini_client import gemini_client
+from app.clients.openrouter_client import openrouter_client
 from app.clients.kanoon_client import kanoon_client
 from app.prompts.kanoon_extractor import KANOON_EXTRACTION_SYSTEM_PROMPT, KANOON_EXTRACTION_USER_PROMPT
 from app.core.config import settings
@@ -333,7 +333,7 @@ class CaseService:
             else:
                 logger.info("ignoring_partial_search_cache", cnr=cnr)
 
-        # Tier 3: Indian Kanoon API with Gemini Extraction
+        # Tier 3: Indian Kanoon API with OpenRouter Extraction
         try:
             doc_raw = await kanoon_client.get_doc(cnr)
             
@@ -348,11 +348,11 @@ class CaseService:
             import re
             # Strip simple HTML tags to reduce token usage
             doc_text = re.sub(r'<[^>]+>', ' ', doc_text)
-            # Truncate to reasonable length for Gemini (e.g., first 30,000 chars)
+            # Truncate to a safe size for the OpenRouter 120b model
             doc_text = doc_text[:30000]
 
             logger.info("case_details_extracting_kanoon_metadata", tid=cnr)
-            extracted_json = await gemini_client.generate_json(
+            extracted_json = await openrouter_client.generate_json(
                 system_prompt=KANOON_EXTRACTION_SYSTEM_PROMPT,
                 user_prompt=KANOON_EXTRACTION_USER_PROMPT.format(doc_text=doc_text)
             )

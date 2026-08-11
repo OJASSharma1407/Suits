@@ -103,16 +103,6 @@ class ECourtsAPIError(SuitsBaseException):
         )
 
 
-class GeminiAPIError(SuitsBaseException):
-    """Raised when the Gemini AI API returns an error."""
-
-    def __init__(self, detail: str = "AI service is temporarily unavailable."):
-        super().__init__(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=detail,
-            error_code="GEMINI_API_ERROR",
-        )
-
 
 class RateLimitError(SuitsBaseException):
     """Raised when rate limits are exceeded."""

@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
-from app.clients.gemini_client import gemini_client
+from app.clients.openrouter_client import openrouter_client
 from app.clients.kanoon_client import kanoon_client
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_order import CachedOrder
@@ -69,7 +69,7 @@ class OrderService:
     async def get_markdown(self, cnr: str, filename: str) -> OrderMarkdownResponse:
         """Get order markdown with permanent caching.
 
-        Flow: Redis Cache -> PostgreSQL Cache -> Download PDF -> Gemini OCR -> Cache & Return
+        Flow: Redis Cache -> PostgreSQL Cache -> Download PDF -> OpenRouter OCR -> Cache & Return
         """
         redis_key = f"order_md:{cnr}:{filename}"
 
@@ -141,7 +141,7 @@ class OrderService:
     async def get_ai_analysis(self, cnr: str, filename: str) -> OrderAIResponse:
         """Get AI analysis of an order with permanent caching.
 
-        Flow: Redis Cache -> PostgreSQL Cache -> Get Markdown -> Gemini JSON Analysis -> Cache & Return
+        Flow: Redis Cache -> PostgreSQL Cache -> Get Markdown -> OpenRouter JSON Analysis -> Cache & Return
         """
         redis_key = f"order_ai:{cnr}:{filename}"
 
@@ -158,14 +158,14 @@ class OrderService:
             await cache_service.set(redis_key, response.model_dump())
             return response
 
-        # Generate analysis via Gemini using Kanoon text
+        # Generate analysis via OpenRouter using Kanoon text
         raw: dict[str, Any] | None = None
         if not raw:
             # Get the order markdown (may use cache or trigger PDF extraction)
             order_md_response = await self.get_markdown(cnr, filename)
             order_text = order_md_response.markdown
 
-            # All "unavailable" messages start with '*' — skip Gemini for all of them
+            # All "unavailable" messages start with '*' — skip AI for all of them
             if not order_text or order_text.startswith("*"):
                 # No content available — don't cache, allow retry later
                 raw = {
@@ -175,9 +175,19 @@ class OrderService:
                 }
                 return self._transform_ai_response(cnr, filename, raw)
             else:
-                logger.info("order_ai_calling_gemini", cnr=cnr, filename=filename)
+                logger.info("order_ai_calling_openrouter", cnr=cnr, filename=filename)
+                # Truncate to ~8 000 chars (~2 000 tokens) to stay within OpenRouter's limits.
+                MAX_ORDER_CHARS = 8_000
+                if len(order_text) > MAX_ORDER_CHARS:
+                    order_text = order_text[:MAX_ORDER_CHARS] + "\n\n[... document truncated for AI analysis ...]"
+                    logger.info(
+                        "order_ai_text_truncated",
+                        cnr=cnr,
+                        filename=filename,
+                        truncated_at=MAX_ORDER_CHARS,
+                    )
                 extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.format(order_text=order_text)
-                raw = await gemini_client.generate_json(
+                raw = await openrouter_client.generate_json(
                     system_prompt=_ORDER_AI_SYSTEM_PROMPT,
                     user_prompt=extraction_prompt,
                 )
@@ -191,7 +201,7 @@ class OrderService:
                     response = self._transform_ai_response(cnr, filename, raw)
                     return response
                 else:
-                    logger.info("order_ai_gemini_success", cnr=cnr, filename=filename)
+                    logger.info("order_ai_openrouter_success", cnr=cnr, filename=filename)
 
         # Store permanently (only for successful extractions)
         await self.cache_repo.save_cached_ai(CachedAIAnalysis(
@@ -222,7 +232,7 @@ class OrderService:
 
     @staticmethod
     def _transform_ai_response(cnr: str, filename: str, raw: dict[str, Any]) -> OrderAIResponse:
-        """Transform eCourts Order AI / Gemini response into internal DTO."""
+        """Transform eCourts Order AI / OpenRouter response into internal DTO."""
         return OrderAIResponse(
             cnr=cnr,
             filename=filename,
