@@ -21,6 +21,7 @@ Extract the following fields from the given court document text:
 - respondentAdvocates: Array of strings for advocates representing respondents
 - judges: Array of strings containing names of the judges (e.g., "Justice Surya Kant")
 - actsAndSections: Array of strings for statutes/acts cited (e.g., "Constitution of India, Art. 32")
+- summary: A brief 1-2 sentence summary of the core decision/order.
 
 Output ONLY valid JSON.
 

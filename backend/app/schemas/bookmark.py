@@ -6,7 +6,7 @@ from pydantic import BaseModel, Field
 
 
 class CreateBookmarkRequest(BaseModel):
-    cnr: str = Field(min_length=16, max_length=16)
+    cnr: str = Field(min_length=1, max_length=50)
     title: str = "Untitled Case"
 
 

@@ -84,37 +84,6 @@ def _get_orders_list(data: dict[str, Any]) -> list[tuple[dict[str, Any], str]]:
     return result
 
 
-def _build_timeline(data: dict[str, Any]) -> list[TimelineEvent]:
-    """Merge hearings, business history, orders, and judgments into a chronological timeline."""
-    events: list[TimelineEvent] = []
-
-    for h in _get_hearings_list(data):
-        date = _to_str(h.get("hearingDate", h.get("date", h.get("businessDate", h.get("listingDate")))))
-        if date:
-            purpose = _to_str(h.get("purposeOfListing", h.get("purpose", h.get("business", "Listed"))))
-            events.append(TimelineEvent(
-                date=date,
-                event_type="hearing",
-                title=f"Hearing - {purpose}",
-                description=purpose,
-                metadata={"judge": _to_str(h.get("judge"))},
-            ))
-
-    for o_dict, o_type in _get_orders_list(data):
-        date = _to_str(o_dict.get("orderDate", o_dict.get("date")))
-        if date:
-            desc = _to_str(o_dict.get("description", o_dict.get("orderType", "Court Order")))
-            events.append(TimelineEvent(
-                date=date,
-                event_type=o_type,
-                title=f"{o_type.capitalize()} - {desc[:80]}",
-                description=desc,
-                metadata={"filename": _to_str(o_dict.get("orderUrl", o_dict.get("filename", o_dict.get("url"))))},
-            ))
-
-    events.sort(key=lambda e: e.date, reverse=True)
-    return events
-
 
 def _build_orders(data: dict[str, Any]) -> list[OrderItem]:
     """Combine interim and judgment orders into a unified list."""
@@ -212,7 +181,33 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
     interim_cnt = sum(1 for o in orders_list if o.order_type == "interim")
     judgment_cnt = sum(1 for o in orders_list if o.order_type == "judgment")
 
-    timeline = _build_timeline(raw)
+    timeline: list[TimelineEvent] = []
+
+    for h in hearings_list:
+        date = h.hearing_date or h.business_date
+        if date:
+            purpose = h.purpose or "Listed"
+            timeline.append(TimelineEvent(
+                date=date,
+                event_type="hearing",
+                title=f"Hearing - {purpose}",
+                description=purpose,
+                metadata={"judge": h.judge},
+            ))
+
+    for o in orders_list:
+        date = o.order_date
+        if date:
+            desc = o.description or "Court Order"
+            timeline.append(TimelineEvent(
+                date=date,
+                event_type=o.order_type,
+                title=f"{o.order_type.capitalize()} - {desc[:80]}",
+                description=desc,
+                metadata={"filename": o.filename or o.order_url},
+            ))
+
+    timeline.sort(key=lambda e: e.date or "", reverse=True)
 
     # FALLBACK: If timeline is empty, generate from orders and hearings
     if not timeline:
@@ -379,7 +374,7 @@ class CaseService:
                 "judgments": [
                     {
                         "orderDate": extracted_json.get("decisionDate"),
-                        "description": "Judgment / Document Text",
+                        "description": extracted_json.get("summary", "Judgment Delivered"),
                         "filename": str(cnr) # use tid as filename so order_service can fetch it
                     }
                 ]

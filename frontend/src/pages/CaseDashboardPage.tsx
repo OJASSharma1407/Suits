@@ -31,7 +31,6 @@ export default function CaseDashboardPage() {
   const [selectedAI, setSelectedAI] = useState<OrderAI | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
-  const [isChatOpen, setIsChatOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [chatLoading, setChatLoading] = useState(false);
@@ -271,30 +270,13 @@ export default function CaseDashboardPage() {
         </div>
 
         {/* Sidebar */}
-        <div className="space-y-6">
+        <div className="space-y-6 flex flex-col">
           <JudgeCard judges={caseData.judges} />
-        </div>
-      </div>
-
-      {/* Floating AI Chat */}
-      <div className="fixed bottom-6 right-6 z-50 flex flex-col items-end">
-        {isChatOpen && (
-          <div 
-            className="mb-4 w-[480px] h-[650px] max-h-[80vh] flex flex-col card-float overflow-hidden rounded-2xl"
-            style={{ boxShadow: "var(--shadow-float)", border: "1px solid var(--border-strong)", background: "var(--bg)" }}
-          >
-            <div className="p-3 border-b flex items-center justify-between" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-              <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-                <Sparkles size={16} style={{ color: "var(--primary)" }} /> AI Research Assistant
-              </h3>
-              <button 
-                onClick={() => setIsChatOpen(false)}
-                className="p-1 rounded-full hover:bg-[var(--surface-container)] transition-colors cursor-pointer"
-                style={{ color: "var(--text-secondary)" }}
-              >
-                <X size={16} />
-              </button>
-            </div>
+          
+          <div className="h-[600px] flex flex-col pt-4">
+            <h3 className="text-base font-semibold mb-3 flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+              <Sparkles size={16} style={{ color: "var(--primary)" }} /> AI Research Assistant
+            </h3>
             <div className="flex-1 overflow-hidden">
               <ChatPanel
                 messages={messages}
@@ -305,15 +287,7 @@ export default function CaseDashboardPage() {
               />
             </div>
           </div>
-        )}
-        
-        <button
-          onClick={() => setIsChatOpen(!isChatOpen)}
-          className={`h-14 w-14 rounded-full shadow-lg flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer`}
-          style={{ background: isChatOpen ? "var(--surface-container-high)" : "var(--primary)", color: isChatOpen ? "var(--text-primary)" : "var(--on-primary)" }}
-        >
-          {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
-        </button>
+        </div>
       </div>
     </div>
   );

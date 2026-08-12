@@ -23,6 +23,7 @@ from app.prompts.templates import build_case_context
 
 class AIService:
     def __init__(self, db: AsyncSession) -> None:
+        self.db = db
         self.conversation_repo = ConversationRepository(db)
         self.cache_repo = CacheRepository(db)
 
@@ -62,6 +63,14 @@ class AIService:
                 cached_md = await self.cache_repo.get_cached_order(cnr, order_filename)
                 if cached_md and cached_md.markdown:
                     order_context = cached_md.markdown
+            
+            # Proactively fetch markdown if we don't have any order context yet
+            if not order_context:
+                from app.services.order_service import OrderService
+                order_service = OrderService(self.db)
+                md_response = await order_service.get_markdown(cnr, order_filename)
+                if md_response and md_response.markdown and not md_response.markdown.startswith("*"):
+                    order_context = md_response.markdown
 
         return cnr, order_context, history, case_context
 
