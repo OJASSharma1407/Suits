@@ -19,7 +19,7 @@ class CachedAIAnalysis(Base):
     id: Mapped[uuid.UUID] = mapped_column(
         Uuid(as_uuid=True, native_uuid=False), primary_key=True, default=uuid.uuid4
     )
-    cnr: Mapped[str] = mapped_column(String(16), nullable=False)
+    cnr: Mapped[str] = mapped_column(String(64), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
     ai_json: Mapped[str] = mapped_column(Text, nullable=False)
     fetched_at: Mapped[datetime] = mapped_column(

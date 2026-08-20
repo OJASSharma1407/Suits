@@ -204,32 +204,26 @@ class KanoonClient:
         return result if isinstance(result, dict) else {}
 
     async def get_orig_doc_bytes(self, tid: str | int) -> bytes | None:
-        """Fetch the original court copy (PDF/HTML) as bytes.
-        
-        Per docs: POST /origdoc/<docid>/
-        Falls back to the public Indian Kanoon PDF generator if the API
-        returns HTML instead of a real PDF.
-        """
+        """Fetch the original court copy (PDF) as bytes with fast timeouts."""
         logger.info("kanoon_get_origdoc", tid=tid)
         client = await self._get_client()
         try:
-            # We don't want JSON here, we want the raw file bytes
-            # We must override the Accept header since _get_client sets it to application/json
             headers = dict(client.headers)
             headers["Accept"] = "*/*"
             
-            response = await client.post(f"/origdoc/{tid}/", headers=headers)
+            # Fast timeout for origdoc check
+            response = await client.post(f"/origdoc/{tid}/", headers=headers, timeout=httpx.Timeout(4.0))
             if response.status_code == 200:
                 content = response.content
                 if content.startswith(b'%PDF-'):
                     return content
 
-                # API returned HTML — try the public PDF generator as a fallback
+                # API returned HTML — try public PDF generator with fast timeout
                 logger.info("kanoon_origdoc_is_html_falling_back_to_generator", tid=tid)
                 try:
                     async with httpx.AsyncClient(
                         follow_redirects=True,
-                        timeout=httpx.Timeout(10.0),
+                        timeout=httpx.Timeout(4.0),
                     ) as public_client:
                         pdf_resp = await public_client.get(
                             f"https://indiankanoon.org/doc/{tid}/?type=pdf",
@@ -237,30 +231,17 @@ class KanoonClient:
                                 "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
                                 "Referer": f"https://indiankanoon.org/doc/{tid}/",
                                 "Origin": "https://indiankanoon.org",
-                                "Accept": "application/pdf,application/xhtml+xml,text/html,*/*",
+                                "Accept": "application/pdf,*/*",
                             },
                         )
                         if pdf_resp.status_code == 200 and b'%PDF-' in pdf_resp.content[:1024]:
                             return pdf_resp.content
-                        logger.warning(
-                            "kanoon_origdoc_generator_no_pdf",
-                            tid=tid,
-                            status=pdf_resp.status_code,
-                        )
                 except Exception as fallback_exc:
                     logger.warning("kanoon_origdoc_generator_failed", tid=tid, error=str(fallback_exc))
 
-                # Couldn't get a real PDF — return the raw HTML so the caller can still use it
-                return content
-            
-            logger.error(
-                "kanoon_origdoc_failed",
-                status=response.status_code,
-                text=response.text[:500]
-            )
             return None
         except Exception as exc:
-            logger.error("kanoon_origdoc_error", error=str(exc))
+            logger.warning("kanoon_origdoc_unavailable", tid=tid, error=str(exc))
             return None
 
 kanoon_client = KanoonClient()

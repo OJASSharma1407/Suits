@@ -1,4 +1,5 @@
-import React, { useRef, useEffect } from "react";
+import React, { useRef, useEffect, useState } from "react";
+import { Sparkles, RotateCcw } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { SuggestedQuestions } from "./SuggestedQuestions";
@@ -12,6 +13,8 @@ interface ChatPanelProps {
   streamingMessage?: string;
   /** AI-generated follow-up questions shown after a response completes */
   suggestedQuestions?: string[];
+  /** Optional handler to clear or start a new chat */
+  onClearChat?: () => void;
 }
 
 export function ChatPanel({
@@ -19,9 +22,11 @@ export function ChatPanel({
   onSendMessage,
   isLoading,
   streamingMessage,
-  suggestedQuestions,
+  suggestedQuestions = [],
+  onClearChat,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [isPromptsOpen, setIsPromptsOpen] = useState(false);
 
   // Auto-scroll whenever messages or streaming content changes
   useEffect(() => {
@@ -30,36 +35,47 @@ export function ChatPanel({
     }
   }, [messages, streamingMessage, isLoading]);
 
-  const lastMessage = messages[messages.length - 1];
-  const showSuggested =
-    suggestedQuestions &&
-    suggestedQuestions.length > 0 &&
-    !isLoading &&
-    !streamingMessage &&
-    lastMessage?.role === "assistant";
+  const handleSelectQuestion = (question: string) => {
+    setIsPromptsOpen(false);
+    onSendMessage(question);
+  };
 
   return (
     <div
-      className="flex flex-col h-full rounded-2xl border overflow-hidden bg-white"
-      style={{ borderColor: "var(--border)", boxShadow: "var(--shadow-card)" }}
+      className="flex flex-col h-full rounded-2xl border overflow-hidden"
+      style={{
+        borderColor: "var(--border)",
+        background: "var(--bg)",
+        boxShadow: "var(--shadow-card)",
+      }}
     >
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4" ref={scrollRef}>
+      <div className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-4" ref={scrollRef}>
         {messages.length === 0 && !streamingMessage ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-6">
+          <div className="h-full flex flex-col items-center justify-center text-center p-4 sm:p-6">
+            <div
+              className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
+              style={{ background: "var(--surface-container)", color: "var(--primary)" }}
+            >
+              <Sparkles size={22} />
+            </div>
             <h3
-              className="text-lg font-semibold tracking-tight mb-2"
+              className="text-base sm:text-lg font-semibold tracking-tight mb-1.5"
               style={{ color: "var(--text-primary)" }}
             >
               AI Research Assistant
             </h3>
             <p
-              className="text-sm max-w-sm mb-8 leading-relaxed"
+              className="text-xs sm:text-sm max-w-sm mb-6 leading-relaxed"
               style={{ color: "var(--text-secondary)" }}
             >
-              Ask questions about this case, legal precedents, or request summaries of court orders.
+              Ask legal questions, extract binding ratio, analyze cited precedents, or explore court directives.
             </p>
-            <SuggestedQuestions onSelect={onSendMessage} />
+            <SuggestedQuestions
+              onSelect={handleSelectQuestion}
+              customQuestions={suggestedQuestions}
+              variant="list"
+            />
           </div>
         ) : (
           <>
@@ -87,7 +103,8 @@ export function ChatPanel({
                 <div
                   className="px-4 py-3 rounded-2xl rounded-tl-sm text-sm"
                   style={{
-                    background: "var(--surface-container)",
+                    background: "var(--card)",
+                    border: "1px solid var(--border)",
                     color: "var(--text-primary)",
                   }}
                 >
@@ -108,39 +125,60 @@ export function ChatPanel({
                 </div>
               </div>
             )}
-
-            {/* AI-generated follow-up questions */}
-            {showSuggested && (
-              <div className="pt-2 space-y-2">
-                <p
-                  className="text-[11px] font-medium uppercase tracking-wider px-1"
-                  style={{ color: "var(--text-muted)" }}
-                >
-                  Follow-up questions
-                </p>
-                {suggestedQuestions!.map((q, i) => (
-                  <button
-                    key={i}
-                    onClick={() => onSendMessage(q)}
-                    className="w-full text-left text-sm px-3 py-2 rounded-xl border transition-all hover:-translate-y-0.5 hover:shadow-sm"
-                    style={{
-                      background: "var(--surface)",
-                      borderColor: "var(--border)",
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    {q}
-                  </button>
-                ))}
-              </div>
-            )}
           </>
         )}
       </div>
 
-      {/* Input Area */}
-      <div className="p-4 bg-white border-t" style={{ borderColor: "var(--border)" }}>
-        <ChatInput onSend={onSendMessage} disabled={isLoading || !!streamingMessage} />
+      {/* Persistent Prompt Toolbar & Expandable Tray */}
+      <div
+        className="p-3 border-t space-y-2"
+        style={{
+          background: "var(--surface)",
+          borderColor: "var(--border)",
+        }}
+      >
+        {/* Horizontal Quick Prompt Chips (Always available throughout the conversation) */}
+        {isPromptsOpen && (
+          <div className="p-2.5 rounded-xl border animate-in fade-in slide-in-from-bottom-2 space-y-2" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase font-bold tracking-wider flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
+                <Sparkles size={11} style={{ color: "var(--primary)" }} /> Legal Research Prompts
+              </span>
+              <button
+                onClick={() => setIsPromptsOpen(false)}
+                className="text-[10px] hover:underline cursor-pointer"
+                style={{ color: "var(--text-secondary)" }}
+              >
+                Close
+              </button>
+            </div>
+            <SuggestedQuestions
+              onSelect={handleSelectQuestion}
+              customQuestions={suggestedQuestions}
+              variant="list"
+            />
+          </div>
+        )}
+
+        {/* Compact Horizontal Quick Prompt Strip */}
+        <div className="flex items-center gap-2">
+          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] flex-shrink-0 flex items-center gap-1">
+            <Sparkles size={10} style={{ color: "var(--primary)" }} /> Quick:
+          </span>
+          <SuggestedQuestions
+            onSelect={handleSelectQuestion}
+            customQuestions={suggestedQuestions}
+            variant="chips"
+          />
+        </div>
+
+        {/* Input Box with Multi-Line Support and '+' Prompt Menu */}
+        <ChatInput
+          onSend={onSendMessage}
+          disabled={isLoading || !!streamingMessage}
+          onTogglePrompts={() => setIsPromptsOpen(!isPromptsOpen)}
+          isPromptsOpen={isPromptsOpen}
+        />
       </div>
     </div>
   );

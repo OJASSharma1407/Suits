@@ -1,83 +1,153 @@
 @import "tailwindcss";
 
 /* ============================================================
-   SUITS – Auralis Design System
-   Light-only. Architectural minimalism + glassmorphism.
+   SUITS - Auralis Design System
+   Light + Dark. Architectural minimalism + glassmorphism.
    ============================================================ */
 
 @layer base {
   :root {
-    /* ── Surfaces ─────────────────────────────────────────────── */
-    --bg:                     #fdf8f8;
-    --surface:                #f7f3f2;
-    --surface-dim:            #ddd9d8;
-    --surface-container:      #f1edec;
-    --surface-container-high: #ebe7e6;
+    /* Surfaces */
+    --bg:                        #fdf8f8;
+    --surface:                   #f7f3f2;
+    --surface-dim:               #ddd9d8;
+    --surface-container:         #f1edec;
+    --surface-container-high:    #ebe7e6;
     --surface-container-highest: #e5e2e1;
-    --card:                   #ffffff;
-    --card-hover:             #f7f3f2;
+    --card:                      #ffffff;
+    --card-hover:                #f7f3f2;
 
-    /* ── Borders & Outlines ───────────────────────────────────── */
-    --border:                 #e7e7e4;
-    --border-strong:          #c4c7c7;
-    --outline:                #747878;
+    /* Borders */
+    --border:                    #e7e7e4;
+    --border-strong:             #c4c7c7;
+    --outline:                   #747878;
 
-    /* ── Text ─────────────────────────────────────────────────── */
-    --text-primary:           #1c1b1b;
-    --text-secondary:         #444748;
-    --text-muted:             #747878;
-    --text-inverse:           #f4f0ef;
+    /* Text */
+    --text-primary:              #1c1b1b;
+    --text-secondary:            #444748;
+    --text-muted:                #747878;
+    --text-inverse:              #f4f0ef;
 
-    /* ── Primary (Black) ──────────────────────────────────────── */
-    --primary:                #000000;
-    --on-primary:             #ffffff;
-    --primary-container:      #1c1b1b;
-    --on-primary-container:   #858383;
+    /* Primary */
+    --primary:                   #000000;
+    --on-primary:                #ffffff;
+    --primary-container:         #1c1b1b;
+    --on-primary-container:      #858383;
 
-    /* ── Secondary ────────────────────────────────────────────── */
-    --secondary:              #5e5e5e;
-    --on-secondary:           #ffffff;
-    --secondary-container:    #e1dfdf;
+    /* Secondary */
+    --secondary:                 #5e5e5e;
+    --on-secondary:              #ffffff;
+    --secondary-container:       #e1dfdf;
 
-    /* ── Semantic ─────────────────────────────────────────────── */
-    --success:                #16a34a;
-    --warning:                #d97706;
-    --danger:                 #dc2626;
-    --error:                  #ba1a1a;
-    --on-error:               #ffffff;
-    --error-container:        #ffdad6;
+    /* Semantic */
+    --success:                   #16a34a;
+    --warning:                   #d97706;
+    --danger:                    #dc2626;
+    --error:                     #ba1a1a;
+    --on-error:                  #ffffff;
+    --error-container:           #ffdad6;
 
-    /* ── Accents (muted orb gradients) ────────────────────────── */
-    --accent-orb-1:           rgba(200, 198, 197, 0.35);
-    --accent-orb-2:           rgba(228, 226, 226, 0.30);
+    /* Accents */
+    --accent-orb-1:              rgba(200, 198, 197, 0.35);
+    --accent-orb-2:              rgba(228, 226, 226, 0.30);
 
-    /* ── Radii ────────────────────────────────────────────────── */
-    --radius-sm:              0.25rem;
-    --radius:                 0.5rem;
-    --radius-md:              0.75rem;
-    --radius-lg:              1rem;
-    --radius-xl:              1.5rem;
-    --radius-card:            24px;
-    --radius-button:          9999px;   /* Full pill */
-    --radius-input:           8px;
-    --radius-dialog:          20px;
+    /* Radii */
+    --radius-sm:                 0.25rem;
+    --radius:                    0.5rem;
+    --radius-md:                 0.75rem;
+    --radius-lg:                 1rem;
+    --radius-xl:                 1.5rem;
+    --radius-card:               24px;
+    --radius-button:             9999px;
+    --radius-input:              8px;
+    --radius-dialog:             20px;
 
-    /* ── Spacing ──────────────────────────────────────────────── */
-    --unit:                   8px;
-    --container-max:          1440px;
-    --gutter:                 24px;
-    --margin-x:               40px;
-    --header-height:          72px;
+    /* Spacing */
+    --unit:                      8px;
+    --container-max:             1440px;
+    --gutter:                    24px;
+    --margin-x:                  40px;
+    --header-height:             72px;
 
-    /* ── Elevation ────────────────────────────────────────────── */
-    --shadow-ambient:         0 0 40px rgba(0, 0, 0, 0.02);
-    --shadow-card:            0 1px 3px rgba(0, 0, 0, 0.04), 0 0 40px rgba(0, 0, 0, 0.02);
-    --shadow-float:           0 4px 24px rgba(0, 0, 0, 0.06);
-    --shadow-glass:           0 8px 32px rgba(0, 0, 0, 0.04);
+    /* Elevation */
+    --shadow-ambient:            0 0 40px rgba(0, 0, 0, 0.02);
+    --shadow-card:               0 1px 3px rgba(0, 0, 0, 0.04), 0 0 40px rgba(0, 0, 0, 0.02);
+    --shadow-float:              0 4px 24px rgba(0, 0, 0, 0.06);
+    --shadow-glass:              0 8px 32px rgba(0, 0, 0, 0.04);
+    --shadow-hover:              0 8px 30px -4px rgba(0, 0, 0, 0.10), 0 20px 48px -8px rgba(0, 0, 0, 0.07);
 
-    /* ── Glass ────────────────────────────────────────────────── */
-    --glass-bg:               rgba(255, 255, 255, 0.72);
-    --glass-blur:             20px;
+    /* Glass */
+    --glass-bg:                  rgba(255, 255, 255, 0.72);
+    --glass-blur:                20px;
+
+    /* Skeleton */
+    --skeleton-base:             #ece9e8;
+    --skeleton-shine:            #f5f2f1;
+  }
+
+  /* ============================================================
+     AURALIS NOCTURNE - Dark Theme
+     Deep charcoal surfaces, warm off-white text
+     ============================================================ */
+  [data-theme="dark"] {
+    /* Surfaces */
+    --bg:                        #0f0f11;
+    --surface:                   #161618;
+    --surface-dim:               #101012;
+    --surface-container:         #1e1e21;
+    --surface-container-high:    #252528;
+    --surface-container-highest: #2c2c30;
+    --card:                      #1a1a1d;
+    --card-hover:                #1f1f23;
+
+    /* Borders */
+    --border:                    #2a2a2e;
+    --border-strong:             #3d3d42;
+    --outline:                   #6b6b72;
+
+    /* Text */
+    --text-primary:              #f0ede8;
+    --text-secondary:            #b0aaa3;
+    --text-muted:                #706a63;
+    --text-inverse:              #1c1b1b;
+
+    /* Primary - warm off-white on dark */
+    --primary:                   #e8e4df;
+    --on-primary:                #0f0f11;
+    --primary-container:         #2a2a2e;
+    --on-primary-container:      #b0aaa3;
+
+    /* Secondary */
+    --secondary:                 #8a8480;
+    --on-secondary:              #0f0f11;
+    --secondary-container:       #2a2a2e;
+
+    /* Semantic - brightened for dark bg */
+    --success:                   #34d399;
+    --warning:                   #fbbf24;
+    --danger:                    #f87171;
+    --error:                     #fca5a5;
+    --on-error:                  #450a0a;
+    --error-container:           #3b0a0a;
+
+    /* Accents */
+    --accent-orb-1:              rgba(99, 102, 241, 0.06);
+    --accent-orb-2:              rgba(139, 92, 246, 0.04);
+
+    /* Elevation */
+    --shadow-ambient:            0 0 60px rgba(0, 0, 0, 0.40);
+    --shadow-card:               0 1px 3px rgba(0, 0, 0, 0.30), 0 0 40px rgba(0, 0, 0, 0.20);
+    --shadow-float:              0 4px 24px rgba(0, 0, 0, 0.35);
+    --shadow-glass:              0 8px 32px rgba(0, 0, 0, 0.30);
+    --shadow-hover:              0 8px 30px -4px rgba(0, 0, 0, 0.50), 0 20px 48px -8px rgba(0, 0, 0, 0.40);
+
+    /* Glass */
+    --glass-bg:                  rgba(26, 26, 29, 0.82);
+    --glass-blur:                24px;
+
+    /* Skeleton */
+    --skeleton-base:             #222226;
+    --skeleton-shine:            #2c2c32;
   }
 }
 
@@ -91,158 +161,223 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
   font-size: 16px;
   line-height: 1.6;
+  transition: background-color 300ms ease, color 300ms ease;
 }
 
-/* ── Typography Scale ───────────────────────────────────────── */
-h1 {
-  font-size: 64px;
-  font-weight: 600;
-  line-height: 1.1;
-  letter-spacing: -0.02em;
-}
-h2 {
-  font-size: 40px;
-  font-weight: 500;
-  line-height: 1.2;
-  letter-spacing: -0.01em;
-}
-h3 {
-  font-size: 24px;
-  font-weight: 500;
-  line-height: 1.3;
-}
+/* Typography */
+h1 { font-size: 64px; font-weight: 600; line-height: 1.1; letter-spacing: -0.02em; }
+h2 { font-size: 40px; font-weight: 500; line-height: 1.2; letter-spacing: -0.01em; }
+h3 { font-size: 24px; font-weight: 500; line-height: 1.3; }
 
-/* ── Form Elements ──────────────────────────────────────────── */
+/* Form Elements */
 input, button, select, textarea {
   font-family: inherit;
   font-size: inherit;
   box-sizing: border-box;
 }
 
-/* ── Thin Scrollbars ────────────────────────────────────────── */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: var(--border-strong);
-  border-radius: 3px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
-}
+/* Thin Scrollbars */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--border-strong); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-muted); }
 
-/* ── Focus Ring ─────────────────────────────────────────────── */
-*:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-}
+/* Focus Ring */
+*:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
 
-/* ── Smooth Transitions ─────────────────────────────────────── */
+/* Smooth Transitions */
 a, button, input, select, textarea {
   transition: background-color 180ms ease, border-color 180ms ease,
               color 180ms ease, box-shadow 180ms ease, transform 120ms ease;
 }
 
-/* ── Utility: Glass Panel ───────────────────────────────────── */
+/* ============================================================
+   UTILITY CLASSES
+   ============================================================ */
+
+/* Glass */
 .glass {
   background: var(--glass-bg);
   backdrop-filter: blur(var(--glass-blur));
   -webkit-backdrop-filter: blur(var(--glass-blur));
 }
 
-/* ── Utility: Ambient Glow Card ─────────────────────────────── */
+/* Card with hover elevation spring lift */
 .card-float {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius-card);
-  box-shadow: var(--shadow-card);
-  transition: box-shadow 200ms ease, border-color 200ms ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.04),
+              0 6px 20px -4px rgba(0, 0, 0, 0.03),
+              inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: box-shadow 280ms cubic-bezier(0.16, 1, 0.3, 1),
+              border-color 200ms ease,
+              transform 280ms cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 .card-float:hover {
-  box-shadow: var(--shadow-float);
+  box-shadow: var(--shadow-hover);
   border-color: var(--border-strong);
+  transform: translateY(-2px);
+}
+.card-float:active {
+  transform: translateY(0px);
+  transition-duration: 100ms;
 }
 
-/* ── Utility: Pill Button (Primary) ─────────────────────────── */
+/* Glass Panel */
+.glass-panel {
+  background: rgba(255, 255, 255, 0.78);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  border: 1px solid rgba(231, 231, 228, 0.85);
+  border-radius: var(--radius-card);
+  box-shadow: 0 4px 24px -2px rgba(0, 0, 0, 0.03), inset 0 1px 0 rgba(255, 255, 255, 0.95);
+  transition: all 220ms cubic-bezier(0.16, 1, 0.3, 1);
+}
+[data-theme="dark"] .glass-panel {
+  background: rgba(26, 26, 29, 0.85);
+  border-color: rgba(42, 42, 46, 0.9);
+}
+.glass-panel:hover {
+  border-color: var(--border-strong);
+  box-shadow: 0 8px 30px -4px rgba(0, 0, 0, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+}
+
+.ambient-pill {
+  border: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+}
+
+/* Buttons */
 .btn-primary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  display: inline-flex; align-items: center; gap: 8px;
   padding: 12px 28px;
-  background: var(--primary);
-  color: var(--on-primary);
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: var(--radius-button);
-  border: none;
-  cursor: pointer;
-  line-height: 1;
+  background: var(--primary); color: var(--on-primary);
+  font-size: 14px; font-weight: 500;
+  border-radius: var(--radius-button); border: none;
+  cursor: pointer; line-height: 1;
   transition: opacity 180ms ease, transform 120ms ease;
 }
-.btn-primary:hover {
-  opacity: 0.88;
-}
-.btn-primary:active {
-  transform: scale(0.97);
-}
+.btn-primary:hover { opacity: 0.88; }
+.btn-primary:active { transform: scale(0.97); }
 
-/* ── Utility: Secondary Button ──────────────────────────────── */
 .btn-secondary {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+  display: inline-flex; align-items: center; gap: 8px;
   padding: 10px 20px;
-  background: var(--surface);
-  color: var(--text-primary);
-  font-size: 14px;
-  font-weight: 500;
-  border-radius: var(--radius-button);
-  border: 1px solid var(--border);
-  cursor: pointer;
-  line-height: 1;
+  background: var(--surface); color: var(--text-primary);
+  font-size: 14px; font-weight: 500;
+  border-radius: var(--radius-button); border: 1px solid var(--border);
+  cursor: pointer; line-height: 1;
 }
-.btn-secondary:hover {
-  background: var(--surface-container);
-  border-color: var(--border-strong);
-}
+.btn-secondary:hover { background: var(--surface-container); border-color: var(--border-strong); }
 
-/* ── Utility: Ghost Button ──────────────────────────────────── */
 .btn-ghost {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
+  display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 16px;
-  background: transparent;
-  color: var(--text-secondary);
-  font-size: 13px;
-  font-weight: 500;
-  border-radius: var(--radius-button);
-  border: none;
-  cursor: pointer;
-  line-height: 1;
+  background: transparent; color: var(--text-secondary);
+  font-size: 13px; font-weight: 500;
+  border-radius: var(--radius-button); border: none;
+  cursor: pointer; line-height: 1;
 }
-.btn-ghost:hover {
-  background: var(--surface-container);
-  color: var(--text-primary);
-}
+.btn-ghost:hover { background: var(--surface-container); color: var(--text-primary); }
 
-/* ── Skeleton Loading Animation ─────────────────────────────── */
+/* ============================================================
+   MICRO-INTERACTION KEYFRAMES
+   ============================================================ */
+
+/* Polished diagonal skeleton shimmer */
 @keyframes shimmer {
-  0%   { background-position: -200% 0; }
-  100% { background-position: 200% 0; }
+  0%   { background-position: -300% 0; }
+  100% { background-position: 300% 0; }
 }
 .skeleton {
-  background: linear-gradient(90deg, var(--surface) 25%, var(--surface-container-high) 50%, var(--surface) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.5s ease-in-out infinite;
+  background: linear-gradient(
+    105deg,
+    var(--skeleton-base) 30%,
+    var(--skeleton-shine) 50%,
+    var(--skeleton-base) 70%
+  );
+  background-size: 300% 100%;
+  animation: shimmer 1.8s ease-in-out infinite;
   border-radius: var(--radius-md);
 }
 
-/* ── Decorative: Gradient Orb ───────────────────────────────── */
+/* Spring entry - modals and dialogs */
+@keyframes spring-in {
+  0%   { opacity: 0; transform: scale(0.92) translateY(10px); }
+  60%  { opacity: 1; transform: scale(1.02) translateY(-2px); }
+  100% { opacity: 1; transform: scale(1) translateY(0); }
+}
+.animate-spring-in {
+  animation: spring-in 380ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Slide up fade - bottom drawers and panels */
+@keyframes slide-up-fade {
+  0%   { opacity: 0; transform: translateY(16px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+.animate-slide-up {
+  animation: slide-up-fade 300ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Slide right fade - side drawers */
+@keyframes slide-right-fade {
+  0%   { opacity: 0; transform: translateX(24px); }
+  100% { opacity: 1; transform: translateX(0); }
+}
+.animate-slide-right {
+  animation: slide-right-fade 320ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* Fade in */
+@keyframes fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.animate-fade-in {
+  animation: fade-in 220ms ease both;
+}
+
+/* Pulse ring - live / pending status badges */
+@keyframes pulse-ring {
+  0%   { transform: scale(1);   opacity: 0.9; }
+  70%  { transform: scale(2.2); opacity: 0; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.55; }
+}
+.live-pulse {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.live-pulse::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: currentColor;
+  animation: pulse-ring 2s cubic-bezier(0.25, 0.46, 0.45, 0.94) infinite;
+}
+.live-pulse-dot {
+  animation: pulse-dot 2s ease-in-out infinite;
+}
+
+/* Theme toggle icon swap */
+@keyframes icon-swap {
+  0%   { transform: rotate(-30deg) scale(0.7); opacity: 0; }
+  100% { transform: rotate(0deg)   scale(1);   opacity: 1; }
+}
+.animate-icon-swap {
+  animation: icon-swap 280ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+/* Decorative gradient orbs */
 .orb {
   position: absolute;
   border-radius: 50%;
@@ -250,13 +385,5 @@ a, button, input, select, textarea {
   pointer-events: none;
   z-index: 0;
 }
-.orb-1 {
-  width: 400px;
-  height: 400px;
-  background: var(--accent-orb-1);
-}
-.orb-2 {
-  width: 300px;
-  height: 300px;
-  background: var(--accent-orb-2);
-}
+.orb-1 { width: 400px; height: 400px; background: var(--accent-orb-1); }
+.orb-2 { width: 300px; height: 300px; background: var(--accent-orb-2); }

@@ -1,12 +1,20 @@
 import { Outlet } from "react-router-dom";
+import { useEffect } from "react";
 import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
 import { CommandPalette } from "@/components/common/CommandPalette";
 import { useSidebarStore } from "@/store/sidebar-store";
+import { useThemeStore } from "@/store/theme-store";
 import { Toaster } from "sonner";
 
 export default function AppLayout() {
   const isOpen = useSidebarStore((s) => s.isOpen);
+  const { theme } = useThemeStore();
+
+  // Keep data-theme in sync with store on every mount/update
+  useEffect(() => {
+    document.documentElement.setAttribute("data-theme", theme);
+  }, [theme]);
 
   return (
     <div className="min-h-screen relative" style={{ background: "var(--bg)" }}>
@@ -33,6 +41,7 @@ export default function AppLayout() {
 
       <Toaster
         position="bottom-right"
+        theme={theme}
         toastOptions={{
           style: {
             background: "var(--card)",

@@ -39,6 +39,13 @@ export const caseService = {
     return { blob: res.data, filename: extractedFilename };
   },
 
+  getOrderPDFArrayBuffer: async (cnr: string, filename: string) => {
+    const res = await api.get(`/orders/${cnr}/download/${filename}`, {
+      responseType: "arraybuffer",
+    });
+    return res.data as ArrayBuffer;
+  },
+
   getCourtStructure: async () => {
     const res = await api.get<APIResponse<unknown>>("/cases/reference/court-structure");
     return res.data.data;

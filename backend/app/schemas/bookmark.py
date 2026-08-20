@@ -2,11 +2,11 @@
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class CreateBookmarkRequest(BaseModel):
-    cnr: str = Field(min_length=1, max_length=50)
+    cnr: str = Field(min_length=16, max_length=16)
     title: str = "Untitled Case"
 
 

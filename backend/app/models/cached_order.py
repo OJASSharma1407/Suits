@@ -20,7 +20,7 @@ class CachedOrder(Base):
         Uuid(as_uuid=True, native_uuid=False), primary_key=True, default=uuid.uuid4
     )
     cnr: Mapped[str] = mapped_column(
-        String(16), ForeignKey("cached_cases.cnr", ondelete="CASCADE"),
+        String(64), ForeignKey("cached_cases.cnr", ondelete="CASCADE"),
         nullable=False,
     )
     filename: Mapped[str] = mapped_column(String(255), nullable=False)

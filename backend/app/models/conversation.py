@@ -20,7 +20,7 @@ class Conversation(Base):
         Uuid(as_uuid=True, native_uuid=False), ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False, index=True,
     )
-    cnr: Mapped[str] = mapped_column(String(16), nullable=False)
+    cnr: Mapped[str] = mapped_column(String(64), nullable=False)
     title: Mapped[str] = mapped_column(String(500), nullable=False, default="New Conversation")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

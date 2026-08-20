@@ -1,22 +1,38 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 
-// Light theme only — Auralis design system
-// Store kept for API compatibility; the theme is always "light"
+type Theme = "light" | "dark";
 
 interface ThemeState {
-  theme: "light";
-  setTheme: (theme: "light") => void;
+  theme: Theme;
+  setTheme: (theme: Theme) => void;
+  toggleTheme: () => void;
+}
+
+function applyTheme(theme: Theme) {
+  document.documentElement.setAttribute("data-theme", theme);
 }
 
 export const useThemeStore = create<ThemeState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       theme: "light",
-      setTheme: (_theme) => {
-        set({ theme: "light" });
+      setTheme: (theme) => {
+        applyTheme(theme);
+        set({ theme });
+      },
+      toggleTheme: () => {
+        const next = get().theme === "light" ? "dark" : "light";
+        applyTheme(next);
+        set({ theme: next });
       },
     }),
-    { name: "suits-theme" }
+    {
+      name: "suits-theme",
+      onRehydrateStorage: () => (state) => {
+        // Apply persisted theme immediately on page load
+        if (state?.theme) applyTheme(state.theme);
+      },
+    }
   )
 );

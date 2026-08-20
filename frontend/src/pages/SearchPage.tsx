@@ -8,6 +8,7 @@ import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { searchService } from "@/services/search";
 import { bookmarkService } from "@/services/bookmarks";
+import { getErrorMessage } from "@/lib/error";
 import type { SearchResultItem, SearchFilters as SearchFiltersType } from "@/types/search";
 import { LayoutGrid, Table } from "lucide-react";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ export default function SearchPage() {
   const [hasSearched, setHasSearched] = useState(false);
   const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [bookmarkedCnrs, setBookmarkedCnrs] = useState<Set<string>>(new Set());
+  const [togglingCnrs, setTogglingCnrs] = useState<Set<string>>(new Set());
 
   const [filters, setFilters] = useState<SearchFiltersType>({
     query: searchParams.get("query") || "",
@@ -28,6 +30,21 @@ export default function SearchPage() {
     page: 1,
     page_size: 20,
   });
+
+  // Fetch initial bookmarks to synchronize state
+  useEffect(() => {
+    const fetchBookmarks = async () => {
+      try {
+        const bookmarks = await bookmarkService.list();
+        if (Array.isArray(bookmarks)) {
+          setBookmarkedCnrs(new Set(bookmarks.map((b) => b.cnr)));
+        }
+      } catch {
+        // Silent fail if unauthenticated or on initial load
+      }
+    };
+    fetchBookmarks();
+  }, []);
 
   const fetchResults = useCallback(async (currentFilters: SearchFiltersType) => {
     if (!currentFilters.query && !currentFilters.case_status && !currentFilters.court_code && !currentFilters.filing_year) {
@@ -59,23 +76,53 @@ export default function SearchPage() {
     fetchResults(updated);
   };
 
-  const handleBookmarkToggle = async (cnr: string) => {
+  const handleBookmarkToggle = async (cnr: string, title?: string) => {
+    if (togglingCnrs.has(cnr)) return;
+
+    setTogglingCnrs((prev) => new Set(prev).add(cnr));
+    const wasBookmarked = bookmarkedCnrs.has(cnr);
+
+    // Optimistically update UI
+    setBookmarkedCnrs((prev) => {
+      const next = new Set(prev);
+      if (wasBookmarked) {
+        next.delete(cnr);
+      } else {
+        next.add(cnr);
+      }
+      return next;
+    });
+
     try {
-      if (bookmarkedCnrs.has(cnr)) {
+      if (wasBookmarked) {
         await bookmarkService.remove(cnr);
-        setBookmarkedCnrs((prev) => {
-          const next = new Set(prev);
-          next.delete(cnr);
-          return next;
-        });
         toast.info("Bookmark removed.");
       } else {
-        await bookmarkService.add(cnr, cnr);
-        setBookmarkedCnrs((prev) => new Set(prev).add(cnr));
+        await bookmarkService.add(cnr, title || cnr);
         toast.success("Case bookmarked.");
       }
-    } catch {
-      toast.error("Failed to update bookmark.");
+    } catch (err: unknown) {
+      // Revert optimistic update on failure
+      setBookmarkedCnrs((prev) => {
+        const next = new Set(prev);
+        if (wasBookmarked) {
+          next.add(cnr);
+        } else {
+          next.delete(cnr);
+        }
+        return next;
+      });
+
+      const fallbackMsg = wasBookmarked ? "Failed to remove bookmark." : "Failed to save bookmark.";
+      const errorMessage = getErrorMessage(err, fallbackMsg);
+      
+      toast.error(errorMessage);
+    } finally {
+      setTogglingCnrs((prev) => {
+        const next = new Set(prev);
+        next.delete(cnr);
+        return next;
+      });
     }
   };
 
@@ -110,7 +157,7 @@ export default function SearchPage() {
       {hasSearched && (
         <div className="flex items-center justify-between">
           <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-            {results.length} cases found
+            {results.length} {results.length === 1 ? "case found" : "cases found"}
           </span>
           <div className="flex items-center gap-1 p-1 rounded-full" style={{ background: "var(--surface-container)", border: "1px solid var(--border)" }}>
             <button
@@ -159,12 +206,18 @@ export default function SearchPage() {
               key={item.cnr}
               item={item}
               isBookmarked={bookmarkedCnrs.has(item.cnr)}
+              isToggling={togglingCnrs.has(item.cnr)}
               onBookmarkToggle={handleBookmarkToggle}
             />
           ))}
         </div>
       ) : (
-        <SearchResultTable items={results} />
+        <SearchResultTable
+          items={results}
+          bookmarkedCnrs={bookmarkedCnrs}
+          togglingCnrs={togglingCnrs}
+          onBookmarkToggle={handleBookmarkToggle}
+        />
       )}
     </div>
   );
