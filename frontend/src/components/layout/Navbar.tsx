@@ -1,12 +1,14 @@
 import { Link, useNavigate } from "react-router-dom";
-import { User, LogOut, Menu, Search } from "lucide-react";
+import { User, LogOut, Menu, Sun, Moon } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 import { useSidebarStore } from "@/store/sidebar-store";
+import { useThemeStore } from "@/store/theme-store";
 import { useState } from "react";
 
 export default function Navbar() {
   const { user, logout } = useAuthStore();
   const { toggle: toggleSidebar } = useSidebarStore();
+  const { theme, toggleTheme } = useThemeStore();
   const navigate = useNavigate();
   const [showMenu, setShowMenu] = useState(false);
 
@@ -14,6 +16,8 @@ export default function Navbar() {
     logout();
     navigate("/login");
   };
+
+  const isDark = theme === "dark";
 
   return (
     <header
@@ -48,8 +52,32 @@ export default function Navbar() {
         </Link>
       </div>
 
-
       <div className="flex items-center gap-2">
+        {/* Dark / Light mode toggle */}
+        <button
+          onClick={toggleTheme}
+          className="p-2 rounded-full cursor-pointer relative overflow-hidden"
+          style={{
+            color: "var(--text-secondary)",
+            background: "var(--surface-container)",
+            border: "1px solid var(--border)",
+            width: 36,
+            height: 36,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+          }}
+          aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+          title={isDark ? "Light mode" : "Dark mode"}
+        >
+          {isDark ? (
+            <Sun size={16} key="sun" className="animate-icon-swap" />
+          ) : (
+            <Moon size={16} key="moon" className="animate-icon-swap" />
+          )}
+        </button>
+
+        {/* Profile menu */}
         <div className="relative">
           <button
             onClick={() => setShowMenu(!showMenu)}
@@ -59,7 +87,11 @@ export default function Navbar() {
           >
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold"
-              style={{ background: "var(--surface-container)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+              style={{
+                background: "var(--surface-container)",
+                color: "var(--text-primary)",
+                border: "1px solid var(--border)",
+              }}
             >
               {user?.full_name?.charAt(0) || "U"}
             </div>
@@ -69,7 +101,7 @@ export default function Navbar() {
             <>
               <div className="fixed inset-0 z-40" onClick={() => setShowMenu(false)} />
               <div
-                className="absolute right-0 top-full mt-2 w-52 rounded-2xl p-1.5 z-50"
+                className="absolute right-0 top-full mt-2 w-52 rounded-2xl p-1.5 z-50 animate-spring-in"
                 style={{
                   background: "var(--card)",
                   border: "1px solid var(--border)",
@@ -87,15 +119,24 @@ export default function Navbar() {
                 <hr style={{ borderColor: "var(--border)", margin: "4px 0" }} />
                 <Link
                   to="/profile"
-                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl hover:bg-[var(--surface)]"
+                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl hover:bg-[var(--surface-container)]"
                   style={{ color: "var(--text-primary)" }}
                   onClick={() => setShowMenu(false)}
                 >
                   <User size={15} /> Profile
                 </Link>
+                <Link
+                  to="/settings"
+                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl hover:bg-[var(--surface-container)]"
+                  style={{ color: "var(--text-primary)" }}
+                  onClick={() => setShowMenu(false)}
+                >
+                  {isDark ? <Sun size={15} /> : <Moon size={15} />}
+                  {isDark ? "Light Mode" : "Dark Mode"}
+                </Link>
                 <button
                   onClick={handleLogout}
-                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm rounded-xl hover:bg-[var(--surface)] cursor-pointer"
+                  className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm rounded-xl hover:bg-[var(--surface-container)] cursor-pointer"
                   style={{ color: "var(--danger)" }}
                 >
                   <LogOut size={15} /> Log out

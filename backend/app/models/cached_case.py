@@ -11,7 +11,7 @@ from app.database.base import Base
 class CachedCase(Base):
     __tablename__ = "cached_cases"
 
-    cnr: Mapped[str] = mapped_column(String(16), primary_key=True)
+    cnr: Mapped[str] = mapped_column(String(64), primary_key=True)
     response_json: Mapped[str] = mapped_column(Text, nullable=False)
     
     # Extracted metadata for fast searching

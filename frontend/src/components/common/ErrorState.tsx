@@ -1,9 +1,10 @@
 import React from "react";
 import { AlertCircle, RefreshCw } from "lucide-react";
+import { getErrorMessage } from "@/lib/error";
 
 interface ErrorStateProps {
   title?: string;
-  message?: string;
+  message?: unknown;
   onRetry?: () => void;
 }
 
@@ -12,11 +13,15 @@ export function ErrorState({
   message = "An error occurred while loading data. Please try again.",
   onRetry,
 }: ErrorStateProps) {
+  const displayMessage =
+    typeof message === "string"
+      ? message
+      : getErrorMessage(message, "An error occurred while loading data. Please try again.");
+
   return (
     <div
-      className="flex flex-col items-center justify-center p-8 text-center rounded-[24px] border my-4 bg-white"
+      className="flex flex-col items-center justify-center p-8 text-center rounded-[24px] border my-4 bg-white card-float"
       style={{
-        boxShadow: "var(--shadow-card)",
         borderColor: "rgba(220, 38, 38, 0.2)",
       }}
     >
@@ -27,12 +32,12 @@ export function ErrorState({
         {title}
       </h3>
       <p className="text-sm max-w-sm mb-6 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-        {message}
+        {displayMessage}
       </p>
       {onRetry && (
         <button
           onClick={onRetry}
-          className="btn-secondary"
+          className="btn-secondary cursor-pointer"
         >
           <RefreshCw size={14} /> Retry
         </button>

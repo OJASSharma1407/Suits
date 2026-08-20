@@ -30,7 +30,10 @@ export default function ProfilePage() {
     e.preventDefault();
     setPwdLoading(true);
     try {
-      await authService.changePassword(currentPassword, newPassword);
+      await authService.changePassword({
+        current_password: currentPassword,
+        new_password: newPassword,
+      });
       toast.success("Password changed successfully.");
       setCurrentPassword("");
       setNewPassword("");

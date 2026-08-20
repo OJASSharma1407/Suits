@@ -47,14 +47,14 @@ Fields to extract:
 - caseLawsReferenced (list of strings): Case names and citations referenced 
 - petitionerArguments (list of strings): Key arguments made by the petitioner
 - respondentArguments (list of strings): Key arguments made by the respondent
-- courtReasoning (string): The court's reasoning and analysis in 2-4 sentences
+- courtReasoning (string): The court's substantive reasoning and legal analysis in 3-6 sentences
 - ratioDecidendi (string): The core legal principle/ratio established by this order
-- executiveSummary (string): A 2-3 sentence professional summary of the order for a lawyer
-- plainLanguageSummary (string): A 2-3 sentence explanation in simple language for a non-lawyer
-- litigantFriendlyExplanation (string): Direct explanation to the party: what this order means for them practically
-- complianceDirections (list of strings): Any deadlines or compliance steps required by the parties
-- risks (list of strings): Any risks or adverse implications noted
-- implications (list of strings): Broader legal or practical implications of this order
+- executiveSummary (string): A detailed, comprehensive, multi-paragraph case summary covering (1) factual background & parties, (2) the specific dispute and relief sought, (3) key legal contentions, (4) the court's findings/disposition, and (5) practical directives. Provide full context so the reader gets complete understanding of the case.
+- plainLanguageSummary (string): A clear 2-4 sentence explanation in plain, everyday language explaining what this means practically for the parties and business operations
+- litigantFriendlyExplanation (string): Direct practical advice: what action steps or compliance requirements the party must follow next
+- complianceDirections (list of strings): Any deadlines, notices, or compliance steps required by the parties
+- risks (list of strings): Any legal risks, exposure, or adverse implications noted
+- implications (list of strings): Broader regulatory, commercial, or jurisprudence implications of this order
 - extractionConfidence (float between 0.0 and 1.0): Your confidence in the accuracy of the extraction
 
 Court Order Text:
@@ -217,12 +217,30 @@ class OrderService:
 
 
     async def download_pdf(self, cnr: str, filename: str) -> bytes:
-        """Download original court copy from Kanoon (origdoc endpoint)."""
+        """Download original court copy from Kanoon (origdoc endpoint) with permanent disk caching."""
         if not filename or not filename.strip().lstrip("-").isdigit():
             return b"Document not available: This is an old placeholder, not a real Kanoon document."
+
+        # Check local disk cache first
+        from pathlib import Path
+        cache_dir = Path("./data/pdf_cache")
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        cache_file = cache_dir / f"{filename}.pdf"
+
+        if cache_file.exists() and cache_file.stat().st_size > 100:
+            logger.info("order_pdf_served_from_disk_cache", cnr=cnr, filename=filename)
+            return cache_file.read_bytes()
+
         try:
             pdf_bytes = await kanoon_client.get_orig_doc_bytes(filename)
-            if pdf_bytes:
+            if pdf_bytes and len(pdf_bytes) > 100 and pdf_bytes.startswith(b'%PDF-'):
+                try:
+                    cache_file.write_bytes(pdf_bytes)
+                    logger.info("order_pdf_saved_to_disk_cache", cnr=cnr, filename=filename)
+                except Exception as cache_err:
+                    logger.warning("order_pdf_cache_write_failed", error=str(cache_err))
+                return pdf_bytes
+            elif pdf_bytes:
                 return pdf_bytes
             
             return b"Original court copy PDF could not be fetched from Indian Kanoon."

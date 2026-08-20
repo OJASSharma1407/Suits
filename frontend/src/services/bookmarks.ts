@@ -8,17 +8,21 @@ export const bookmarkService = {
     return res.data.data;
   },
 
-  add: async (cnr: string, title: string) => {
-    const res = await api.post<APIResponse<Bookmark>>("/bookmarks", { cnr, title });
+  add: async (cnr: string, title?: string | null) => {
+    const cleanCnr = String(cnr || "").trim();
+    const cleanTitle = title && String(title).trim() ? String(title).trim() : "Untitled Case";
+    const res = await api.post<APIResponse<Bookmark>>("/bookmarks", { cnr: cleanCnr, title: cleanTitle });
     return res.data.data;
   },
 
   remove: async (cnr: string) => {
-    await api.delete(`/bookmarks/${cnr}`);
+    const cleanCnr = String(cnr || "").trim();
+    await api.delete(`/bookmarks/${cleanCnr}`);
   },
 
   check: async (cnr: string) => {
-    const res = await api.get<APIResponse<boolean>>(`/bookmarks/${cnr}/check`);
+    const cleanCnr = String(cnr || "").trim();
+    const res = await api.get<APIResponse<boolean>>(`/bookmarks/${cleanCnr}/check`);
     return res.data.data;
   },
 };

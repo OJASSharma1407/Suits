@@ -23,7 +23,7 @@ class Bookmark(Base):
         Uuid(as_uuid=True, native_uuid=False), ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False, index=True,
     )
-    cnr: Mapped[str] = mapped_column(String(16), nullable=False, index=True)
+    cnr: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     title: Mapped[str] = mapped_column(String(500), nullable=False, default="Untitled Case")
     bookmarked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=lambda: datetime.now(timezone.utc)

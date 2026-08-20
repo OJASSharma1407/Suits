@@ -219,3 +219,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+backend/data/pdf_cache
+
+backend/suits.db-shm
+backend/suits.db-wal
+backend/suits.db-shm
+backend/suits.db-wal

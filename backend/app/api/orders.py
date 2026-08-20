@@ -27,27 +27,20 @@ async def get_order_ai(cnr: str, filename: str, user: CurrentUser, db: DbSession
 
 @router.get("/{cnr}/download/{filename}")
 async def download_order_pdf(cnr: str, filename: str, user: CurrentUser, db: DbSession):
-    """Download the original court order PDF.
-
-    This endpoint streams the PDF directly. It is the highest-cost endpoint
-    and should only be called when the user explicitly requests a download.
-    """
+    """Download the original court order PDF."""
+    from fastapi import HTTPException
     service = OrderService(db)
     pdf_bytes = await service.download_pdf(cnr, filename)
 
-    # Check magic bytes to determine if it's actually a PDF or an HTML page
-    is_pdf = pdf_bytes.startswith(b'%PDF-')
-    ext = '.pdf' if is_pdf else '.html'
-    media_type = 'application/pdf' if is_pdf else 'text/html; charset=utf-8'
+    if not pdf_bytes or not pdf_bytes.startswith(b'%PDF-'):
+        raise HTTPException(
+            status_code=404,
+            detail="Original scanned court PDF is not available for this record."
+        )
 
-    safe_filename = f"{cnr}_{filename}"
-    if not safe_filename.lower().endswith(ext):
-        # Remove any existing .pdf or .html extension just in case, though it shouldn't have one
-        import re
-        safe_filename = re.sub(r'\.(pdf|html|txt)$', '', safe_filename, flags=re.IGNORECASE) + ext
-
+    safe_filename = f"{cnr}_{filename}.pdf"
     return Response(
         content=pdf_bytes,
-        media_type=media_type,
-        headers={"Content-Disposition": f'attachment; filename="{safe_filename}"'},
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'inline; filename="{safe_filename}"'},
     )

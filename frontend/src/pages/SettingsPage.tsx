@@ -1,8 +1,12 @@
 import React from "react";
-import { Settings, Bell, Database } from "lucide-react";
+import { Settings, Bell, Database, Sun, Moon } from "lucide-react";
 import { toast } from "sonner";
+import { useThemeStore } from "@/store/theme-store";
 
 export default function SettingsPage() {
+  const { theme, toggleTheme } = useThemeStore();
+  const isDark = theme === "dark";
+
   const handleSave = () => {
     toast.success("Settings saved successfully.");
   };
@@ -40,12 +44,25 @@ export default function SettingsPage() {
             
             <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Theme</p>
-                <p className="text-xs" style={{ color: "var(--text-muted)" }}>SUITS exclusively uses the Auralis Light theme for maximum legibility of legal documents.</p>
+                <p className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>Dark Mode</p>
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>Switch between Auralis Light and Auralis Nocturne themes.</p>
               </div>
-              <span className="text-xs font-semibold uppercase tracking-wider px-2 py-1 rounded" style={{ background: "var(--surface)", color: "var(--text-secondary)" }}>
-                Light Only
-              </span>
+              <button
+                onClick={toggleTheme}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium cursor-pointer"
+                style={{
+                  background: isDark ? "var(--primary)" : "var(--surface-container)",
+                  color: isDark ? "var(--on-primary)" : "var(--text-secondary)",
+                  border: "1px solid var(--border)",
+                  transition: "all 220ms ease",
+                }}
+              >
+                {isDark ? (
+                  <><Sun size={14} className="animate-icon-swap" /> Light Mode</>
+                ) : (
+                  <><Moon size={14} className="animate-icon-swap" /> Dark Mode</>
+                )}
+              </button>
             </div>
           </div>
         </section>
