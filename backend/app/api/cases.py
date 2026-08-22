@@ -55,7 +55,7 @@ async def get_cause_list(court_code: str, date: str, user: CurrentUser):
 async def get_case_details(cnr: str, user: CurrentUser, db: DbSession):
     cnr = _validate_cnr(cnr)
     service = CaseService(db)
-    case = await service.get_case_details(cnr)
+    case = await service.get_case_details(cnr, user_id=user.id)
     return APIResponse(data=case)
 
 

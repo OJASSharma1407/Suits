@@ -44,12 +44,6 @@ export function CaseHeader({
           <h1 className="text-3xl md:text-4xl font-semibold tracking-tight" style={{ color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
             {caseData.case_title}
           </h1>
-          
-          <div className="flex items-center gap-3">
-            <span className="text-sm font-mono px-2 py-1 rounded bg-gray-100" style={{ color: "var(--text-secondary)" }}>
-              {caseData.cnr}
-            </span>
-          </div>
         </div>
 
         <div className="flex items-center gap-2 flex-shrink-0">
@@ -92,9 +86,9 @@ export function CaseHeader({
           </span>
         </div>
         <div>
-          <span className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Filing Date</span>
-          <span className="text-sm font-medium" style={{ color: "var(--text-primary)" }}>
-            {caseData.filing_date || "Unknown"}
+          <span className="block text-[11px] font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--text-muted)" }}>Case Number</span>
+          <span className="text-sm font-medium font-mono" style={{ color: "var(--text-primary)" }}>
+            {caseData.case_number || caseData.cnr || "Unknown"}
           </span>
         </div>
         <div>

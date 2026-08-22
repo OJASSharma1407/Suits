@@ -7,8 +7,8 @@ interface JudgeCardProps {
 
 export function JudgeCard({ judges }: JudgeCardProps) {
   return (
-    <div className="card-float p-6 space-y-4">
-      <h3 className="text-base font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
+    <div className="card-float p-6 sm:p-8 space-y-6 h-full flex flex-col">
+      <h3 className="text-lg font-semibold tracking-tight flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
         <Gavel size={18} style={{ color: "var(--text-muted)" }} /> Before Hon'ble Judges
       </h3>
       {judges.length === 0 ? (

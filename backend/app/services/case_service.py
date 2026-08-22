@@ -389,27 +389,40 @@ class CaseService:
     def __init__(self, db: AsyncSession) -> None:
         self.cache_repo = CacheRepository(db)
 
-    async def get_case_details(self, cnr: str) -> CaseDetailsResponse:
-        """Get case details with two-tier caching: Redis → PostgreSQL → eCourts API."""
+    async def get_case_details(self, cnr: str, user_id: Any = None) -> CaseDetailsResponse:
+        """Get case details with two-tier caching: Redis → PostgreSQL → Indian Kanoon API."""
         redis_key = f"case:{cnr}"
 
-        # Tier 1: Redis
+        # Helper to log history safely
+        async def _log_view(title: str | None):
+            if user_id:
+                try:
+                    from app.services.history_service import HistoryService
+                    hist_svc = HistoryService(self.cache_repo.db)
+                    await hist_svc.add_case_view(user_id, cnr, title or "Untitled Case")
+                except Exception as hist_err:
+                    logger.warning("failed_to_record_case_view", error=str(hist_err))
+
+        # Tier 1: Redis / In-Memory Cache
         cached_redis = await cache_service.get(redis_key)
         if cached_redis:
-            if "caseStatus" in cached_redis or "judgments" in cached_redis or "interimOrders" in cached_redis:
-                return _transform_case(cached_redis, is_cached=True)
+            if "caseStatus" in cached_redis or "judgments" in cached_redis or "interimOrders" in cached_redis or "caseNumber" in cached_redis:
+                response = _transform_case(cached_redis, is_cached=True)
+                await _log_view(response.case_title)
+                return response
             else:
                 logger.info("ignoring_partial_redis_cache", cnr=cnr)
 
-        # Tier 2: PostgreSQL
-        cached_pg = await self.cache_repo.get_cached_case(cnr)
+        # Tier 2: PostgreSQL / SQLite (Permanent Local Database Cache)
+        cached_pg = await self.cache_repo.get_cached_case(cnr, check_expiry=False)
         if cached_pg:
             raw = json.loads(cached_pg.response_json)
-            # A fully extracted Kanoon case will have 'caseStatus' or 'judgments' mapped
-            # If it's a raw search result, it will only have 'tid', 'catids', 'title', etc.
-            if "caseStatus" in raw or "judgments" in raw or "interimOrders" in raw:
+            # A fully extracted Kanoon case will have 'caseStatus', 'judgments', or 'caseNumber'
+            if "caseStatus" in raw or "judgments" in raw or "interimOrders" in raw or "caseNumber" in raw:
                 await cache_service.set(redis_key, raw, settings.cache_ttl_case)
-                return _transform_case(raw, is_cached=True)
+                response = _transform_case(raw, is_cached=True)
+                await _log_view(response.case_title)
+                return response
             else:
                 logger.info("ignoring_partial_search_cache", cnr=cnr)
 
@@ -487,6 +500,7 @@ class CaseService:
 
         response = _transform_case(raw)
         response.fetched_at = now.isoformat()
+        await _log_view(response.case_title)
         return response
 
     async def refresh_case(self, cnr: str) -> RefreshResponse:

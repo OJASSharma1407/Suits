@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import { CaseHeader } from "@/components/case/CaseHeader";
@@ -6,7 +6,7 @@ import { Timeline } from "@/components/case/Timeline";
 import { PartyCard } from "@/components/case/PartyCard";
 import { JudgeCard } from "@/components/case/JudgeCard";
 import { StatisticsCard } from "@/components/case/StatisticsCard";
-import { OrderCard } from "@/components/case/OrderCard";
+import { DocumentLiquidNavBar } from "@/components/case/DocumentLiquidNavBar";
 import { AISummaryCard } from "@/components/case/AISummaryCard";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
 import { ChatPanel } from "@/components/chat/ChatPanel";
@@ -16,6 +16,7 @@ import { ErrorState } from "@/components/common/ErrorState";
 import { caseService } from "@/services/cases";
 import { bookmarkService } from "@/services/bookmarks";
 import { chatService } from "@/services/chat";
+import { historyService } from "@/services/history";
 import type { CaseDetails, OrderAI } from "@/types/case";
 import type { ChatMessage } from "@/types/chat";
 import { Sparkles, MessageSquare, X, RotateCcw } from "lucide-react";
@@ -30,6 +31,7 @@ export default function CaseDashboardPage() {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
 
+  const [selectedOrderFilename, setSelectedOrderFilename] = useState<string | null>(null);
   const [selectedAI, setSelectedAI] = useState<OrderAI | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -62,8 +64,24 @@ export default function CaseDashboardPage() {
     try {
       const data = await caseService.getDetails(cnr);
       setCaseData(data);
-      const bookmarked = await bookmarkService.check(cnr);
-      setIsBookmarked(bookmarked);
+
+      // Record in opened cases history
+      historyService.recordCaseView(cnr, data.case_title).catch(() => {});
+
+      // Check bookmark status separately — don't let it break case loading
+      try {
+        const bookmarked = await bookmarkService.check(cnr);
+        setIsBookmarked(bookmarked);
+      } catch {
+        setIsBookmarked(false);
+      }
+
+      // Default to first valid order with a filename
+      const validOrder =
+        data.orders.find((o) => !o.is_stub && o.filename) || data.orders[0];
+      if (validOrder?.filename) {
+        setSelectedOrderFilename(validOrder.filename);
+      }
     } catch {
       setError("Failed to load case details. Please check the CNR and try again.");
     } finally {
@@ -87,8 +105,19 @@ export default function CaseDashboardPage() {
         setIsBookmarked(true);
         toast.success("Case saved to bookmarks.");
       }
-    } catch {
-      toast.error("Failed to update bookmark.");
+    } catch (err: any) {
+      const status = err?.response?.status;
+      // 409: Already bookmarked — sync local state to true
+      if (status === 409) {
+        setIsBookmarked(true);
+        toast.info("Case is already in your bookmarks.");
+      // 404: Bookmark didn't exist on remove — sync local state to false
+      } else if (status === 404) {
+        setIsBookmarked(false);
+        toast.info("Bookmark was already removed.");
+      } else {
+        toast.error("Failed to update bookmark. Please try again.");
+      }
     }
   };
 
@@ -113,6 +142,10 @@ export default function CaseDashboardPage() {
       const aiData = await caseService.getOrderAI(cnr, filename);
       setSelectedAI(aiData);
       toast.success("Summary loaded.");
+      setTimeout(() => {
+        const el = document.getElementById("ai-summary-section");
+        el?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }, 100);
     } catch {
       toast.error("Summary unavailable for this order.");
     } finally {
@@ -121,7 +154,12 @@ export default function CaseDashboardPage() {
   };
 
   const handleOpenReader = (filename?: string | null, initialMode: "pdf" | "text" = "pdf") => {
-    const targetFile = filename || caseData?.orders?.[0]?.filename;
+    const targetFile =
+      filename ||
+      selectedOrderFilename ||
+      caseData?.orders?.find((o) => !o.is_stub && o.filename)?.filename ||
+      caseData?.orders?.[0]?.filename;
+
     if (!targetFile) {
       toast.error("No court document available for this record.");
       return;
@@ -131,10 +169,20 @@ export default function CaseDashboardPage() {
     setIsReaderOpen(true);
   };
 
-  const handleDownloadPDF = async (filename: string) => {
+  const handleDownloadPDF = async (filename?: string | null) => {
     if (!cnr) return;
+    const targetFile =
+      filename ||
+      selectedOrderFilename ||
+      caseData?.orders?.find((o) => !o.is_stub && o.filename)?.filename;
+
+    if (!targetFile) {
+      toast.error("No document PDF available to download.");
+      return;
+    }
+
     try {
-      const { blob, filename: safeFilename } = await caseService.downloadOrderPDF(cnr, filename);
+      const { blob, filename: safeFilename } = await caseService.downloadOrderPDF(cnr, targetFile);
       const url = window.URL.createObjectURL(new Blob([blob]));
       const link = document.createElement("a");
       link.href = url;
@@ -161,7 +209,7 @@ export default function CaseDashboardPage() {
     try {
       let activeConvoId = conversationId;
       if (!activeConvoId) {
-        const convo = await chatService.createConversation(cnr, `Chat - ${cnr}`);
+        const convo = await chatService.createConversation(cnr, `Case - ${cnr}`);
         activeConvoId = convo.id;
         setConversationId(activeConvoId);
       }
@@ -240,36 +288,32 @@ export default function CaseDashboardPage() {
 
       <StatisticsCard stats={caseData.statistics} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-        <div className="lg:col-span-2 space-y-8">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 items-stretch">
+        <div className="lg:col-span-2">
           <PartyCard parties={caseData.parties} />
+        </div>
 
-          {/* Orders Section */}
-          <div className="space-y-4">
-            <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-              Court Orders ({caseData.orders.length})
-            </h3>
-            {caseData.orders.length === 0 ? (
-              <p className="text-sm card-float p-6" style={{ color: "var(--text-muted)" }}>
-                No court orders listed.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {caseData.orders.map((o, i) => (
-                  <OrderCard
-                    key={i}
-                    cnr={caseData.cnr}
-                    order={o}
-                    onOpenAI={handleOpenAI}
-                    onDownloadPDF={handleDownloadPDF}
-                    onReadOrder={handleOpenReader}
-                  />
-                ))}
-              </div>
-            )}
-          </div>
+        {/* Sidebar */}
+        <div className="lg:col-span-1">
+          <JudgeCard judges={caseData.judges} />
+        </div>
+      </div>
 
-          {/* AI Analysis Display */}
+      {/* Redesigned Liquid-Style Navigation Bar for Document Actions */}
+      {caseData.orders && caseData.orders.length > 0 && (
+        <DocumentLiquidNavBar
+          orders={caseData.orders}
+          selectedFilename={selectedOrderFilename}
+          onReadOrder={(fname) => handleOpenReader(fname, "pdf")}
+          onOpenSummary={(fname) => handleOpenAI(fname || selectedOrderFilename || "")}
+          onDownloadPDF={(fname) => handleDownloadPDF(fname)}
+          aiLoading={aiLoading}
+        />
+      )}
+
+      <div className="space-y-8">
+        {/* AI Analysis Display */}
+        <div id="ai-summary-section">
           {aiLoading ? (
             <SkeletonLoader count={1} height="150px" />
           ) : (
@@ -288,19 +332,14 @@ export default function CaseDashboardPage() {
               />
             )
           )}
-
-          {/* Timeline */}
-          <div className="space-y-4">
-            <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-              Case Timeline
-            </h3>
-            <Timeline events={caseData.timeline} />
-          </div>
         </div>
 
-        {/* Sidebar */}
-        <div className="space-y-6 flex flex-col">
-          <JudgeCard judges={caseData.judges} />
+        {/* Timeline */}
+        <div className="space-y-4">
+          <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
+            Case Timeline
+          </h3>
+          <Timeline events={caseData.timeline} />
         </div>
       </div>
 

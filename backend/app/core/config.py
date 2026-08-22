@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     cors_origins: str = Field(default="http://localhost:5173")
 
     # Rate Limiting
-    rate_limit_per_minute: int = Field(default=60)
+    rate_limit_per_minute: int = Field(default=300)
 
     # Cache TTLs (seconds)
     cache_ttl_search: int = Field(default=900)       # 15 minutes

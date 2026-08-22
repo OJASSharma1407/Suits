@@ -47,7 +47,7 @@ export function ConversationSidebar({
                 <MessageSquare size={16} style={{ color: activeId === c.id ? "var(--primary)" : "var(--text-muted)" }} flex-shrink-0 />
                 <div className="truncate">
                   <p className="text-sm font-medium truncate" style={{ color: activeId === c.id ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                    {c.title}
+                    {(c.title || `Case - ${c.cnr}`).replace(/^Chat\s*-\s*/i, "Case - ")}
                   </p>
                   <p className="text-[10px] font-mono truncate" style={{ color: "var(--text-muted)" }}>
                     {c.cnr}

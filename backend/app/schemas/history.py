@@ -1,19 +1,19 @@
-"""Bookmark schemas - DTOs for bookmark operations."""
+"""History schemas - DTOs for case view and search history operations."""
 
 import uuid
 from datetime import datetime
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field
 
 
-class CreateBookmarkRequest(BaseModel):
+class RecordCaseViewRequest(BaseModel):
     cnr: str = Field(min_length=1, max_length=64)
     title: str = "Untitled Case"
 
 
-class BookmarkResponse(BaseModel):
+class CaseViewResponse(BaseModel):
     id: uuid.UUID
     cnr: str
     title: str
-    bookmarked_at: datetime
+    viewed_at: datetime
 
     model_config = {"from_attributes": True}

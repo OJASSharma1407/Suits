@@ -16,25 +16,40 @@ export default function AppLayout() {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
+  const sidebarWidth = isOpen ? 240 : 68;
+
   return (
-    <div className="min-h-screen relative" style={{ background: "var(--bg)" }}>
-      {/* Decorative gradient orbs */}
-      <div className="orb orb-1" style={{ top: "-120px", right: "-100px", opacity: 0.5 }} />
-      <div className="orb orb-2" style={{ top: "300px", left: "-80px", opacity: 0.4 }} />
+    <div
+      className="min-h-screen relative overflow-x-hidden w-full max-w-full"
+      style={{ background: "var(--bg)" }}
+    >
+      {/* Decorative gradient orbs - clamped inside container */}
+      <div
+        className="orb orb-1"
+        style={{ top: "-120px", right: "-40px", opacity: 0.5 }}
+      />
+      <div
+        className="orb orb-2"
+        style={{ top: "300px", left: "-40px", opacity: 0.4 }}
+      />
 
       <Navbar />
       <Sidebar />
       <main
-        className="transition-all duration-200 relative z-10"
+        className="transition-all duration-200 relative z-10 box-border min-w-0"
         style={{
-          marginLeft: isOpen ? "240px" : "68px",
-          paddingTop: "calc(var(--header-height) + 32px)",
+          paddingLeft: `calc(${sidebarWidth}px + clamp(16px, 2.5vw, 32px))`,
+          paddingRight: `clamp(16px, 2.5vw, 32px)`,
+          paddingTop: `calc(var(--header-height) + clamp(20px, 2.5vw, 32px))`,
           paddingBottom: "48px",
-          paddingLeft: "40px",
-          paddingRight: "40px",
+          width: "100%",
+          maxWidth: "100%",
+          boxSizing: "border-box",
         }}
       >
-        <Outlet />
+        <div className="w-full max-w-6xl mx-auto min-w-0">
+          <Outlet />
+        </div>
       </main>
 
       <CommandPalette />

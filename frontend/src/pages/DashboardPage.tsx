@@ -3,9 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import {
   Bookmark,
   MessageSquare,
-  Clock,
   Search,
-  BarChart3,
   ArrowRight,
   ChevronLeft,
   ChevronRight,
@@ -197,59 +195,23 @@ export default function DashboardPage() {
     loadData();
   }, []);
 
-  const quickActions = [
-    { to: "/search", icon: Search, title: "Case Search", subtitle: "Search by CNR or keywords" },
-    { to: "/bookmarks", icon: Bookmark, title: "Bookmarks", subtitle: "View saved court cases" },
-    { to: "/history", icon: Clock, title: "History", subtitle: "Past searches & chats" },
-    { to: "/analytics", icon: BarChart3, title: "Analytics", subtitle: "Case metrics & trends" },
-  ];
-
   return (
-    <div className="space-y-8 max-w-6xl mx-auto">
+    <div className="space-y-9 max-w-7xl mx-auto">
       {/* Page Header */}
       <div>
         <h1
-          className="text-2xl font-semibold tracking-tight"
-          style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}
+          className="text-4xl sm:text-5xl font-bold tracking-tight"
+          style={{ color: "var(--text-primary)", letterSpacing: "-0.03em" }}
         >
           Workspace
         </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
+        <p className="text-sm sm:text-base mt-2" style={{ color: "var(--text-secondary)" }}>
           Your legal research overview — saved cases, active conversations, and recent activity.
         </p>
       </div>
 
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
-        {quickActions.map(({ to, icon: Icon, title, subtitle }) => (
-          <Link
-            key={to}
-            to={to}
-            className="card-float p-5 flex items-center justify-between group hover:-translate-y-0.5 transition-all"
-          >
-            <div className="flex items-center gap-3.5">
-              <div
-                className="w-10 h-10 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-105"
-                style={{
-                  background: "var(--surface-container)",
-                  color: "var(--text-primary)",
-                  border: "1px solid var(--border)",
-                }}
-              >
-                <Icon size={18} />
-              </div>
-              <div>
-                <span className="block text-sm font-semibold" style={{ color: "var(--text-primary)" }}>{title}</span>
-                <span className="text-xs" style={{ color: "var(--text-muted)" }}>{subtitle}</span>
-              </div>
-            </div>
-            <ArrowRight size={14} style={{ color: "var(--text-muted)" }} className="group-hover:translate-x-1 group-hover:text-[var(--primary)] transition-all" />
-          </Link>
-        ))}
-      </div>
-
       {/* Metric Cards with Sparklines & Trend Indicators */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
         <MetricCard
           title="Bookmarked Cases"
           value={stats.bookmarks}

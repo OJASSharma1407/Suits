@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { motion } from "motion/react";
 import {
   Sparkles,
   Copy,
@@ -31,7 +32,7 @@ interface AISummaryCardProps {
   onReadDocument?: (filename?: string) => void;
 }
 
-type TabType = "overview" | "procedural" | "facts" | "issues" | "ratio" | "next_steps" | "all";
+type TabType = "overview" | "procedural" | "facts" | "issues" | "ratio" | "all";
 
 export function AISummaryCard({
   caseData,
@@ -115,11 +116,6 @@ export function AISummaryCard({
       directions.length > 0 && `## 5. BENCH DIRECTIONS & OPERATIVE ORDERS\n${directions.map((d, i) => `${i + 1}. ${d}`).join("\n")}`,
       statutesCited.length > 0 && `**Statutes Cited:** ${statutesCited.join(", ")}`,
       caseLaws.length > 0 && `**Precedents Referenced:** ${caseLaws.join(", ")}`,
-      "",
-      `## 6. NEXT STEPS & PRACTICAL IMPLICATIONS`,
-      `- **Procedural Action:** Await final adjudication / next hearing as indicated in court docket.`,
-      `- **Compliance:** Parties must adhere to status quo and any operative directives ordered by the Bench.`,
-      complianceDirs.length > 0 && `- **Directives:** ${complianceDirs.join("; ")}`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -129,14 +125,12 @@ export function AISummaryCard({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: "overview" | "procedural" | "facts" | "issues" | "ratio"; label: string; icon: React.ReactNode }[] = [
     { id: "overview", label: "Executive Brief", icon: <FileText size={14} /> },
-    { id: "procedural", label: "1. Procedural History", icon: <History size={14} /> },
-    { id: "facts", label: "2. Key Facts & Dispute", icon: <BookOpen size={14} /> },
-    { id: "issues", label: "3. Legal Issues", icon: <HelpCircle size={14} /> },
-    { id: "ratio", label: "4. Ratio & Reasoning", icon: <Scale size={14} /> },
-    { id: "next_steps", label: "5. Next Steps", icon: <Compass size={14} /> },
-    { id: "all", label: "Full Brief View", icon: <Layers size={14} /> },
+    { id: "procedural", label: "Procedural History", icon: <History size={14} /> },
+    { id: "facts", label: "Key Facts & Dispute", icon: <BookOpen size={14} /> },
+    { id: "issues", label: "Legal Issues", icon: <HelpCircle size={14} /> },
+    { id: "ratio", label: "Ratio & Reasoning", icon: <Scale size={14} /> },
   ];
 
   return (
@@ -161,30 +155,29 @@ export function AISummaryCard({
               Summary
             </h3>
             <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              End-to-end case intelligence covering procedural history, facts, legal questions, ratio, and next steps.
+              End-to-end case intelligence covering procedural history, facts, legal questions, and ratio & reasoning.
             </p>
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          {onReadDocument && (
-            <button
-              onClick={() => onReadDocument(aiData?.filename || caseData?.orders?.[0]?.filename || undefined)}
-              className="btn-ghost flex items-center gap-1.5 text-xs font-semibold cursor-pointer transition-all"
-              style={{
-                border: "1px solid var(--border)",
-                padding: "8px 16px",
-                borderRadius: "var(--radius-button)",
-                background: "var(--surface)",
-                color: "var(--text-primary)",
-              }}
-              title="Read Full Court Judgment / PDF"
-            >
-              <BookOpen size={14} style={{ color: "var(--primary)" }} />
-              <span>Read Full Document</span>
-            </button>
-          )}
+          {/* Full Brief View Toggle */}
+          <button
+            onClick={() => setActiveTab(activeTab === "all" ? "overview" : "all")}
+            className="btn-ghost flex items-center gap-1.5 text-xs font-semibold cursor-pointer transition-all"
+            style={{
+              border: "1px solid var(--border)",
+              padding: "8px 16px",
+              borderRadius: "var(--radius-button)",
+              background: activeTab === "all" ? "var(--primary)" : "var(--surface)",
+              color: activeTab === "all" ? "var(--on-primary)" : "var(--text-primary)",
+            }}
+            title="Toggle Full Comprehensive Brief View"
+          >
+            <Layers size={14} style={{ color: activeTab === "all" ? "var(--on-primary)" : "var(--primary)" }} />
+            <span>{activeTab === "all" ? "Section View" : "Full Brief View"}</span>
+          </button>
 
           {/* Copy Full Brief */}
           <button
@@ -200,18 +193,18 @@ export function AISummaryCard({
             }}
             title="Copy Complete Case Summary"
           >
-          {copied ? (
-            <>
-              <Check size={14} className="text-green-600 animate-in fade-in" />
-              <span className="font-semibold text-green-600">Full Summary Copied!</span>
-            </>
-          ) : (
-            <>
-              <Copy size={14} />
-              <span>Copy Full Brief</span>
-            </>
-          )}
-        </button>
+            {copied ? (
+              <>
+                <Check size={14} className="text-green-600 animate-in fade-in" />
+                <span className="font-semibold text-green-600">Full Summary Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy size={14} />
+                <span>Copy Full Brief</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
@@ -271,27 +264,58 @@ export function AISummaryCard({
         </div>
       </div>
 
-      {/* Segmented Tab Switcher */}
-      <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl overflow-x-auto" style={{ background: "var(--surface-container)" }}>
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer whitespace-nowrap"
-              style={{
-                background: isActive ? "var(--card)" : "transparent",
-                color: isActive ? "var(--text-primary)" : "var(--text-muted)",
-                boxShadow: isActive ? "var(--shadow-ambient)" : "none",
-                fontWeight: isActive ? 600 : 500,
-              }}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+      {/* Redesigned Premium Segmented Tab Switcher */}
+      <div
+        className="p-1.5 rounded-2xl border w-full"
+        style={{
+          background: "var(--surface-container)",
+          borderColor: "var(--border)",
+        }}
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 sm:gap-1.5 w-full">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className="relative px-2.5 py-2.5 rounded-xl text-xs font-semibold transition-all cursor-pointer select-none flex items-center justify-center gap-1.5 outline-none text-center"
+                style={{
+                  color: isActive ? "var(--text-primary)" : "var(--text-muted)",
+                }}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="summary-active-pill"
+                    className="absolute inset-0 rounded-xl z-0"
+                    transition={{
+                      type: "spring",
+                      stiffness: 450,
+                      damping: 32,
+                    }}
+                    style={{
+                      background: "var(--card)",
+                      border: "1px solid var(--border)",
+                      boxShadow:
+                        "0 2px 8px -2px rgba(0, 0, 0, 0.08), 0 1px 3px rgba(0, 0, 0, 0.04)",
+                    }}
+                  />
+                )}
+                <span
+                  className="relative z-10 flex items-center justify-center gap-1.5 transition-colors truncate"
+                  style={{
+                    color: isActive ? "var(--primary)" : "var(--text-secondary)",
+                    fontWeight: isActive ? 600 : 500,
+                  }}
+                >
+                  <span className="flex-shrink-0">{tab.icon}</span>
+                  <span className="truncate">{tab.label}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* TAB CONTENT: Executive Brief (High-Level Overview) */}
@@ -353,11 +377,11 @@ export function AISummaryCard({
         </div>
       )}
 
-      {/* TAB CONTENT: 1. Procedural History Matrix Table */}
+      {/* TAB CONTENT: Procedural History Matrix Table */}
       {(activeTab === "procedural" || activeTab === "all") && (
         <div className="space-y-4">
           <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <History size={14} style={{ color: "var(--primary)" }} /> 1. Procedural & Case History Matrix
+            <History size={14} style={{ color: "var(--primary)" }} /> Procedural & Case History Matrix
           </h4>
 
           <div className="w-full overflow-x-auto card-float">
@@ -415,11 +439,11 @@ export function AISummaryCard({
         </div>
       )}
 
-      {/* TAB CONTENT: 2. Key Facts & Dispute Breakdown */}
+      {/* TAB CONTENT: Key Facts & Dispute Breakdown */}
       {(activeTab === "facts" || activeTab === "all") && (
         <div className="space-y-4">
           <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <BookOpen size={14} style={{ color: "var(--primary)" }} /> 2. Key Facts & Dispute Dynamics
+            <BookOpen size={14} style={{ color: "var(--primary)" }} /> Key Facts & Dispute Dynamics
           </h4>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -479,11 +503,11 @@ export function AISummaryCard({
         </div>
       )}
 
-      {/* TAB CONTENT: 3. Legal Issues */}
+      {/* TAB CONTENT: Legal Issues */}
       {(activeTab === "issues" || activeTab === "all") && (
         <div className="space-y-4">
           <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <HelpCircle size={14} style={{ color: "var(--primary)" }} /> 3. Primary Legal Issues & Submissions
+            <HelpCircle size={14} style={{ color: "var(--primary)" }} /> Primary Legal Issues & Submissions
           </h4>
 
           {issues.length > 0 ? (
@@ -537,11 +561,11 @@ export function AISummaryCard({
         </div>
       )}
 
-      {/* TAB CONTENT: 4. Ratio Decidendi & Reasoning */}
+      {/* TAB CONTENT: Ratio Decidendi & Reasoning */}
       {(activeTab === "ratio" || activeTab === "all") && (
         <div className="space-y-5">
           <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <Scale size={14} style={{ color: "var(--primary)" }} /> 4. Bench Findings, Ratio Decidendi & Orders
+            <Scale size={14} style={{ color: "var(--primary)" }} /> Bench Findings, Ratio Decidendi & Orders
           </h4>
 
           {ratioDecidendi && (
@@ -583,44 +607,6 @@ export function AISummaryCard({
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* TAB CONTENT: 5. Next Steps */}
-      {(activeTab === "next_steps" || activeTab === "all") && (
-        <div className="space-y-4">
-          <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <Compass size={14} style={{ color: "var(--primary)" }} /> 5. Next Steps & Practical Implications
-          </h4>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="card-float p-5 space-y-2" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <ArrowRight size={13} style={{ color: "var(--primary)" }} /> Procedural Action
-              </h5>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Parties must await delivery of final judgment or next listed hearing date before the High Court.
-              </p>
-            </div>
-
-            <div className="card-float p-5 space-y-2" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <History size={13} style={{ color: "var(--primary)" }} /> Monitor Docket
-              </h5>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Subsequent listings and orders will be communicated via the court registry; parties should track CNR updates.
-              </p>
-            </div>
-
-            <div className="card-float p-5 space-y-2" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <ShieldAlert size={13} style={{ color: "var(--primary)" }} /> Maintain Status-Quo
-              </h5>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Unless stay or interim directions were modified, existing operational licenses and statutory compliance stand pending final order.
-              </p>
-            </div>
-          </div>
         </div>
       )}
     </div>
