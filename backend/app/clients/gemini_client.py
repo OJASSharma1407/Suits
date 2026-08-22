@@ -1,8 +1,10 @@
 """Gemini AI Client.
 
 Handles prompt submission, response parsing, and token tracking with automatic model fallback.
+Uses Google GenAI SDK (google-genai >= 2.0) with async support via client.aio.models.
 """
 
+import json
 from typing import Any
 
 import structlog
@@ -15,10 +17,11 @@ logger = structlog.get_logger()
 
 
 class GeminiClient:
-    """Client for Google Gemini AI API."""
+    """Client for Google Gemini AI API (google-genai >= 2.0)."""
 
     def __init__(self) -> None:
         self._configured = False
+        self.client: genai.Client | None = None
 
     def _ensure_configured(self) -> bool:
         if not self._configured:
@@ -37,23 +40,36 @@ class GeminiClient:
 
     def _get_fallback_analysis(self, error_msg: str | None = None) -> str:
         return (
-            f"### AI Case Analysis Template\n\n"
-            f"#### 1. Executive Summary\n"
-            f"This matter is currently listed before the court. Based on official records, the petition raises significant questions requiring bench adjudication.\n\n"
-            f"#### 2. Procedural & Case History\n"
-            f"- **Registration & Filings**: Pleadings and relevant affidavits have been submitted.\n"
-            f"- **Listing History**: Hearings have taken place to examine interim relief and preliminary objections.\n\n"
-            f"#### 3. Primary Legal Issues & Statutory Framework\n"
-            f"- **Constitutional Provisions**: Issues concerning fundamental rights and writ jurisdiction may apply.\n"
-            f"- **Statutory Enactments**: Code of Civil Procedure and relevant acts as cited in pleadings.\n\n"
-            f"#### 4. Bench Directions & Orders\n"
-            f"- **Interim Orders**: Any interim protection or stay directives remain operative as per the last record.\n"
-            f"- **Judgments & Listings**: Final disposal depends on the conclusion of oral arguments.\n\n"
-            f"#### 5. Strategic Recommendations & Action Plan\n"
-            f"- Review upcoming hearing dates and verify order compliance.\n"
-            f"- Ensure all relevant interlocutory applications are indexed.\n\n"
-            f"*Note: This is a placeholder analysis. To enable live AI insights, please configure the Gemini API in your workspace.*"
+            "### AI Case Analysis Template\n\n"
+            "#### 1. Executive Summary\n"
+            "This matter is currently listed before the court. Based on official records, "
+            "the petition raises significant questions requiring bench adjudication.\n\n"
+            "#### 2. Procedural & Case History\n"
+            "- **Registration & Filings**: Pleadings and relevant affidavits have been submitted.\n"
+            "- **Listing History**: Hearings have taken place to examine interim relief and "
+            "preliminary objections.\n\n"
+            "#### 3. Primary Legal Issues & Statutory Framework\n"
+            "- **Constitutional Provisions**: Issues concerning fundamental rights and writ "
+            "jurisdiction may apply.\n"
+            "- **Statutory Enactments**: Code of Civil Procedure and relevant acts as cited "
+            "in pleadings.\n\n"
+            "#### 4. Bench Directions & Orders\n"
+            "- **Interim Orders**: Any interim protection or stay directives remain operative "
+            "as per the last record.\n"
+            "- **Judgments & Listings**: Final disposal depends on the conclusion of oral "
+            "arguments.\n\n"
+            "#### 5. Strategic Recommendations & Action Plan\n"
+            "- Review upcoming hearing dates and verify order compliance.\n"
+            "- Ensure all relevant interlocutory applications are indexed.\n\n"
+            "*Note: This is a placeholder analysis. To enable live AI insights, "
+            "please configure the Gemini API key in your workspace.*"
         )
+
+    def _model_candidates(self) -> list[str]:
+        """Return ordered list of model names to try, deduplicating the fallback."""
+        primary = settings.gemini_model or "gemini-3.6-flash"
+        fallback = "gemini-3.6-flash"
+        return [primary] if primary == fallback else [primary, fallback]
 
     async def generate(
         self,
@@ -62,18 +78,15 @@ class GeminiClient:
         temperature: float = 0.3,
         max_output_tokens: int = 4096,
     ) -> str:
-        """Send a prompt to Gemini and return the text response with model fallbacks."""
+        """Send a prompt to Gemini and return the text response."""
         if not self._ensure_configured():
             logger.warning("gemini_api_key_unconfigured_using_fallback")
             return self._get_fallback_analysis()
 
-        # User specifically requested ONLY gemini-2.5-flash
-        model_candidates = ["gemini-flash-latest"]
         last_error = ""
-
-        for model_name in model_candidates:
+        for model_name in self._model_candidates():
             try:
-                response = self.client.models.generate_content(
+                response = await self.client.aio.models.generate_content(  # type: ignore[union-attr]
                     model=model_name,
                     contents=user_prompt,
                     config=types.GenerateContentConfig(
@@ -108,14 +121,10 @@ class GeminiClient:
             logger.warning("gemini_api_key_unconfigured_json_fallback")
             return {}
 
-        import json
-
-        model_candidates = ["gemini-flash-latest"]
         last_error = ""
-
-        for model_name in model_candidates:
+        for model_name in self._model_candidates():
             try:
-                response = self.client.models.generate_content(
+                response = await self.client.aio.models.generate_content(  # type: ignore[union-attr]
                     model=model_name,
                     contents=user_prompt,
                     config=types.GenerateContentConfig(
@@ -155,7 +164,8 @@ class GeminiClient:
             "Your task:\n"
             "1. Transcribe the FULL and COMPLETE text of the order faithfully.\n"
             "2. Format the output as clean, well-structured Markdown.\n"
-            "3. Use `#` headings for the court name, `##` for the case title, `###` for sections like CORAM, ORDER, etc.\n"
+            "3. Use `#` headings for the court name, `##` for the case title, "
+            "`###` for sections like CORAM, ORDER, etc.\n"
             "4. Preserve all party names, dates, judge names, and legal citations exactly as written.\n"
             "5. Use `**bold**` for party names and judge names.\n"
             "6. Use numbered lists for court directions/orders.\n"
@@ -165,12 +175,10 @@ class GeminiClient:
 
         pdf_part = types.Part.from_bytes(data=pdf_bytes, mime_type="application/pdf")
 
-        model_candidates = ["gemini-flash-latest"]
         last_error = ""
-
-        for model_name in model_candidates:
+        for model_name in self._model_candidates():
             try:
-                response = self.client.models.generate_content(
+                response = await self.client.aio.models.generate_content(  # type: ignore[union-attr]
                     model=model_name,
                     contents=[prompt_text, pdf_part],
                     config=types.GenerateContentConfig(
@@ -179,7 +187,11 @@ class GeminiClient:
                     ),
                 )
                 if response and response.text:
-                    logger.info("gemini_pdf_extraction_success", model=model_name, size_bytes=len(pdf_bytes))
+                    logger.info(
+                        "gemini_pdf_extraction_success",
+                        model=model_name,
+                        size_bytes=len(pdf_bytes),
+                    )
                     return response.text
             except Exception as exc:
                 last_error = str(exc)
@@ -187,7 +199,7 @@ class GeminiClient:
                 continue
 
         logger.error("gemini_pdf_all_models_failed", error=last_error)
-        return f"*PDF extraction failed. The court order could not be processed at this time.*"
+        return "*PDF extraction failed. The court order could not be processed at this time.*"
 
     async def generate_suggested_questions(
         self,
@@ -196,13 +208,15 @@ class GeminiClient:
         n: int = 4,
     ) -> list[str]:
         """Generate contextual follow-up questions based on case context and last AI reply."""
+        default_questions = [
+            "What happened next in this case?",
+            "What laws were cited?",
+            "Summarize the court's reasoning.",
+            "Who are the parties involved?",
+        ]
+
         if not self._ensure_configured():
-            return [
-                "What happened next in this case?",
-                "What laws were cited?",
-                "Summarize the court's reasoning.",
-                "Who are the parties involved?",
-            ]
+            return default_questions
 
         prompt = (
             f"Based on the case details below and the assistant's last response, "
@@ -212,11 +226,9 @@ class GeminiClient:
             f"## Last AI Response\n{last_ai_response}"
         )
 
-        import json
-        model_candidates = ["gemini-flash-latest"]
-        for model_name in model_candidates:
+        for model_name in self._model_candidates():
             try:
-                response = self.client.models.generate_content(
+                response = await self.client.aio.models.generate_content(  # type: ignore[union-attr]
                     model=model_name,
                     contents=prompt,
                     config=types.GenerateContentConfig(
@@ -233,12 +245,7 @@ class GeminiClient:
                 logger.warning("gemini_suggest_failed", model=model_name, error=str(exc))
                 continue
 
-        return [
-            "What happened next in this case?",
-            "What laws were cited?",
-            "Summarize the court's reasoning.",
-            "Who are the parties involved?",
-        ]
+        return default_questions
 
     async def generate_with_context(
         self,
@@ -265,9 +272,12 @@ class GeminiClient:
         context_parts.append(f"## Current Question\n{user_message}")
         context_parts.append(
             "## Response Instructions\n"
-            "- Provide a comprehensive, detailed, and thorough legal analysis (do NOT provide brief or 1-sentence answers)\n"
-            "- Structure your response with clear Markdown headings (##, ###), bullet lists, and bold text\n"
-            "- Cover: 1. Executive Summary, 2. Procedural & Case History, 3. Legal Arguments & Laws Cited, 4. Bench Directions & Orders, 5. Next Steps\n"
+            "- Provide a comprehensive, detailed, and thorough legal analysis "
+            "(do NOT provide brief or 1-sentence answers)\n"
+            "- Structure your response with clear Markdown headings (##, ###), bullet lists, "
+            "and bold text\n"
+            "- Cover: 1. Executive Summary, 2. Procedural & Case History, "
+            "3. Legal Arguments & Laws Cited, 4. Bench Directions & Orders, 5. Next Steps\n"
             "- Cite specific dates, judges, acts, and party names from the case context\n"
             "- Keep the tone professional, objective, and authoritative"
         )

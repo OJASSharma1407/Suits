@@ -1,6 +1,7 @@
-"""OpenRouter AI Client — openai/gpt-oss-120b with reasoning.
+"""OpenRouter AI Client — configurable model with reasoning.
 
 Handles prompt submission, response parsing, and token tracking for OpenRouter API.
+The model and max token limits are set via OPENROUTER_MODEL and OPENROUTER_MAX_TOKENS in .env.
 """
 
 from __future__ import annotations
@@ -15,7 +16,7 @@ from app.core.config import settings
 
 logger = structlog.get_logger()
 
-MODEL = "openai/gpt-oss-120b"
+MODEL = settings.openrouter_model
 BASE_URL = "https://openrouter.ai/api/v1"
 
 # Optional OpenRouter leaderboard headers
@@ -127,9 +128,11 @@ class OpenRouterClient:
         system_prompt: str,
         user_prompt: str,
         temperature: float = 0.2,
-        max_output_tokens: int = 8192,
+        max_output_tokens: int | None = None,
     ) -> dict[str, Any]:
         """Generate a structured JSON response with reasoning enabled."""
+        if max_output_tokens is None:
+            max_output_tokens = settings.openrouter_max_tokens
         if not self._ensure_configured():
             logger.warning("openrouter_unconfigured_json_fallback")
             return {}
@@ -218,7 +221,7 @@ class OpenRouterClient:
                 model=MODEL,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=settings.openrouter_max_tokens,
                 extra_body={"reasoning": {"enabled": True}},
             )
             if response and response.choices and response.choices[0].message.content:
@@ -355,7 +358,7 @@ class OpenRouterClient:
                 model=MODEL,
                 messages=messages,
                 temperature=temperature,
-                max_tokens=4096,
+                max_tokens=settings.openrouter_max_tokens,
                 stream=True,
                 extra_body={"reasoning": {"enabled": True}},
             )

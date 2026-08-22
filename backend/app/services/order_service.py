@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
-from app.clients.openrouter_client import openrouter_client
+from app.clients.gemini_client import gemini_client
 from app.clients.kanoon_client import kanoon_client
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_order import CachedOrder
@@ -175,19 +175,10 @@ class OrderService:
                 }
                 return self._transform_ai_response(cnr, filename, raw)
             else:
-                logger.info("order_ai_calling_openrouter", cnr=cnr, filename=filename)
-                # Truncate to ~8 000 chars (~2 000 tokens) to stay within OpenRouter's limits.
-                MAX_ORDER_CHARS = 8_000
-                if len(order_text) > MAX_ORDER_CHARS:
-                    order_text = order_text[:MAX_ORDER_CHARS] + "\n\n[... document truncated for AI analysis ...]"
-                    logger.info(
-                        "order_ai_text_truncated",
-                        cnr=cnr,
-                        filename=filename,
-                        truncated_at=MAX_ORDER_CHARS,
-                    )
+                logger.info("order_ai_calling_gemini", cnr=cnr, filename=filename)
+                # Gemini 2.0 Flash has a 1M token context window — no truncation needed
                 extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.format(order_text=order_text)
-                raw = await openrouter_client.generate_json(
+                raw = await gemini_client.generate_json(
                     system_prompt=_ORDER_AI_SYSTEM_PROMPT,
                     user_prompt=extraction_prompt,
                 )
@@ -201,7 +192,7 @@ class OrderService:
                     response = self._transform_ai_response(cnr, filename, raw)
                     return response
                 else:
-                    logger.info("order_ai_openrouter_success", cnr=cnr, filename=filename)
+                    logger.info("order_ai_gemini_success", cnr=cnr, filename=filename)
 
         # Store permanently (only for successful extractions)
         await self.cache_repo.save_cached_ai(CachedAIAnalysis(
