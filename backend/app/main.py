@@ -44,6 +44,26 @@ async def lifespan(app: FastAPI):
     # Automatically create database tables if they do not exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+        # Clean any stale/failed cache entries so they can be re-fetched cleanly
+        from sqlalchemy import text
+        await conn.execute(
+            text("""
+                DELETE FROM cached_orders
+                WHERE markdown LIKE '*PDF extraction failed%'
+                OR markdown LIKE '*This court order%'
+                OR markdown LIKE '%could not be retrieved%'
+            """)
+        )
+        await conn.execute(
+            text("""
+                DELETE FROM cached_ai_analysis
+                WHERE ai_json LIKE '%"extractionConfidence": 0.0%'
+                AND (
+                    ai_json LIKE '%could not be analyzed%'
+                    OR ai_json LIKE '%unavailable%'
+                )
+            """)
+        )
 
     yield
 

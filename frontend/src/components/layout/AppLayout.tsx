@@ -1,56 +1,38 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useEffect } from "react";
-import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
+import { TopSearchBar } from "./TopSearchBar";
 import { CommandPalette } from "@/components/common/CommandPalette";
-import { useSidebarStore } from "@/store/sidebar-store";
 import { useThemeStore } from "@/store/theme-store";
 import { Toaster } from "sonner";
 
 export default function AppLayout() {
-  const isOpen = useSidebarStore((s) => s.isOpen);
   const { theme } = useThemeStore();
+  const location = useLocation();
+  const hideTopSearchBar =
+    location.pathname === "/search" ||
+    location.pathname.startsWith("/search") ||
+    location.pathname === "/profile" ||
+    location.pathname.startsWith("/profile");
 
-  // Keep data-theme in sync with store on every mount/update
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
-  const sidebarWidth = isOpen ? 240 : 68;
-
   return (
-    <div
-      className="min-h-screen relative overflow-x-hidden w-full max-w-full"
-      style={{ background: "var(--bg)" }}
-    >
-      {/* Decorative gradient orbs - clamped inside container */}
-      <div
-        className="orb orb-1"
-        style={{ top: "-120px", right: "-40px", opacity: 0.5 }}
-      />
-      <div
-        className="orb orb-2"
-        style={{ top: "300px", left: "-40px", opacity: 0.4 }}
-      />
-
-      <Navbar />
+    <div className="app-shell">
+      {/* Left sidebar with navigation, user profile, and dark mode toggle */}
       <Sidebar />
-      <main
-        className="transition-all duration-200 relative z-10 box-border min-w-0"
-        style={{
-          paddingLeft: `calc(${sidebarWidth}px + clamp(16px, 2.5vw, 32px))`,
-          paddingRight: `clamp(16px, 2.5vw, 32px)`,
-          paddingTop: `calc(var(--header-height) + clamp(20px, 2.5vw, 32px))`,
-          paddingBottom: "48px",
-          width: "100%",
-          maxWidth: "100%",
-          boxSizing: "border-box",
-        }}
-      >
-        <div className="w-full max-w-6xl mx-auto min-w-0">
-          <Outlet />
-        </div>
-      </main>
+
+      {/* Main column: top search bar (when not on search or profile) + page content */}
+      <div className="main-column">
+        {!hideTopSearchBar && <TopSearchBar />}
+        <main className="main-content">
+          <div className="main-inner">
+            <Outlet />
+          </div>
+        </main>
+      </div>
 
       <CommandPalette />
 
@@ -59,10 +41,11 @@ export default function AppLayout() {
         theme={theme}
         toastOptions={{
           style: {
-            background: "var(--card)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius-card)",
+            background: "var(--surface)",
+            color: "var(--ink)",
+            border: "1px solid var(--hairline)",
+            borderRadius: "var(--radius-md)",
+            fontFamily: "var(--font-sans)",
             boxShadow: "var(--shadow-float)",
           },
         }}

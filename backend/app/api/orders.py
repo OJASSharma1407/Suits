@@ -11,21 +11,21 @@ from app.services.order_service import OrderService
 router = APIRouter(prefix="/orders", tags=["Orders"])
 
 
-@router.get("/{cnr}/markdown/{filename}", response_model=APIResponse[OrderMarkdownResponse])
+@router.get("/{cnr}/markdown/{filename:path}", response_model=APIResponse[OrderMarkdownResponse])
 async def get_order_markdown(cnr: str, filename: str, user: CurrentUser, db: DbSession):
     service = OrderService(db)
     result = await service.get_markdown(cnr, filename)
     return APIResponse(data=result)
 
 
-@router.get("/{cnr}/ai/{filename}", response_model=APIResponse[OrderAIResponse])
+@router.get("/{cnr}/ai/{filename:path}", response_model=APIResponse[OrderAIResponse])
 async def get_order_ai(cnr: str, filename: str, user: CurrentUser, db: DbSession):
     service = OrderService(db)
     result = await service.get_ai_analysis(cnr, filename)
     return APIResponse(data=result)
 
 
-@router.get("/{cnr}/download/{filename}")
+@router.get("/{cnr}/download/{filename:path}")
 async def download_order_pdf(cnr: str, filename: str, user: CurrentUser, db: DbSession):
     """Download the original court order PDF."""
     from fastapi import HTTPException
@@ -38,7 +38,7 @@ async def download_order_pdf(cnr: str, filename: str, user: CurrentUser, db: DbS
             detail="Original scanned court PDF is not available for this record."
         )
 
-    safe_filename = f"{cnr}_{filename}.pdf"
+    safe_filename = f"{cnr}_{filename.replace('/', '_').replace(':', '_')}.pdf"
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { User, Mail, Shield, Save } from "lucide-react";
+import { User, Mail, Shield, Save, KeyRound, Loader2 } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 import { authService } from "@/services/auth";
 import { toast } from "sonner";
@@ -45,83 +45,120 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="space-y-6 max-w-3xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
+    <div className="dashboard-layout" style={{ maxWidth: "720px", margin: "36px auto 60px", width: "100%" }}>
+      {/* Centered Page Header (subtitle removed) */}
+      <div className="text-center mb-8">
+        <h1
+          className="text-2xl font-medium tracking-tight"
+          style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
+        >
           Profile & Account
         </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          Manage your personal information and security settings.
-        </p>
       </div>
 
-      <div className="card-float p-6 sm:p-8 space-y-8">
+      <div
+        className="card-float p-6 sm:p-8 space-y-8"
+        style={{
+          background: "var(--surface)",
+          border: "1px solid var(--hairline)",
+          borderRadius: "var(--radius-md)",
+        }}
+      >
         {/* Profile Info Form */}
         <section>
-          <h3 className="text-base font-semibold mb-4 flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            <User size={18} style={{ color: "var(--text-muted)" }} /> Personal Information
+          <h3
+            className="text-base font-medium mb-5 flex items-center gap-2.5"
+            style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
+          >
+            <User size={18} style={{ color: "var(--brass)" }} /> Personal Information
           </h3>
-          <form onSubmit={handleUpdateProfile} className="space-y-5 max-w-md">
+
+          <form onSubmit={handleUpdateProfile} className="space-y-5">
             <div>
-              <label className="block text-xs font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--text-muted)", letterSpacing: "0.05em" }}>
+              <label
+                className="block text-xs font-semibold mb-2 uppercase tracking-wider"
+                style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
+              >
                 Full Name
               </label>
               <input
                 type="text"
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
-                className="w-full p-2.5 text-sm border outline-none"
+                className="w-full p-3 text-sm border outline-none transition-colors"
                 style={{
-                  background: "var(--surface)",
-                  borderColor: "var(--border)",
-                  color: "var(--text-primary)",
-                  borderRadius: "var(--radius-input)",
+                  background: "var(--surface-raised)",
+                  borderColor: "var(--hairline)",
+                  color: "var(--ink)",
+                  borderRadius: "var(--radius)",
+                  fontFamily: "var(--font-sans)",
                 }}
               />
             </div>
+
             <div>
-              <label className="block text-xs font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--text-muted)", letterSpacing: "0.05em" }}>
+              <label
+                className="block text-xs font-semibold mb-2 uppercase tracking-wider"
+                style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
+              >
                 Email Address
               </label>
               <div className="relative">
-                <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: "var(--text-muted)" }} />
+                <Mail
+                  size={16}
+                  className="absolute left-3.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{ color: "var(--ink-faint)" }}
+                />
                 <input
                   type="email"
                   value={user?.email || ""}
                   disabled
-                  className="w-full pl-9 pr-3 py-2.5 text-sm border outline-none cursor-not-allowed opacity-70"
+                  className="w-full pl-10 pr-3 py-3 text-sm border outline-none cursor-not-allowed opacity-75"
                   style={{
-                    background: "var(--surface)",
-                    borderColor: "var(--border)",
-                    color: "var(--text-secondary)",
-                    borderRadius: "var(--radius-input)",
+                    background: "var(--surface-raised)",
+                    borderColor: "var(--hairline)",
+                    color: "var(--ink-dim)",
+                    borderRadius: "var(--radius)",
+                    fontFamily: "var(--font-sans)",
                   }}
                 />
               </div>
-              <p className="text-[11px] mt-1.5" style={{ color: "var(--text-muted)" }}>
+              <p className="text-[11.5px] mt-1.5" style={{ color: "var(--ink-faint)" }}>
                 Email cannot be changed. Contact support for assistance.
               </p>
             </div>
-            <button
-              type="submit"
-              disabled={loading || fullName === user?.full_name}
-              className="btn-primary"
-            >
-              <Save size={16} /> Save Changes
-            </button>
+
+            <div className="pt-1">
+              <button
+                type="submit"
+                disabled={loading || fullName === user?.full_name}
+                className="btn btn-primary flex items-center gap-2"
+                style={{ padding: "9px 22px" }}
+              >
+                {loading ? <Loader2 size={16} className="animate-spin" /> : <Save size={16} />}
+                <span>Save Changes</span>
+              </button>
+            </div>
           </form>
         </section>
 
-        <hr style={{ borderColor: "var(--border)" }} />
+        <hr style={{ borderColor: "var(--hairline-soft)" }} />
 
         {/* Security Form */}
         <section>
-          <h3 className="text-base font-semibold mb-4 flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            <Shield size={18} style={{ color: "var(--text-muted)" }} /> Security Settings
+          <h3
+            className="text-base font-medium mb-5 flex items-center gap-2.5"
+            style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
+          >
+            <Shield size={18} style={{ color: "var(--brass)" }} /> Security Settings
           </h3>
-          <form onSubmit={handleChangePassword} className="space-y-5 max-w-md">
+
+          <form onSubmit={handleChangePassword} className="space-y-5">
             <div>
-              <label className="block text-xs font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--text-muted)", letterSpacing: "0.05em" }}>
+              <label
+                className="block text-xs font-semibold mb-2 uppercase tracking-wider"
+                style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
+              >
                 Current Password
               </label>
               <input
@@ -129,17 +166,22 @@ export default function ProfilePage() {
                 required
                 value={currentPassword}
                 onChange={(e) => setCurrentPassword(e.target.value)}
-                className="w-full p-2.5 text-sm border outline-none"
+                className="w-full p-3 text-sm border outline-none transition-colors"
                 style={{
-                  background: "var(--surface)",
-                  borderColor: "var(--border)",
-                  color: "var(--text-primary)",
-                  borderRadius: "var(--radius-input)",
+                  background: "var(--surface-raised)",
+                  borderColor: "var(--hairline)",
+                  color: "var(--ink)",
+                  borderRadius: "var(--radius)",
+                  fontFamily: "var(--font-sans)",
                 }}
               />
             </div>
+
             <div>
-              <label className="block text-xs font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--text-muted)", letterSpacing: "0.05em" }}>
+              <label
+                className="block text-xs font-semibold mb-2 uppercase tracking-wider"
+                style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
+              >
                 New Password
               </label>
               <input
@@ -148,22 +190,28 @@ export default function ProfilePage() {
                 minLength={8}
                 value={newPassword}
                 onChange={(e) => setNewPassword(e.target.value)}
-                className="w-full p-2.5 text-sm border outline-none"
+                className="w-full p-3 text-sm border outline-none transition-colors"
                 style={{
-                  background: "var(--surface)",
-                  borderColor: "var(--border)",
-                  color: "var(--text-primary)",
-                  borderRadius: "var(--radius-input)",
+                  background: "var(--surface-raised)",
+                  borderColor: "var(--hairline)",
+                  color: "var(--ink)",
+                  borderRadius: "var(--radius)",
+                  fontFamily: "var(--font-sans)",
                 }}
               />
             </div>
-            <button
-              type="submit"
-              disabled={pwdLoading || !currentPassword || !newPassword}
-              className="btn-secondary"
-            >
-              Update Password
-            </button>
+
+            <div className="pt-1">
+              <button
+                type="submit"
+                disabled={pwdLoading || !currentPassword || !newPassword}
+                className="btn btn-primary flex items-center gap-2"
+                style={{ padding: "9px 22px" }}
+              >
+                {pwdLoading ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+                <span>Update Password</span>
+              </button>
+            </div>
           </form>
         </section>
       </div>

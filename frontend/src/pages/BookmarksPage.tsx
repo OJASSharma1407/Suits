@@ -38,18 +38,19 @@ export default function BookmarksPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
+    <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36 }}>
+      {/* Centered Heading with generous top gap */}
+      <div className="text-center mb-8">
+        <h1
+          className="text-2xl font-medium"
+          style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
+        >
           Bookmarked Cases
         </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          Manage your saved legal research, court orders, and judgments.
-        </p>
       </div>
 
       {loading ? (
-        <SkeletonLoader count={4} height="70px" />
+        <SkeletonLoader count={4} height="76px" />
       ) : bookmarks.length === 0 ? (
         <EmptyState
           title="No bookmarked cases"
@@ -57,31 +58,40 @@ export default function BookmarksPage() {
           icon={<Bookmark size={32} />}
         />
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           {bookmarks.map((b) => (
             <div
               key={b.id}
-              className="card-float group p-5 flex flex-col justify-between gap-4 transition-all"
+              className="card-float group p-6 flex flex-col justify-between gap-5 transition-all"
+              style={{ borderRadius: "var(--radius-md)" }}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-start gap-3 min-w-0">
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex items-start gap-3.5 min-w-0">
                   <div
-                    className="w-9 h-9 rounded-xl flex items-center justify-center flex-shrink-0 mt-0.5"
-                    style={{ background: "var(--surface-container)", color: "var(--primary)", border: "1px solid var(--border)" }}
+                    className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0 mt-0.5"
+                    style={{
+                      background: "var(--brass-soft)",
+                      color: "var(--brass-bright)",
+                      border: "1px solid var(--hairline)",
+                    }}
                   >
-                    <Scale size={17} />
+                    <Scale size={18} />
                   </div>
                   <div className="min-w-0">
                     <Link
                       to={`/case/${b.cnr}`}
-                      className="text-sm font-semibold hover:underline line-clamp-2 block"
-                      style={{ color: "var(--text-primary)" }}
+                      className="text-base font-medium hover:underline line-clamp-2 block"
+                      style={{ color: "var(--ink)" }}
                     >
                       {b.title}
                     </Link>
                     <div
-                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[10px] mt-1.5"
-                      style={{ background: "var(--surface-container)", color: "var(--text-muted)", border: "1px solid var(--border)" }}
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded font-mono text-[11px] mt-2"
+                      style={{
+                        background: "var(--surface-container)",
+                        color: "var(--ink-faint)",
+                        border: "1px solid var(--hairline)",
+                      }}
                     >
                       <Hash size={11} />
                       <span>CNR: {b.cnr}</span>
@@ -91,21 +101,25 @@ export default function BookmarksPage() {
 
                 <button
                   onClick={() => handleRemove(b.cnr)}
-                  className="btn-ghost p-1.5 rounded-lg text-muted hover:text-red-600 cursor-pointer flex-shrink-0"
+                  className="p-1.5 rounded text-muted hover:opacity-100 opacity-60 cursor-pointer flex-shrink-0 transition-opacity"
                   title="Remove Bookmark"
+                  aria-label="Remove Bookmark"
                 >
-                  <Trash2 size={14} style={{ color: "var(--danger)" }} />
+                  <Trash2 size={15} style={{ color: "var(--danger)" }} />
                 </button>
               </div>
 
-              <div className="pt-3 border-t flex items-center justify-between text-xs" style={{ borderColor: "var(--border)" }}>
-                <span className="text-[11px]" style={{ color: "var(--text-muted)" }}>
+              <div
+                className="pt-3.5 border-t flex items-center justify-between text-xs"
+                style={{ borderColor: "var(--hairline-soft)" }}
+              >
+                <span className="text-[12px]" style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>
                   Saved {new Date(b.bookmarked_at).toLocaleDateString()}
                 </span>
                 <Link
                   to={`/case/${b.cnr}`}
-                  className="btn-ghost flex items-center gap-1 text-xs font-semibold group-hover:translate-x-0.5 transition-transform"
-                  style={{ padding: "4px 10px", color: "var(--primary)" }}
+                  className="btn btn-ghost flex items-center gap-1.5 text-xs font-semibold group-hover:translate-x-0.5 transition-transform"
+                  style={{ padding: "5px 12px", color: "var(--brass)" }}
                 >
                   Open Case <ArrowRight size={13} />
                 </Link>

@@ -32,14 +32,18 @@ class ECourtsClient:
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
+        base_url = settings.ecourts_base_url.rstrip("/")
+        api_key = settings.ecourts_api_key.strip() if settings.ecourts_api_key else ""
         if self._client is None or self._client.is_closed:
+            headers: dict[str, str] = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             self._client = httpx.AsyncClient(
-                base_url=self.base_url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
+                base_url=base_url,
+                headers=headers,
                 # Fast timeout: 2 seconds maximum per request
                 timeout=httpx.Timeout(2.0),
             )

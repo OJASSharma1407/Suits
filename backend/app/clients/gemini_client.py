@@ -66,10 +66,11 @@ class GeminiClient:
         )
 
     def _model_candidates(self) -> list[str]:
-        """Return ordered list of model names to try, deduplicating the fallback."""
-        primary = settings.gemini_model or "gemini-3.6-flash"
-        fallback = "gemini-3.6-flash"
-        return [primary] if primary == fallback else [primary, fallback]
+        """Return ordered list of model names to try, deduplicating while preserving order."""
+        primary = settings.gemini_model or "gemini-2.5-flash"
+        candidates = [primary, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.6-flash"]
+        seen: set[str] = set()
+        return [m for m in candidates if not (m in seen or seen.add(m))]
 
     async def generate(
         self,
@@ -96,14 +97,10 @@ class GeminiClient:
                     ),
                 )
                 if response and response.text:
-                    print(f"\\n\\033[92m=== GEMINI GENERATE SUCCESS ===\\033[0m")
-                    print(f"Model: {model_name}")
-                    print(f"Preview: {response.text[:200]}\\n")
                     logger.info("gemini_success", model=model_name)
                     return response.text
             except Exception as exc:
                 last_error = str(exc)
-                print(f"\\n\\033[91m=== GEMINI GENERATE ERROR ===\\033[0m\\nModel: {model_name}\\nError: {last_error}\\n")
                 logger.warning("gemini_model_try_failed", model=model_name, error=last_error)
                 continue
 
@@ -139,19 +136,24 @@ class GeminiClient:
                     ),
                 )
                 if response and response.text:
-                    print(f"\\n\\033[92m=== GEMINI JSON SUCCESS ===\\033[0m")
-                    print(f"Model: {model_name}")
-                    print(f"Preview: {response.text[:200]}\\n")
                     logger.info("gemini_json_success", model=model_name)
                     return json.loads(response.text)
             except Exception as exc:
                 last_error = str(exc)
-                print(f"\\n\\033[91m=== GEMINI JSON ERROR ===\\033[0m\\nModel: {model_name}\\nError: {last_error}\\n")
                 logger.warning("gemini_json_model_failed", model=model_name, error=last_error)
                 continue
 
-        logger.error("gemini_json_all_models_failed", error=last_error)
-        return {}
+        logger.warning("gemini_json_all_models_failed_trying_openrouter", error=last_error)
+        try:
+            from app.clients.openrouter_client import openrouter_client
+            return await openrouter_client.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+            )
+        except Exception as or_exc:
+            logger.error("openrouter_json_fallback_failed", error=str(or_exc))
+            return {}
 
     async def extract_markdown_from_pdf(self, pdf_bytes: bytes) -> str:
         """Extract and format court order text from PDF bytes using Gemini's vision capability.

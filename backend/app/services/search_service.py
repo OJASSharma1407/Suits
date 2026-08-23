@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.ecourts_client import ecourts_client
+from app.clients.kanoon_client import kanoon_client
 from app.core.config import settings
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_case import CachedCase
@@ -364,7 +365,65 @@ class SearchService:
             logger.info("search_redis_hit", query=request.query)
             return SearchResponse(**cached)
 
-        # 2. Query Local Database First
+        results: list[SearchResultItem] = []
+        page_size = request.page_size or 20
+        total_hits = 0
+
+        # 2. Search Indian Kanoon Live API as Primary Search Provider
+        if request.query and request.query.strip():
+            try:
+                logger.info("searching_via_kanoon_primary", query=request.query, page=request.page)
+                kanoon_res = await kanoon_client.search_docs(
+                    query=request.query.strip(),
+                    pagenum=request.page or 1,
+                )
+                docs = kanoon_res.get("docs", [])
+                if docs:
+                    for doc in docs:
+                        item = _raw_to_search_item(doc)
+                        if item and item.cnr:
+                            results.append(item)
+                    results = _apply_filters(results, request)
+
+                    # Parse total hits safely from Kanoon string or int
+                    raw_found = kanoon_res.get("found")
+                    total_hits = len(results)
+                    if isinstance(raw_found, int):
+                        total_hits = raw_found
+                    elif isinstance(raw_found, str):
+                        match = re.search(r'of\s+([0-9,]+)', raw_found)
+                        if match:
+                            total_hits = int(match.group(1).replace(',', ''))
+                        else:
+                            digits = re.findall(r'\d+', raw_found)
+                            if digits:
+                                total_hits = int(digits[-1])
+
+                    # Format facets safely as dict
+                    facets_dict: dict[str, Any] = {}
+                    cats = kanoon_res.get("categories")
+                    if isinstance(cats, dict):
+                        facets_dict = cats
+                    elif isinstance(cats, list):
+                        for cat_item in cats:
+                            if isinstance(cat_item, list) and len(cat_item) == 2:
+                                facets_dict[str(cat_item[0])] = cat_item[1]
+
+                    if results:
+                        response = SearchResponse(
+                            results=results,
+                            total_hits=total_hits,
+                            page=request.page or 1,
+                            page_size=page_size,
+                            total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1,
+                            facets=facets_dict,
+                        )
+                        await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
+                        return response
+            except Exception as kanoon_exc:
+                logger.warning("kanoon_search_failed", error=str(kanoon_exc))
+
+        # 3. Fallback: Query Local Database
         local_db_cases = await self.cache_repo.search_local_cases(
             query=request.query,
             court_code=request.court_code,
@@ -375,7 +434,6 @@ class SearchService:
 
         if local_db_cases:
             logger.info("search_local_db_hit", query=request.query, match_count=len(local_db_cases))
-            results = []
             for db_case in local_db_cases:
                 try:
                     data = json.loads(db_case.response_json)
@@ -387,11 +445,10 @@ class SearchService:
 
             results = _apply_filters(results, request)
             if results:
-                page_size = request.page_size or 20
                 total_hits = len(results)
                 offset = ((request.page or 1) - 1) * page_size
                 paginated_results = results[offset : offset + page_size]
-                
+
                 response = SearchResponse(
                     results=paginated_results,
                     total_hits=total_hits,
@@ -403,47 +460,15 @@ class SearchService:
                 await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
                 return response
 
-        # 3. Not in Local Database -> Call eCourts Partner API as Primary Search Provider
-        logger.info("searching_via_ecourts_partner_api", query=request.query, params=params)
-        results: list[SearchResultItem] = []
-        total_hits = 0
-        page_size = request.page_size or 20
-
-        try:
-            ecourts_raw = await ecourts_client.search_cases(params)
-            raw_results = _extract_results_list(ecourts_raw)
-            if raw_results:
-                logger.info("ecourts_search_results_found", count=len(raw_results))
-                for item in raw_results:
-                    search_item = _raw_to_search_item(item)
-                    if search_item and search_item.cnr:
-                        results.append(search_item)
-                
-                results = _apply_filters(results, request)
-                total_hits = ecourts_raw.get("totalHits", ecourts_raw.get("total", len(results))) if isinstance(ecourts_raw, dict) else len(results)
-                
-                if results:
-                    response = SearchResponse(
-                        results=results,
-                        total_hits=total_hits,
-                        page=request.page,
-                        page_size=page_size,
-                        total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1,
-                        facets=ecourts_raw.get("facets", {}) if isinstance(ecourts_raw, dict) else {},
-                    )
-                    await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
-                    return response
-        except Exception as exc:
-            logger.error("search_ecourts_failed", error=str(exc))
-            # Return demo/empty response gracefully rather than crashing
-            return SearchResponse(
-                results=[],
-                total_hits=0,
-                page=request.page,
-                page_size=page_size,
-                total_pages=0,
-                facets={},
-            )
+        # Return empty response gracefully
+        return SearchResponse(
+            results=[],
+            total_hits=0,
+            page=request.page,
+            page_size=page_size,
+            total_pages=0,
+            facets={},
+        )
 
     async def get_capabilities(self) -> SearchCapabilitiesResponse:
         """Get search capabilities with 24-hour cache."""

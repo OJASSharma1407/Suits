@@ -11,6 +11,7 @@ import {
   X,
 } from "lucide-react";
 import { historyService, type CaseHistoryItem, type ConversationHistoryItem } from "@/services/history";
+import { chatService } from "@/services/chat";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { toast } from "sonner";
@@ -113,6 +114,16 @@ export default function HistoryPage() {
     }
   };
 
+  const handleClearConversations = async () => {
+    try {
+      await Promise.allSettled(conversations.map((c) => chatService.deleteConversation(c.id)));
+      setConversations([]);
+      toast.info("AI conversations history cleared.");
+    } catch {
+      toast.error("Failed to clear AI conversations.");
+    }
+  };
+
   const handleDeleteCase = async (e: React.MouseEvent, cnr: string) => {
     e.stopPropagation();
     try {
@@ -128,7 +139,7 @@ export default function HistoryPage() {
   const groupedConversations = useMemo(() => groupByDate(conversations, "updated_at"), [conversations]);
 
   const BucketHeader = ({ group }: { group: GroupedItems<any> }) => (
-    <div className="flex items-center gap-2 mb-2">
+    <div className="flex items-center gap-2 mb-2.5">
       <span style={{ color: "var(--text-muted)" }}>{group.icon}</span>
       <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
         {group.label}
@@ -144,27 +155,14 @@ export default function HistoryPage() {
   );
 
   return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      {/* ── Page Header ───────────────────────────────────────── */}
-      <div>
-        <h1
-          className="text-2xl font-semibold tracking-tight"
-          style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}
-        >
-          Research History
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          Quickly reopen viewed cases with instant local loading, or resume ongoing AI conversations.
-        </p>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+    <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%" }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12" style={{ marginTop: 44 }}>
 
         {/* ── Recently Opened Cases Column ──────────────────────── */}
         <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-              <FileText size={16} style={{ color: "var(--text-secondary)" }} /> Recently Opened Cases
+          <div className="flex items-center justify-between pb-1 border-b" style={{ borderColor: "var(--border)" }}>
+            <h3 className="text-base font-medium flex items-center gap-2" style={{ color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>
+              <FileText size={17} style={{ color: "var(--brass)" }} /> Recently Opened Cases
             </h3>
             {cases.length > 0 && (
               <button
@@ -172,7 +170,7 @@ export default function HistoryPage() {
                 className="text-xs font-medium hover:underline flex items-center gap-1 cursor-pointer"
                 style={{ color: "var(--danger)" }}
               >
-                <Trash2 size={12} /> Clear All
+                <Trash2 size={13} /> Clear All
               </button>
             )}
           </div>
@@ -185,27 +183,27 @@ export default function HistoryPage() {
               description="Cases and judgments you view will be saved here for instant local retrieval."
             />
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-6">
               {groupedCases.map((group) => (
                 <div key={group.label}>
                   <BucketHeader group={group} />
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {group.items.map((c) => (
                       <div
                         key={c.id}
                         onClick={() => navigate(`/case/${c.cnr}`)}
                         className="card-float group flex items-center justify-between gap-3 cursor-pointer hover:-translate-y-0.5 transition-all"
-                        style={{ padding: "12px 16px", borderRadius: "var(--radius-lg)" }}
+                        style={{ padding: "14px 18px", borderRadius: "var(--radius-md)" }}
                       >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="flex items-center gap-3.5 min-w-0 flex-1">
                           <div
-                            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
+                            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
                             style={{
-                              background: "rgba(30, 58, 95, 0.08)",
-                              color: "var(--primary, #1e3a5f)",
+                              background: "var(--brass-soft)",
+                              color: "var(--brass-bright)",
                             }}
                           >
-                            <FileText size={15} />
+                            <FileText size={16} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <span
@@ -215,9 +213,9 @@ export default function HistoryPage() {
                             >
                               {c.title}
                             </span>
-                            <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex items-center gap-2 mt-1">
                               <span
-                                className="text-[10px] font-mono px-1.5 py-0.5 rounded"
+                                className="text-[10.5px] font-mono px-1.5 py-0.5 rounded"
                                 style={{
                                   background: "var(--surface-container)",
                                   color: "var(--text-secondary)",
@@ -226,14 +224,14 @@ export default function HistoryPage() {
                                 {c.cnr}
                               </span>
                               <span
-                                className="text-[10px] font-medium flex items-center gap-1 px-1.5 py-0.5 rounded"
+                                className="text-[10.5px] font-medium flex items-center gap-1 px-1.5 py-0.5 rounded"
                                 style={{
-                                  background: "rgba(16, 185, 129, 0.08)",
-                                  color: "#059669",
+                                  background: "rgba(16, 185, 129, 0.12)",
+                                  color: "var(--seal-disposed)",
                                 }}
                                 title="Saved locally — opens without external API calls"
                               >
-                                <Database size={9} /> Local
+                                <Database size={10} /> Local
                               </span>
                               <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
                                 {relativeTime(c.viewed_at)}
@@ -246,17 +244,17 @@ export default function HistoryPage() {
                         <div className="flex items-center gap-1 flex-shrink-0">
                           <button
                             onClick={(e) => handleDeleteCase(e, c.cnr)}
-                            className="p-1 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity cursor-pointer"
+                            className="p-1.5 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity cursor-pointer"
                             style={{ color: "var(--text-muted)" }}
                             title="Remove from history"
                           >
-                            <X size={14} />
+                            <X size={15} />
                           </button>
                           <span
-                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
                             style={{
-                              background: "var(--primary, #1e3a5f)",
-                              color: "var(--on-primary, #ffffff)",
+                              background: "var(--brass)",
+                              color: "var(--on-primary)",
                             }}
                           >
                             Open Case <ArrowRight size={12} />
@@ -273,9 +271,20 @@ export default function HistoryPage() {
 
         {/* ── Recent Conversations Column ──────────────────────── */}
         <div className="space-y-5">
-          <h3 className="text-sm font-semibold flex items-center gap-2" style={{ color: "var(--text-primary)" }}>
-            <MessageSquare size={16} style={{ color: "var(--text-secondary)" }} /> AI Conversations
-          </h3>
+          <div className="flex items-center justify-between pb-1 border-b" style={{ borderColor: "var(--border)" }}>
+            <h3 className="text-base font-medium flex items-center gap-2" style={{ color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>
+              <MessageSquare size={17} style={{ color: "var(--brass)" }} /> AI Conversations
+            </h3>
+            {conversations.length > 0 && (
+              <button
+                onClick={handleClearConversations}
+                className="text-xs font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                style={{ color: "var(--danger)" }}
+              >
+                <Trash2 size={13} /> Clear All
+              </button>
+            )}
+          </div>
 
           {loading ? (
             <SkeletonLoader count={3} height="56px" />
@@ -285,11 +294,11 @@ export default function HistoryPage() {
               description="AI research conversations and chat sessions will appear here."
             />
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-6">
               {groupedConversations.map((group) => (
                 <div key={group.label}>
                   <BucketHeader group={group} />
-                  <div className="space-y-1.5">
+                  <div className="space-y-2">
                     {group.items.map((c) => {
                       const displayTitle = c.title ? c.title.replace(/^Chat\s*-\s*/i, "Case - ") : `Case - ${c.cnr}`;
                       return (
@@ -297,14 +306,14 @@ export default function HistoryPage() {
                           key={c.id}
                           onClick={() => navigate(`/chat/${c.id}`)}
                           className="card-float group flex items-center justify-between gap-3 cursor-pointer hover:-translate-y-0.5 transition-all"
-                          style={{ padding: "12px 16px", borderRadius: "var(--radius-lg)" }}
+                          style={{ padding: "14px 18px", borderRadius: "var(--radius-md)" }}
                         >
-                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
                             <div
-                              className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                              style={{ background: "rgba(30, 58, 95, 0.08)", color: "#1e3a5f" }}
+                              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
                             >
-                              <MessageSquare size={14} />
+                              <MessageSquare size={15} />
                             </div>
                             <div className="min-w-0 flex-1">
                               <span
@@ -314,10 +323,10 @@ export default function HistoryPage() {
                               >
                                 {displayTitle}
                               </span>
-                              <div className="flex items-center gap-2 mt-0.5">
+                              <div className="flex items-center gap-2 mt-1">
                                 <span
-                                  className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                                  style={{ background: "var(--surface-container)", color: "var(--text-muted)" }}
+                                  className="text-[10.5px] font-mono px-1.5 py-0.5 rounded"
+                                  style={{ background: "var(--surface-container)", color: "var(--text-secondary)" }}
                                 >
                                   {c.cnr}
                                 </span>
@@ -329,8 +338,8 @@ export default function HistoryPage() {
                           </div>
 
                           <span
-                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
-                            style={{ background: "#1e3a5f", color: "#ffffff" }}
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ background: "var(--brass)", color: "var(--on-primary)" }}
                           >
                             Open Chat <ArrowRight size={12} />
                           </span>

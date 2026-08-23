@@ -10,7 +10,7 @@ interface MetricCardProps {
     label?: string;
   };
   sparklineData?: number[];
-  variant?: "default" | "emerald" | "amber" | "indigo";
+  showTrend?: boolean;
 }
 
 function MiniSparkline({
@@ -44,7 +44,7 @@ function MiniSparkline({
   const lastPt = points[points.length - 1];
   const firstPt = points[0];
   const areaD = `${pathD} L ${lastPt.x.toFixed(1)} ${height} L ${firstPt.x.toFixed(1)} ${height} Z`;
-  const strokeColor = isPositive ? "#16a34a" : "#dc2626";
+  const strokeColor = "var(--brass, #3E7CA6)";
   const gradId = `spark-grad-${Math.random().toString(36).slice(2, 8)}`;
 
   return (
@@ -75,8 +75,8 @@ export function MetricCard({
   icon,
   trend,
   sparklineData,
+  showTrend = false,
 }: MetricCardProps) {
-  // Generate consistent pseudo-sparkline data if none provided
   const numVal = typeof value === "number" ? value : parseInt(String(value), 10) || 10;
   const defaultSparkline = sparklineData || [
     Math.max(2, Math.round(numVal * 0.4)),
@@ -91,30 +91,20 @@ export function MetricCard({
   const isPositiveTrend = trend ? trend.isPositive : true;
 
   return (
-    <div className="card-float p-5 relative overflow-hidden group">
-      {/* Subtle ambient corner glow */}
-      <div
-        className="absolute -top-10 -right-10 w-28 h-28 rounded-full blur-2xl pointer-events-none opacity-50 transition-opacity group-hover:opacity-80"
-        style={{
-          background: isPositiveTrend
-            ? "radial-gradient(circle, rgba(22, 163, 74, 0.15) 0%, transparent 70%)"
-            : "radial-gradient(circle, rgba(220, 38, 38, 0.15) 0%, transparent 70%)",
-        }}
-      />
-
-      <div className="flex items-center justify-between mb-3 relative z-10">
+    <div className="card-float p-6 relative overflow-hidden group" style={{ borderRadius: "var(--radius-md)" }}>
+      <div className="flex items-center justify-between mb-4 relative z-10">
         <div
-          className="w-10 h-10 rounded-2xl flex items-center justify-center transition-transform group-hover:scale-105"
+          className="w-10 h-10 rounded-xl flex items-center justify-center transition-transform group-hover:scale-105"
           style={{
-            background: "var(--surface-container)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border)",
+            background: "var(--brass-soft)",
+            color: "var(--brass-bright)",
+            border: "1px solid var(--hairline)",
           }}
         >
           {icon}
         </div>
 
-        {trend ? (
+        {showTrend && trend && (
           <span
             className="text-[11px] font-medium px-2.5 py-1 rounded-full flex items-center gap-1"
             style={{
@@ -127,30 +117,20 @@ export function MetricCard({
             <span>{Math.abs(trend.value)}%</span>
             {trend.label && <span className="opacity-75 text-[10px]">{trend.label}</span>}
           </span>
-        ) : (
-          <span
-            className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-            style={{
-              background: "var(--surface-container)",
-              color: "var(--text-muted)",
-            }}
-          >
-            Live
-          </span>
         )}
       </div>
 
-      <div className="flex items-end justify-between gap-2 relative z-10 mt-2">
+      <div className="flex items-end justify-between gap-3 relative z-10 mt-2">
         <div>
           <p
-            className="text-[11px] font-semibold uppercase tracking-[0.06em] mb-1"
-            style={{ color: "var(--text-muted)" }}
+            className="text-[11.5px] font-semibold uppercase tracking-[0.08em] mb-1.5"
+            style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
           >
             {title}
           </p>
           <p
-            className="text-2xl sm:text-3xl font-semibold tracking-tight"
-            style={{ color: "var(--text-primary)" }}
+            className="text-3xl font-medium tracking-tight"
+            style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
           >
             {value}
           </p>

@@ -39,7 +39,7 @@ export default function AnalyticsPage() {
 
   if (loading) {
     return (
-      <div className="space-y-4 max-w-7xl mx-auto">
+      <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36 }}>
         <SkeletonLoader count={1} height="70px" />
         <SkeletonLoader count={1} height="220px" />
       </div>
@@ -47,39 +47,33 @@ export default function AnalyticsPage() {
   }
 
   return (
-    <div className="space-y-5 max-w-7xl mx-auto">
-      {/* ── Page Header ──────────────────────────────────────── */}
-      <div>
+    <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36 }}>
+      {/* ── Page Header (Clean title without subtitle) ───────────── */}
+      <div className="mb-6">
         <h1
-          className="text-3xl sm:text-4xl font-bold tracking-tight"
-          style={{ color: "var(--text-primary)", letterSpacing: "-0.03em" }}
+          className="text-2xl font-medium"
+          style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
         >
           Workspace Analytics
         </h1>
-        <p className="text-sm mt-1.5" style={{ color: "var(--text-secondary)" }}>
-          Insights into your legal research activity, case types, and bookmarked proceedings.
-        </p>
       </div>
 
-      {/* ── Metric Cards ─────────────────────────────────────── */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5">
+      {/* ── Metric Cards (No percentage / live badges) ───────────── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
           title="Total Bookmarks"
           value={stats?.bookmarks || 0}
           icon={<BookOpen size={18} />}
-          trend={{ value: 12, isPositive: true, label: "vs last mo" }}
         />
         <MetricCard
           title="AI Conversations"
           value={stats?.conversations || 0}
           icon={<Activity size={18} />}
-          trend={{ value: 8, isPositive: true, label: "vs last mo" }}
         />
         <MetricCard
           title="Total Searches"
           value={stats?.searches || 0}
           icon={<TrendingUp size={18} />}
-          trend={{ value: 5, isPositive: true, label: "vs last mo" }}
         />
         <MetricCard
           title="Research Hours (Est.)"
@@ -88,17 +82,20 @@ export default function AnalyticsPage() {
         />
       </div>
 
-      {/* ── Section Divider ──────────────────────────────────── */}
-      <div className="flex items-center gap-2 pt-1">
-        <BarChart3 size={15} style={{ color: "var(--text-muted)" }} />
-        <h2 className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+      {/* ── Section Divider with generous spacing above & below ───── */}
+      <div className="flex items-center gap-2" style={{ marginTop: 48, marginBottom: 24 }}>
+        <BarChart3 size={16} style={{ color: "var(--brass)" }} />
+        <h2
+          className="text-[12px] font-semibold uppercase tracking-widest"
+          style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
+        >
           Activity Breakdown
         </h2>
-        <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+        <div className="flex-1 h-px" style={{ background: "var(--hairline)" }} />
       </div>
 
-      {/* ── Charts Grid ──────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      {/* ── Charts Grid ──────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <AnalyticsChart
           type="pie"
           data={caseTypeData}

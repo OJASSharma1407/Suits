@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.ecourts_client import ecourts_client
+from app.clients.kanoon_client import kanoon_client
 from app.core.config import settings
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_case import CachedCase
@@ -163,8 +164,96 @@ def _build_orders(data: dict[str, Any]) -> list[OrderItem]:
     return orders
 
 
+def _build_case_from_kanoon(doc_data: dict[str, Any], requested_cnr: str) -> dict[str, Any]:
+    """Transform Indian Kanoon get_doc response into structured case dictionary."""
+    tid = str(doc_data.get("tid", requested_cnr))
+    raw_title = doc_data.get("title", "")
+    clean_title = re.sub(r'<[^>]+>', '', str(raw_title)).strip()
+    clean_title_no_date = re.sub(r'\s+on\s+\d{1,2}\s+[A-Za-z]+,\s+\d{4}$', '', clean_title, flags=re.IGNORECASE).strip()
+
+    petitioners = []
+    respondents = []
+    vs_match = re.split(r'\s+(?:vs\.?|versus|v\.)\s+', clean_title_no_date, flags=re.IGNORECASE)
+    if len(vs_match) == 2:
+        petitioners = [vs_match[0].strip()]
+        respondents = [vs_match[1].strip()]
+    elif clean_title:
+        petitioners = [clean_title_no_date]
+
+    publish_date = _format_date_to_iso(_to_str(doc_data.get("publishdate"))) or _format_date_to_iso(datetime.now(timezone.utc).strftime("%Y-%m-%d"))
+    court_name = doc_data.get("docsource") or "Indian Kanoon"
+
+    # Extract citations
+    cites = doc_data.get("cites", []) or []
+    acts_and_sections = []
+    if isinstance(cites, list):
+        for c in cites:
+            if isinstance(c, dict):
+                c_title = c.get("title")
+                if c_title:
+                    acts_and_sections.append(re.sub(r'<[^>]+>', '', str(c_title)).strip())
+            elif isinstance(c, str):
+                acts_and_sections.append(re.sub(r'<[^>]+>', '', c).strip())
+
+    judges = []
+    if doc_data.get("author"):
+        judges.append(str(doc_data.get("author")).strip())
+    if doc_data.get("bench"):
+        bench_str = str(doc_data.get("bench"))
+        for b in re.split(r'[,;]\s*', bench_str):
+            if b.strip() and b.strip() not in judges:
+                judges.append(b.strip())
+
+    return {
+        "cnr": tid,
+        "caseNumber": f"Kanoon Record #{tid}",
+        "filingNumber": f"IK-{tid}",
+        "registrationNumber": f"IK-REG-{tid}",
+        "filingDate": publish_date,
+        "registrationDate": publish_date,
+        "decisionDate": publish_date,
+        "caseStatus": "DISPOSED",
+        "caseStatusLabel": "Disposed / Decided",
+        "caseType": "JUDGMENT",
+        "caseTypeLabel": "Court Judgment / Order",
+        "caseDuration": "Concluded",
+        "courtName": court_name,
+        "courtNumber": "Court Record",
+        "courtCode": "IK01",
+        "petitioners": petitioners or ["Petitioner / Appellant"],
+        "respondents": respondents or ["Respondent"],
+        "judges": judges or [court_name],
+        "hearingHistory": [
+            {
+                "hearingDate": publish_date,
+                "purposeOfListing": "Pronouncement of Judgment / Final Order",
+                "judge": judges[0] if judges else court_name,
+            }
+        ],
+        "interimOrders": [],
+        "judgmentOrders": [
+            {
+                "orderDate": publish_date,
+                "description": f"Court Judgment - {clean_title_no_date}",
+                "filename": tid,
+                "orderUrl": f"https://indiankanoon.org/doc/{tid}/",
+                "orderType": "judgment",
+            }
+        ],
+        "orderCount": 1,
+        "interimOrderCount": 0,
+        "judgmentCount": 1,
+        "hearingCount": 1,
+        "iaCount": 0,
+        "caseCategory": "Legal Judgment",
+        "benchType": "Bench Adjudication",
+        "judicialSection": "Appellate / Original",
+        "actsAndSections": acts_and_sections[:6],
+    }
+
+
 def _get_demo_case_details(cnr: str) -> dict[str, Any]:
-    """Generate comprehensive demonstration case details when external API is unreachable."""
+    """Generate demonstration case details when external API is unreachable."""
     return {
         "cnr": cnr,
         "caseNumber": "WP(C) 1245/2023",
@@ -489,23 +578,36 @@ class CaseService:
             else:
                 logger.info("ignoring_partial_search_cache", cnr=cnr)
 
-        # Tier 3: eCourts Partner API (for standard alphanumeric CNR e.g. DLND020047882015)
+        # Tier 3: Fetch Live from Indian Kanoon API
         raw: dict[str, Any] | None = None
         is_numeric_tid = cnr.strip().lstrip("-").isdigit()
 
-        if not is_numeric_tid:
+        if is_numeric_tid:
             try:
-                logger.info("fetching_case_from_ecourts_api", cnr=cnr)
-                ecourts_resp = await ecourts_client.get_case_details(cnr)
-                if isinstance(ecourts_resp, dict) and ("data" in ecourts_resp or "courtCaseData" in ecourts_resp or "caseStatus" in ecourts_resp):
-                    raw = ecourts_resp
-                    logger.info("ecourts_api_case_found", cnr=cnr)
-            except Exception as ecourts_exc:
-                logger.warning("ecourts_api_fetch_failed", cnr=cnr, error=str(ecourts_exc))
+                logger.info("fetching_case_from_kanoon_api", tid=cnr)
+                doc_data = await kanoon_client.get_doc(cnr)
+                if isinstance(doc_data, dict) and "doc" in doc_data:
+                    raw = _build_case_from_kanoon(doc_data, cnr)
+                    logger.info("kanoon_case_found", tid=cnr)
+            except Exception as kanoon_exc:
+                logger.warning("kanoon_case_fetch_failed", tid=cnr, error=str(kanoon_exc))
+        else:
+            try:
+                logger.info("searching_kanoon_for_cnr", cnr=cnr)
+                search_res = await kanoon_client.search_docs(query=cnr, pagenum=1)
+                docs = search_res.get("docs", [])
+                if docs:
+                    first_tid = str(docs[0].get("tid"))
+                    doc_data = await kanoon_client.get_doc(first_tid)
+                    if isinstance(doc_data, dict) and "doc" in doc_data:
+                        raw = _build_case_from_kanoon(doc_data, cnr)
+                        logger.info("kanoon_case_resolved_from_search", cnr=cnr, tid=first_tid)
+            except Exception as kanoon_search_exc:
+                logger.warning("kanoon_search_for_cnr_failed", cnr=cnr, error=str(kanoon_search_exc))
 
-        # Tier 4: Kanoon fallback removed as per user request.
+        # Fallback if Kanoon returns nothing
         if not raw:
-            logger.warning("case_fetch_failed_no_kanoon_fallback", cnr=cnr)
+            logger.warning("case_fetch_failed_using_demo", cnr=cnr)
             raw = _get_demo_case_details(cnr)
 
         # Store in PostgreSQL cache
