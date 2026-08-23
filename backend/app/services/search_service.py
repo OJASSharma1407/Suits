@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.ecourts_client import ecourts_client
-from app.clients.kanoon_client import kanoon_client
 from app.core.config import settings
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_case import CachedCase
@@ -99,44 +98,6 @@ def _extract_results_list(raw_response: Any) -> list:
     return []
 
 
-# Kanoon doctype identifiers per their documentation
-_COURT_CODE_TO_DOCTYPE: dict[str, str] = {
-    "SCIN": "supremecourt",
-    "DLHC": "delhi",
-    "BMBH": "bombay",
-    "CALHC": "kolkata",
-    "MDHC": "chennai",
-    "ALHC": "allahabad",
-    "APHC": "andhra",
-    "GUHC": "gauhati",
-    "JKHC": "jammu",
-    "KRHC": "kerala",
-    "ORRHC": "orissa",
-    "GUJHC": "gujarat",
-    "HPHC": "himachal_pradesh",
-    "JHHC": "jharkhand",
-    "KARHC": "karnataka",
-    "MPHC": "madhyapradesh",
-    "PHHC": "punjab",
-    "RAJHC": "rajasthan",
-}
-
-
-def _map_court_to_doctype(court_code: str | None) -> str | None:
-    """Map our court_code prefix to a Kanoon doctype filter string."""
-    if not court_code:
-        return None
-    for prefix, doctype in _COURT_CODE_TO_DOCTYPE.items():
-        if court_code.upper().startswith(prefix):
-            return doctype
-    return None
-
-
-def _year_to_fromdate(filing_year: int | None) -> str | None:
-    """Convert a filing year integer to Kanoon fromdate format (DD-MM-YYYY)."""
-    if not filing_year:
-        return None
-    return f"1-1-{filing_year}"
 
 
 def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
@@ -395,29 +356,7 @@ class SearchService:
         params = _build_search_params(request)
         cache_key = f"search:{hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()}"
 
-        # 0. Direct Kanoon tid lookup — if user typed a numeric id (e.g. 29724830)
-        #    short-circuit everything and return a single result pointing to that document
-        query_clean = (request.query or "").strip()
-        if query_clean.isdigit():
-            tid = query_clean
-            logger.info("search_direct_kanoon_tid", tid=tid)
-            try:
-                meta = await kanoon_client.get_doc_meta(tid)
-                title = meta.get("title", f"Document {tid}")
-                import re
-                title = re.sub(r'<[^>]+>', '', str(title))
-                court = meta.get("docsource", "Indian Kanoon")
-                date = meta.get("publishdate")
-                single = SearchResultItem(
-                    cnr=tid,
-                    case_title=title,
-                    court_name=court,
-                    decision_date=date,
-                )
-                return SearchResponse(results=[single], total_hits=1, page=1, page_size=1, total_pages=1, facets={})
-            except Exception as exc:
-                logger.warning("kanoon_direct_tid_failed", tid=tid, error=str(exc))
-                # Fall through to normal search
+
 
         # 1. Check Redis cache
         cached = await cache_service.get(cache_key)
@@ -494,54 +433,8 @@ class SearchService:
                     )
                     await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
                     return response
-        except Exception as ecourts_err:
-            logger.warning("ecourts_search_failed_fallback_to_kanoon", error=str(ecourts_err))
-
-        # 4. Fallback to Indian Kanoon Search
-        logger.info("search_fallback_calling_kanoon_api", query=request.query)
-
-        try:
-            raw_response = await kanoon_client.search_docs(
-                query=request.query or "",
-                pagenum=request.page,
-                doctypes=_map_court_to_doctype(request.court_code),
-                fromdate=_year_to_fromdate(request.filing_year),
-            )
-            raw_docs = raw_response.get("docs", []) if isinstance(raw_response, dict) else []
-            found_val = raw_response.get("found", len(raw_docs)) if isinstance(raw_response, dict) else len(raw_docs)
-            if isinstance(found_val, str):
-                import re
-                nums = re.findall(r'\d+', found_val.replace(',', ''))
-                kanoon_total = int(nums[-1]) if nums else len(raw_docs)
-            else:
-                kanoon_total = int(found_val)
-            raw_results = _extract_results_list(raw_docs)
-
-            for item in raw_results:
-                search_item = _raw_to_search_item(item)
-                if not search_item or not search_item.cnr:
-                    continue
-                results.append(search_item)
-
-            results = _apply_filters(results, request)
-            total_hits = kanoon_total if kanoon_total > len(results) else len(results)
-            paginated_results = results
-
-            response = SearchResponse(
-                results=paginated_results,
-                total_hits=total_hits,
-                page=request.page,
-                page_size=page_size,
-                total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 0,
-                facets={},
-            )
-
-            if results:
-                await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
-            return response
-
         except Exception as exc:
-            logger.error("search_all_providers_failed", error=str(exc))
+            logger.error("search_ecourts_failed", error=str(exc))
             # Return demo/empty response gracefully rather than crashing
             return SearchResponse(
                 results=[],

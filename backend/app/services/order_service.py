@@ -8,7 +8,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.gemini_client import gemini_client
-from app.clients.kanoon_client import kanoon_client
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_order import CachedOrder
 from app.models.cached_ai_analysis import CachedAIAnalysis
@@ -81,45 +80,41 @@ class OrderService:
         # PostgreSQL cache (permanent)
         cached_pg = await self.cache_repo.get_cached_order(cnr, filename)
         if cached_pg and cached_pg.markdown:
+            logger.info("ORDER_MARKDOWN_CACHE_HIT", cnr=cnr, filename=filename, source="postgres", size=len(cached_pg.markdown))
             response = OrderMarkdownResponse(cnr=cnr, filename=filename, markdown=cached_pg.markdown)
             await cache_service.set(redis_key, response.model_dump())
             return response
 
-        # Fetch directly from Kanoon API
-        # Validate: Kanoon tids are purely numeric (e.g. "1823456").
-        # Filenames like "order-1.pdf", "order-SCIN010104062014.pdf" are old eCourts stubs.
+        # Fetch from eCourts API
         markdown_content: str | None = None
-        if not filename or not filename.strip().lstrip("-").isdigit():
-            logger.info(
-                "order_markdown_skipped_invalid_tid",
-                cnr=cnr,
-                filename=filename,
-                reason="Filename is not a valid Kanoon numeric tid",
-            )
-            return OrderMarkdownResponse(
-                cnr=cnr,
-                filename=filename,
-                markdown="*This document is not available. Please search for the case on Indian Kanoon to access real judgments.*",
-            )
+        
+        # 1. Try pre-extracted markdown from partner API
         try:
-            raw = await kanoon_client.get_doc(filename)
-            if isinstance(raw, dict):
-                markdown_content = raw.get("doc", raw.get("title", ""))
-            else:
-                markdown_content = str(raw)
-                
-            # Basic cleanup of Kanoon HTML
-            import re
-            markdown_content = re.sub(r'<div[^>]*>', '\n\n', markdown_content)
-            markdown_content = re.sub(r'<[^>]+>', '', markdown_content)
+            from app.clients.ecourts_client import ecourts_client
+            resp = await ecourts_client.get_order_markdown(cnr, filename)
+            if isinstance(resp, dict):
+                markdown_content = resp.get("markdown") or resp.get("data", {}).get("markdown")
+        except Exception as e:
+            logger.warning("ecourts_markdown_endpoint_failed", error=str(e))
             
-            logger.info("order_markdown_fetched_from_kanoon", cnr=cnr, filename=filename)
-        except Exception:
-            logger.warning("kanoon_doc_fetch_failed", cnr=cnr, filename=filename)
-            markdown_content = (
-                f"*This court order (`{filename}`) could not be retrieved at this time. "
-                "The document may not be available via the Indian Kanoon API.*"
-            )
+        # 2. If no markdown, download PDF and do Gemini OCR
+        if not markdown_content:
+            try:
+                from app.clients.ecourts_client import ecourts_client
+                from app.clients.gemini_client import gemini_client
+                pdf_bytes = await ecourts_client.get_order_download(cnr, filename)
+                
+                if pdf_bytes:
+                    markdown_content = await gemini_client.extract_markdown_from_pdf(pdf_bytes)
+                else:
+                    markdown_content = "*This document is empty or could not be downloaded from eCourts.*"
+                    
+            except Exception as exc:
+                logger.error("ORDER_MARKDOWN_FETCH_FAILED", cnr=cnr, filename=filename, error=str(exc))
+                markdown_content = (
+                    f"*This court order (`{filename}`) could not be retrieved at this time. "
+                    "The document may not be available via the eCourts API.*"
+                )
 
         # No content available — skip caching so a future retry can succeed
         if not markdown_content or markdown_content.startswith("*This court order"):
@@ -175,8 +170,7 @@ class OrderService:
                 }
                 return self._transform_ai_response(cnr, filename, raw)
             else:
-                logger.info("order_ai_calling_gemini", cnr=cnr, filename=filename)
-                # Gemini 2.0 Flash has a 1M token context window — no truncation needed
+                logger.info("ORDER_AI_CALLING_GEMINI", cnr=cnr, filename=filename, text_length=len(order_text), text_preview=order_text[:200])
                 extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.format(order_text=order_text)
                 raw = await gemini_client.generate_json(
                     system_prompt=_ORDER_AI_SYSTEM_PROMPT,
@@ -189,10 +183,18 @@ class OrderService:
                         "extractionConfidence": 0.0,
                     }
                     # Don't cache failures — allow retry on next request
+                    logger.error("ORDER_AI_GEMINI_RETURNED_EMPTY", cnr=cnr, filename=filename)
                     response = self._transform_ai_response(cnr, filename, raw)
                     return response
                 else:
-                    logger.info("order_ai_gemini_success", cnr=cnr, filename=filename)
+                    logger.info(
+                        "ORDER_AI_GEMINI_SUCCESS",
+                        cnr=cnr,
+                        filename=filename,
+                        keys=list(raw.keys()),
+                        summary_preview=(raw.get("executiveSummary") or "")[:200],
+                        confidence=raw.get("extractionConfidence"),
+                    )
 
         # Store permanently (only for successful extractions)
         await self.cache_repo.save_cached_ai(CachedAIAnalysis(

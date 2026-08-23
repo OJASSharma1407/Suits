@@ -17,8 +17,8 @@ from app.core.exceptions import ECourtsAPIError, RateLimitError
 
 logger = structlog.get_logger()
 
-# Fast retry configuration: Max 2 attempts, fast 1s backoff, total time < 4s
-RETRY_DELAYS = [1]
+# Fast fail: eCourts either responds instantly or is down. No retries.
+RETRY_DELAYS: list[int] = []
 RETRYABLE_STATUS_CODES = {429, 500}
 NON_RETRYABLE_STATUS_CODES = {400, 401, 404}
 
@@ -40,8 +40,8 @@ class ECourtsClient:
                     "Content-Type": "application/json",
                     "Accept": "application/json",
                 },
-                # Fast timeout: 3 seconds maximum per request
-                timeout=httpx.Timeout(3.0),
+                # Fast timeout: 2 seconds maximum per request
+                timeout=httpx.Timeout(2.0),
             )
         return self._client
 

@@ -45,20 +45,6 @@ async def lifespan(app: FastAPI):
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
-    # --- DIAGNOSTIC TEST FOR KANOON PDF ---
-    try:
-        import httpx
-        logger.info("kanoon_diagnostic_starting")
-        async with httpx.AsyncClient(follow_redirects=True) as c:
-            r = await c.post("https://indiankanoon.org/doc/77326406/?type=pdf", data={}, headers={"User-Agent": "Mozilla/5.0"})
-            logger.info("kanoon_diagnostic_post", status=r.status_code, content=str(r.content[:100]))
-            
-            r2 = await c.get("https://indiankanoon.org/doc/77326406/?type=pdf", headers={"User-Agent": "Mozilla/5.0"})
-            logger.info("kanoon_diagnostic_get", status=r2.status_code, content=str(r2.content[:100]))
-    except Exception as e:
-        logger.error("kanoon_diagnostic_error", error=str(e))
-    # --------------------------------------
-
     yield
 
     # Cleanup

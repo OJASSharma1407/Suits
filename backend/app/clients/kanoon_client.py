@@ -5,8 +5,8 @@ Authentication: Token-based (Authorization: Token <token>)
 All requests are POST. JSON returned via Accept: application/json header.
 """
 
+import asyncio
 import json
-import time
 from typing import Any
 
 import httpx
@@ -18,7 +18,7 @@ from app.core.exceptions import ECourtsAPIError
 logger = structlog.get_logger()
 
 # Retry config
-RETRY_DELAYS = [1, 2]
+RETRY_DELAYS: list[int] = []
 RETRYABLE_STATUS_CODES = {429, 500, 502, 503, 504}
 NON_RETRYABLE_STATUS_CODES = {400, 401, 403, 404}
 
@@ -53,7 +53,7 @@ class KanoonClient:
             self._client = httpx.AsyncClient(
                 base_url=self.BASE_URL,
                 headers=headers,
-                timeout=httpx.Timeout(15.0),
+                timeout=httpx.Timeout(8.0),
             )
         return self._client
 
@@ -67,31 +67,56 @@ class KanoonClient:
         Per docs: All API requests use POST method.
         Parameters are sent in the URL (query string).
         """
+        import time as _time
+        _start = _time.monotonic()
         client = await self._get_client()
         attempts = [0] + RETRY_DELAYS
 
         for attempt, delay in enumerate(attempts):
             if delay:
-                time.sleep(delay)
+                await asyncio.sleep(delay)
             try:
                 # Kanoon requires POST, but parameters go in the URL query string
                 response = await client.post(endpoint, params=params or {})
+                elapsed_ms = round((_time.monotonic() - _start) * 1000)
 
                 if response.status_code == 200:
                     content_type = response.headers.get("content-type", "")
                     if "json" in content_type or response.text.strip().startswith("{"):
                         try:
-                            return response.json()
+                            data = response.json()
+                            # Log fetched data preview
+                            preview = str(data)[:300]
+                            print(f"\\n\\033[92m=== KANOON API FETCH SUCCESS ===\\033[0m")
+                            print(f"Endpoint: {endpoint}")
+                            print(f"Elapsed: {elapsed_ms}ms")
+                            print(f"Data Preview: {preview}\\n")
+                            logger.info(
+                                "KANOON_DATA_FETCHED",
+                                endpoint=endpoint,
+                                status=200,
+                                elapsed_ms=elapsed_ms,
+                                data_keys=list(data.keys()) if isinstance(data, dict) else "non-dict",
+                                data_preview=preview,
+                            )
+                            return data
                         except json.JSONDecodeError:
+                            print(f"\\n\\033[91m=== KANOON API JSON ERROR ===\\033[0m\\n{response.text[:200]}\\n")
+                            logger.warning("KANOON_DATA_JSON_DECODE_ERROR", endpoint=endpoint, text=response.text[:200])
                             return {"raw": response.text}
-                    # Return raw text if not JSON (shouldn't happen with Accept: application/json)
+                    # Return raw text if not JSON
+                    print(f"\\n\\033[93m=== KANOON API RETURNED HTML/TEXT ===\\033[0m")
+                    print(f"Endpoint: {endpoint} | Size: {len(response.text)} bytes")
+                    print(f"Preview: {response.text[:300]}\\n")
+                    logger.info("KANOON_DATA_RAW_TEXT", endpoint=endpoint, elapsed_ms=elapsed_ms, size=len(response.text))
                     return {"raw": response.text}
 
                 if response.status_code in NON_RETRYABLE_STATUS_CODES:
                     logger.error(
-                        "kanoon_api_client_error",
+                        "KANOON_API_ERROR",
                         status=response.status_code,
                         url=endpoint,
+                        elapsed_ms=elapsed_ms,
                         text=response.text[:500],
                     )
                     raise ECourtsAPIError(
@@ -100,17 +125,19 @@ class KanoonClient:
 
                 if response.status_code in RETRYABLE_STATUS_CODES:
                     logger.warning(
-                        "kanoon_api_server_error",
+                        "KANOON_API_RETRYING",
                         status=response.status_code,
                         url=endpoint,
                         attempt=attempt,
+                        elapsed_ms=elapsed_ms,
                     )
                     continue
 
                 response.raise_for_status()
 
             except httpx.RequestError as exc:
-                logger.warning("kanoon_api_connection_error", error=str(exc), url=endpoint)
+                elapsed_ms = round((_time.monotonic() - _start) * 1000)
+                logger.warning("KANOON_CONNECTION_ERROR", error=str(exc), url=endpoint, elapsed_ms=elapsed_ms)
                 if attempt < len(attempts) - 1:
                     continue
                 raise ECourtsAPIError(f"Connection error reaching Indian Kanoon API: {exc}") from exc

@@ -8,10 +8,7 @@ from typing import Any
 from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
-from app.clients.gemini_client import gemini_client
-from app.clients.kanoon_client import kanoon_client
 from app.clients.ecourts_client import ecourts_client
-from app.prompts.kanoon_extractor import KANOON_EXTRACTION_SYSTEM_PROMPT, KANOON_EXTRACTION_USER_PROMPT
 from app.core.config import settings
 from app.core.exceptions import ECourtsAPIError
 from app.models.cached_case import CachedCase
@@ -506,58 +503,10 @@ class CaseService:
             except Exception as ecourts_exc:
                 logger.warning("ecourts_api_fetch_failed", cnr=cnr, error=str(ecourts_exc))
 
-        # Tier 4: Indian Kanoon API (for numeric tid or eCourts fallback)
+        # Tier 4: Kanoon fallback removed as per user request.
         if not raw:
-            try:
-                logger.info("fetching_case_from_kanoon_api", tid=cnr)
-                doc_raw = await kanoon_client.get_doc(cnr)
-                doc_text = ""
-                if isinstance(doc_raw, dict):
-                    doc_text = doc_raw.get("doc", doc_raw.get("title", str(doc_raw)))
-                else:
-                    doc_text = str(doc_raw)
-                    
-                import re
-                doc_text = re.sub(r'<[^>]+>', ' ', doc_text)
-                logger.info("case_details_extracting_kanoon_metadata", tid=cnr)
-                extracted_json = await gemini_client.generate_json(
-                    system_prompt=KANOON_EXTRACTION_SYSTEM_PROMPT,
-                    user_prompt=KANOON_EXTRACTION_USER_PROMPT.format(doc_text=doc_text)
-                )
-                
-                interims = extracted_json.get("interimOrders", [])
-                hearings = extracted_json.get("hearingHistory", [])
-
-                raw = {
-                    "cnr": cnr,
-                    "caseNumber": extracted_json.get("caseNumber"),
-                    "filingDate": extracted_json.get("filingDate"),
-                    "decisionDate": extracted_json.get("decisionDate"),
-                    "caseStatus": extracted_json.get("caseStatus", "DISPOSED"),
-                    "caseType": extracted_json.get("caseType"),
-                    "courtName": extracted_json.get("courtName"),
-                    "petitioners": extracted_json.get("petitioners", []),
-                    "respondents": extracted_json.get("respondents", []),
-                    "petitionerAdvocates": extracted_json.get("petitionerAdvocates", []),
-                    "respondentAdvocates": extracted_json.get("respondentAdvocates", []),
-                    "judges": extracted_json.get("judges", []),
-                    "actsAndSections": extracted_json.get("actsAndSections", []),
-                    "judgmentCount": 1,
-                    "orderCount": 1 + len(interims),
-                    "hearingCount": len(hearings),
-                    "hearingHistory": hearings,
-                    "interimOrders": interims,
-                    "judgments": [
-                        {
-                            "orderDate": extracted_json.get("decisionDate"),
-                            "description": extracted_json.get("summary", "Judgment Delivered"),
-                            "filename": str(cnr)
-                        }
-                    ]
-                }
-            except Exception as kanoon_exc:
-                logger.warning("kanoon_case_fetch_failed", cnr=cnr, error=str(kanoon_exc))
-                raw = _get_demo_case_details(cnr)
+            logger.warning("case_fetch_failed_no_kanoon_fallback", cnr=cnr)
+            raw = _get_demo_case_details(cnr)
 
         # Store in PostgreSQL cache
         now = datetime.now(timezone.utc)

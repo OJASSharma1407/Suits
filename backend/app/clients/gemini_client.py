@@ -96,10 +96,14 @@ class GeminiClient:
                     ),
                 )
                 if response and response.text:
+                    print(f"\\n\\033[92m=== GEMINI GENERATE SUCCESS ===\\033[0m")
+                    print(f"Model: {model_name}")
+                    print(f"Preview: {response.text[:200]}\\n")
                     logger.info("gemini_success", model=model_name)
                     return response.text
             except Exception as exc:
                 last_error = str(exc)
+                print(f"\\n\\033[91m=== GEMINI GENERATE ERROR ===\\033[0m\\nModel: {model_name}\\nError: {last_error}\\n")
                 logger.warning("gemini_model_try_failed", model=model_name, error=last_error)
                 continue
 
@@ -135,10 +139,14 @@ class GeminiClient:
                     ),
                 )
                 if response and response.text:
+                    print(f"\\n\\033[92m=== GEMINI JSON SUCCESS ===\\033[0m")
+                    print(f"Model: {model_name}")
+                    print(f"Preview: {response.text[:200]}\\n")
                     logger.info("gemini_json_success", model=model_name)
                     return json.loads(response.text)
             except Exception as exc:
                 last_error = str(exc)
+                print(f"\\n\\033[91m=== GEMINI JSON ERROR ===\\033[0m\\nModel: {model_name}\\nError: {last_error}\\n")
                 logger.warning("gemini_json_model_failed", model=model_name, error=last_error)
                 continue
 
@@ -257,6 +265,9 @@ class GeminiClient:
         temperature: float = 0.3,
     ) -> str:
         """Generate a response with full conversation context."""
+        if not self._ensure_configured():
+            return "Gemini API key is not configured."
+
         context_parts = [f"## Case Information\n{case_context}"]
 
         if order_context:
@@ -284,6 +295,67 @@ class GeminiClient:
 
         full_prompt = "\n\n".join(context_parts)
         return await self.generate(system_prompt, full_prompt, temperature=temperature)
+
+    async def generate_with_context_stream(
+        self,
+        system_prompt: str,
+        conversation_history: list[dict[str, str]],
+        user_message: str,
+        case_context: str,
+        order_context: str | None = None,
+        temperature: float = 0.3,
+    ):
+        """Generate a response with full conversation context (Streaming)."""
+        if not self._ensure_configured():
+            yield "Gemini API key is not configured."
+            return
+
+        context_parts = [f"## Case Information\n{case_context}"]
+        if order_context:
+            context_parts.append(f"## Relevant Order\n{order_context}")
+
+        if conversation_history:
+            history_text = "\n".join(
+                f"{'User' if m['role'] == 'user' else 'Assistant'}: {m['message']}"
+                for m in conversation_history[-10:]
+            )
+            context_parts.append(f"## Conversation History\n{history_text}")
+
+        context_parts.append(f"## Current Question\n{user_message}")
+        context_parts.append(
+            "## Response Instructions\n"
+            "- Provide a comprehensive, detailed, and thorough legal analysis\n"
+            "- Structure your response with clear Markdown headings (##, ###), bullet lists\n"
+            "- Cover: 1. Executive Summary, 2. Procedural & Case History, 3. Legal Arguments, 4. Bench Directions\n"
+            "- Cite specific dates, judges, acts, and party names\n"
+            "- Keep the tone professional, objective, and authoritative"
+        )
+
+        full_prompt = "\n\n".join(context_parts)
+
+        for model_name in self._model_candidates():
+            try:
+                # We combine system prompt and user prompt in contents for simplicity
+                # Gemini system prompt is usually passed in GenerateContentConfig if supported
+                combined_prompt = f"SYSTEM INSTRUCTIONS:\n{system_prompt}\n\nUSER REQUEST:\n{full_prompt}"
+                
+                response_stream = await self.client.aio.models.generate_content_stream( # type: ignore
+                    model=model_name,
+                    contents=combined_prompt,
+                    config=types.GenerateContentConfig(
+                        temperature=temperature,
+                        max_output_tokens=4096,
+                    ),
+                )
+                async for chunk in response_stream:
+                    if chunk.text:
+                        yield chunk.text
+                return
+            except Exception as exc:
+                logger.warning("gemini_stream_model_failed", model=model_name, error=str(exc))
+                continue
+
+        yield "The Gemini API failed or rate limit was reached. Please check the backend logs."
 
 
 # Singleton instance

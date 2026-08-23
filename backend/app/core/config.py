@@ -25,7 +25,7 @@ class Settings(BaseSettings):
 
     # eCourts Partner API
     ecourts_api_key: str = Field(default="")
-    ecourts_base_url: str = Field(default="https://api.ecourts.gov.in/partner")
+    ecourts_base_url: str = Field(default="https://webapi.ecourtsindia.com")
 
     # Indian Kanoon API
     kanoon_api_token: str = Field(default="")

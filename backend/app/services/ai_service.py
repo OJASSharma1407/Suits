@@ -11,7 +11,7 @@ from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.clients.openrouter_client import openrouter_client
+from app.clients.gemini_client import gemini_client
 from app.models.message import Message, MessageRole
 from app.repositories.conversation_repository import ConversationRepository
 from app.repositories.cache_repository import CacheRepository
@@ -188,7 +188,7 @@ class AIService:
 
             # Stream tokens and accumulate the full response
             full_response: list[str] = []
-            async for token in openrouter_client.generate_with_context_stream(
+            async for token in gemini_client.generate_with_context_stream(
                 system_prompt=MASTER_SYSTEM_PROMPT,
                 conversation_history=history,
                 user_message=user_message,
@@ -210,7 +210,7 @@ class AIService:
             await self.conversation_repo.add_message(assistant_msg)
 
             # Generate suggested questions (non-streaming, small call)
-            suggested = await openrouter_client.generate_suggested_questions(
+            suggested = await gemini_client.generate_suggested_questions(
                 case_context=case_context or "",
                 last_ai_response=ai_response,
                 n=4,

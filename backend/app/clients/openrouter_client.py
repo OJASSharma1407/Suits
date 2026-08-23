@@ -116,9 +116,13 @@ class OpenRouterClient:
                 extra_body={"reasoning": {"enabled": True}},
             )
             if response and response.choices and response.choices[0].message.content:
+                print(f"\\n\\033[92m=== OPENROUTER GENERATE SUCCESS ===\\033[0m")
+                print(f"Model: {MODEL}")
+                print(f"Preview: {response.choices[0].message.content[:200]}\\n")
                 logger.info("openrouter_generate_success", model=MODEL)
                 return response.choices[0].message.content
         except Exception as exc:
+            print(f"\\n\\033[91m=== OPENROUTER GENERATE ERROR ===\\033[0m\\nModel: {MODEL}\\nError: {exc}\\n")
             logger.error("openrouter_generate_failed", model=MODEL, error=str(exc))
 
         return self._get_fallback_analysis()
@@ -153,9 +157,13 @@ class OpenRouterClient:
                 extra_body={"reasoning": {"enabled": True}},
             )
             if response and response.choices and response.choices[0].message.content:
+                print(f"\\n\\033[92m=== OPENROUTER JSON SUCCESS ===\\033[0m")
+                print(f"Model: {MODEL}")
+                print(f"Preview: {response.choices[0].message.content[:200]}\\n")
                 logger.info("openrouter_json_success", model=MODEL)
                 return json.loads(response.choices[0].message.content)
         except Exception as exc:
+            print(f"\\n\\033[91m=== OPENROUTER JSON ERROR ===\\033[0m\\nModel: {MODEL}\\nError: {exc}\\n")
             logger.error("openrouter_json_failed", model=MODEL, error=str(exc))
 
         return {}
@@ -177,6 +185,11 @@ class OpenRouterClient:
         if not self._ensure_configured():
             logger.warning("openrouter_unconfigured_context_fallback")
             return self._get_fallback_analysis()
+
+        if case_context and len(case_context) > 100000:
+            case_context = case_context[:50000] + "\n...[TRUNCATED]...\n" + case_context[-50000:]
+        if order_context and len(order_context) > 150000:
+            order_context = order_context[:100000] + "\n...[TRUNCATED]...\n" + order_context[-50000:]
 
         # Build the system-level context block
         context_parts = [f"## Case Information\n{case_context}"]
@@ -225,9 +238,13 @@ class OpenRouterClient:
                 extra_body={"reasoning": {"enabled": True}},
             )
             if response and response.choices and response.choices[0].message.content:
+                print(f"\\n\\033[92m=== OPENROUTER CONTEXT SUCCESS ===\\033[0m")
+                print(f"Model: {MODEL}")
+                print(f"Preview: {response.choices[0].message.content[:200]}\\n")
                 logger.info("openrouter_context_success", model=MODEL)
                 return response.choices[0].message.content
         except Exception as exc:
+            print(f"\\n\\033[91m=== OPENROUTER CONTEXT ERROR ===\\033[0m\\nModel: {MODEL}\\nError: {exc}\\n")
             logger.error("openrouter_context_failed", model=MODEL, error=str(exc))
 
         return self._get_fallback_analysis()
@@ -320,6 +337,11 @@ class OpenRouterClient:
             yield self._get_fallback_analysis()
             return
 
+        if case_context and len(case_context) > 100000:
+            case_context = case_context[:50000] + "\n...[TRUNCATED]...\n" + case_context[-50000:]
+        if order_context and len(order_context) > 150000:
+            order_context = order_context[:100000] + "\n...[TRUNCATED]...\n" + order_context[-50000:]
+
         # Build context block (identical logic to generate_with_context)
         context_parts = [f"## Case Information\n{case_context}"]
         if order_context:
@@ -367,7 +389,9 @@ class OpenRouterClient:
                 if delta and delta.content:
                     yield delta.content
             logger.info("openrouter_stream_complete", model=MODEL)
+            print(f"\\n\\033[92m=== OPENROUTER STREAM COMPLETE ===\\033[0m\\nModel: {MODEL}\\n")
         except Exception as exc:
+            print(f"\\n\\033[91m=== OPENROUTER STREAM ERROR ===\\033[0m\\nModel: {MODEL}\\nError: {exc}\\n")
             logger.error("openrouter_stream_failed", model=MODEL, error=str(exc))
             yield self._get_fallback_analysis()
 
