@@ -92,6 +92,27 @@ class AIService:
         )
         await self.conversation_repo.add_message(user_msg)
 
+        # RAG Precedent Search via Indian Kanoon API
+        sources = [f"Case Record: {cnr}"]
+        try:
+            from app.clients.kanoon_client import kanoon_client
+            kanoon_results = await kanoon_client.search_docs(query=user_message.strip(), pagenum=1)
+            docs = kanoon_results.get("docs", []) if isinstance(kanoon_results, dict) else []
+            if docs:
+                precedent_items = []
+                for d in docs[:3]:
+                    t_id = d.get("tid")
+                    t_title = d.get("title", "")
+                    import re
+                    t_title = re.sub(r'<[^>]+>', '', str(t_title))
+                    t_court = d.get("docsource", "Indian Kanoon")
+                    precedent_items.append(f"- **{t_title}** ({t_court}) [Kanoon TID: {t_id}]")
+                    sources.append(f"Indian Kanoon: {t_title} (ID: {t_id})")
+                if precedent_items:
+                    case_context = (case_context or "") + "\n\n### Relevant Indian Kanoon Legal Precedents & Citations:\n" + "\n".join(precedent_items)
+        except Exception:
+            pass
+
         ai_response = await openrouter_client.generate_with_context(
             system_prompt=MASTER_SYSTEM_PROMPT,
             conversation_history=history,
@@ -116,7 +137,7 @@ class AIService:
         return ChatResponse(
             answer=ai_response,
             suggested_questions=suggested,
-            sources=[f"Indian Kanoon Document: {cnr}"],
+            sources=sources,
             conversation_id=conversation_id,
         )
 
@@ -145,6 +166,25 @@ class AIService:
                 message=user_message,
             )
             await self.conversation_repo.add_message(user_msg)
+
+            # RAG Precedent Search via Indian Kanoon API
+            try:
+                from app.clients.kanoon_client import kanoon_client
+                kanoon_results = await kanoon_client.search_docs(query=user_message.strip(), pagenum=1)
+                docs = kanoon_results.get("docs", []) if isinstance(kanoon_results, dict) else []
+                if docs:
+                    precedent_items = []
+                    for d in docs[:3]:
+                        t_id = d.get("tid")
+                        t_title = d.get("title", "")
+                        import re
+                        t_title = re.sub(r'<[^>]+>', '', str(t_title))
+                        t_court = d.get("docsource", "Indian Kanoon")
+                        precedent_items.append(f"- **{t_title}** ({t_court}) [Kanoon TID: {t_id}]")
+                    if precedent_items:
+                        case_context = (case_context or "") + "\n\n### Relevant Indian Kanoon Legal Precedents & Citations:\n" + "\n".join(precedent_items)
+            except Exception:
+                pass
 
             # Stream tokens and accumulate the full response
             full_response: list[str] = []

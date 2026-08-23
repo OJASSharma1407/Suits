@@ -49,6 +49,16 @@ export interface TimelineEvent {
   metadata: Record<string, unknown>;
 }
 
+export interface BusinessHistoryItem {
+  date: string | null;
+  court: string | null;
+  petitioner: string | null;
+  respondent: string | null;
+  proceedings: string | null;
+  next_purpose: string | null;
+  next_hearing_date: string | null;
+}
+
 export interface CaseDetails {
   cnr: string;
   case_title: string;
@@ -70,12 +80,15 @@ export interface CaseDetails {
   parties: PartyInfo;
   judges: string[];
   hearings: HearingItem[];
+  business_history?: BusinessHistoryItem[];
   orders: OrderItem[];
   statistics: CaseStatistics;
   timeline: TimelineEvent[];
   case_category: string | null;
   bench_type: string | null;
   judicial_section: string | null;
+  disposal_type?: string | null;
+  fir_details?: { caseNumber?: string; policeStation?: string; year?: string } | null;
   related_cases: string[];
   acts_and_sections: string[];
   fetched_at: string | null;

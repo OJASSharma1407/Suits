@@ -464,18 +464,49 @@ class SearchService:
                 await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
                 return response
 
-        # 3. Not in Local Database -> Perform Kanoon API Call
-        logger.info("search_local_db_miss_calling_kanoon_api", query=request.query)
+        # 3. Not in Local Database -> Call eCourts Partner API as Primary Search Provider
+        logger.info("searching_via_ecourts_partner_api", query=request.query, params=params)
+        results: list[SearchResultItem] = []
+        total_hits = 0
+        page_size = request.page_size or 20
 
         try:
-            # Indian Kanoon uses formInput with operators and filter suffixes
+            ecourts_raw = await ecourts_client.search_cases(params)
+            raw_results = _extract_results_list(ecourts_raw)
+            if raw_results:
+                logger.info("ecourts_search_results_found", count=len(raw_results))
+                for item in raw_results:
+                    search_item = _raw_to_search_item(item)
+                    if search_item and search_item.cnr:
+                        results.append(search_item)
+                
+                results = _apply_filters(results, request)
+                total_hits = ecourts_raw.get("totalHits", ecourts_raw.get("total", len(results))) if isinstance(ecourts_raw, dict) else len(results)
+                
+                if results:
+                    response = SearchResponse(
+                        results=results,
+                        total_hits=total_hits,
+                        page=request.page,
+                        page_size=page_size,
+                        total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1,
+                        facets=ecourts_raw.get("facets", {}) if isinstance(ecourts_raw, dict) else {},
+                    )
+                    await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
+                    return response
+        except Exception as ecourts_err:
+            logger.warning("ecourts_search_failed_fallback_to_kanoon", error=str(ecourts_err))
+
+        # 4. Fallback to Indian Kanoon Search
+        logger.info("search_fallback_calling_kanoon_api", query=request.query)
+
+        try:
             raw_response = await kanoon_client.search_docs(
                 query=request.query or "",
-                pagenum=request.page,  # client converts 1-indexed to 0-indexed
+                pagenum=request.page,
                 doctypes=_map_court_to_doctype(request.court_code),
                 fromdate=_year_to_fromdate(request.filing_year),
             )
-            # Per docs: search results are in response["docs"], total in response["found"]
             raw_docs = raw_response.get("docs", []) if isinstance(raw_response, dict) else []
             found_val = raw_response.get("found", len(raw_docs)) if isinstance(raw_response, dict) else len(raw_docs)
             if isinstance(found_val, str):
@@ -485,26 +516,15 @@ class SearchService:
             else:
                 kanoon_total = int(found_val)
             raw_results = _extract_results_list(raw_docs)
-            results = []
 
-            now = datetime.now(timezone.utc)
             for item in raw_results:
                 search_item = _raw_to_search_item(item)
                 if not search_item or not search_item.cnr:
                     continue
-
                 results.append(search_item)
 
-                # Removed eager caching of search results to CachedCase.
-                # Caching partial search results breaks CaseService which expects full extracted details.
-
-            # Removed eCourts CNR fallback — Kanoon uses tid-based lookups
-
             results = _apply_filters(results, request)
-            # Use Kanoon's authoritative `found` count, not just the local slice count
             total_hits = kanoon_total if kanoon_total > len(results) else len(results)
-            page_size = request.page_size or 20
-            # Kanoon already returns the right page, no client-side slicing needed
             paginated_results = results
 
             response = SearchResponse(
@@ -520,10 +540,17 @@ class SearchService:
                 await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
             return response
 
-        except ECourtsAPIError as exc:
-            logger.error("kanoon_search_failed", error=str(exc))
-            from fastapi import HTTPException
-            raise HTTPException(status_code=502, detail="Search failed: Indian Kanoon API error (check your API token)") from exc
+        except Exception as exc:
+            logger.error("search_all_providers_failed", error=str(exc))
+            # Return demo/empty response gracefully rather than crashing
+            return SearchResponse(
+                results=[],
+                total_hits=0,
+                page=request.page,
+                page_size=page_size,
+                total_pages=0,
+                facets={},
+            )
 
     async def get_capabilities(self) -> SearchCapabilitiesResponse:
         """Get search capabilities with 24-hour cache."""

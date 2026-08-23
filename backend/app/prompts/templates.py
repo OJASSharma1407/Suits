@@ -8,50 +8,85 @@ from typing import Any
 
 
 def build_case_context(case_data: dict[str, Any]) -> str:
-    """Build case context string for AI prompts from case details data."""
+    """Build comprehensive case context string for AI prompts from case details data."""
+    # Unwrap nested courtCaseData if present
+    cdata = case_data.get("courtCaseData", case_data) if isinstance(case_data, dict) else {}
+    if not isinstance(cdata, dict):
+        cdata = {}
+
     parts = []
 
-    cnr = case_data.get("cnr", "Unknown")
+    cnr = cdata.get("cnr") or case_data.get("cnr", "Unknown")
     parts.append(f"**CNR:** {cnr}")
 
-    pets = case_data.get("petitioners", [])
-    resps = case_data.get("respondents", [])
+    case_num = cdata.get("caseNumber") or case_data.get("caseNumber")
+    if case_num:
+        parts.append(f"**Case Number:** {case_num}")
+
+    pets = cdata.get("petitioners") or case_data.get("petitioners", [])
+    resps = cdata.get("respondents") or case_data.get("respondents", [])
     if pets or resps:
         title = f"{pets[0] if pets else 'Unknown'} vs {resps[0] if resps else 'Unknown'}"
         parts.append(f"**Case Title:** {title}")
 
-    status = case_data.get("caseStatus", case_data.get("caseStatusLabel"))
+    status = cdata.get("caseStatus") or case_data.get("caseStatus", case_data.get("caseStatusLabel"))
     if status:
         parts.append(f"**Status:** {status}")
 
-    case_type = case_data.get("caseType", case_data.get("caseTypeLabel"))
+    disposal = cdata.get("disposalType") or cdata.get("disposalTypeRaw") or case_data.get("disposal_type")
+    if disposal:
+        parts.append(f"**Disposal Nature:** {disposal}")
+
+    case_type = cdata.get("caseType") or cdata.get("caseTypeLabel") or case_data.get("caseType")
     if case_type:
         parts.append(f"**Case Type:** {case_type}")
 
-    court = case_data.get("courtName")
+    court = cdata.get("courtName") or case_data.get("courtName")
     if court:
         parts.append(f"**Court:** {court}")
 
-    filing = case_data.get("filingDate")
+    filing = cdata.get("filingDate") or case_data.get("filingDate")
     if filing:
         parts.append(f"**Filing Date:** {filing}")
 
-    next_hearing = case_data.get("nextHearingDate")
+    decision = cdata.get("decisionDate") or case_data.get("decisionDate")
+    if decision:
+        parts.append(f"**Decision Date:** {decision}")
+
+    next_hearing = cdata.get("nextHearingDate") or case_data.get("nextHearingDate")
     if next_hearing:
         parts.append(f"**Next Hearing:** {next_hearing}")
 
-    judges = case_data.get("judges", [])
+    judges = cdata.get("judges") or case_data.get("judges", [])
     if judges:
-        parts.append(f"**Judges:** {', '.join(judges)}")
+        parts.append(f"**Judges:** {', '.join(str(j) for j in judges if j)}")
 
     if pets:
-        parts.append(f"**Petitioners:** {', '.join(pets)}")
+        parts.append(f"**Petitioners:** {', '.join(str(p) for p in pets if p)}")
     if resps:
-        parts.append(f"**Respondents:** {', '.join(resps)}")
+        parts.append(f"**Respondents:** {', '.join(str(r) for r in resps if r)}")
 
-    acts = case_data.get("actsAndSections", [])
+    fir = cdata.get("firDetails") or case_data.get("fir_details")
+    if isinstance(fir, dict) and fir:
+        parts.append(f"**FIR Details:** FIR No. {fir.get('caseNumber', '')}, PS: {fir.get('policeStation', '')}, Year: {fir.get('year', '')}")
+
+    acts = cdata.get("actsAndSections") or case_data.get("actsAndSections", [])
     if acts:
-        parts.append(f"**Acts & Sections:** {', '.join(acts)}")
+        parts.append(f"**Acts & Sections:** {', '.join(str(a) for a in acts if a)}")
+
+    # Add brief summary of recent proceedings/hearings if available
+    hearings = cdata.get("historyOfCaseHearings") or cdata.get("hearingHistory") or case_data.get("hearings", [])
+    if isinstance(hearings, list) and hearings:
+        recent = hearings[-4:]  # Last 4 hearings
+        h_lines = []
+        for h in recent:
+            if isinstance(h, dict):
+                h_date = h.get("hearingDate") or h.get("businessOnDate") or h.get("date")
+                h_purp = h.get("purposeOfListing") or h.get("purpose") or "Listed"
+                h_judge = h.get("judge") or ""
+                h_lines.append(f"  - {h_date}: {h_purp}{f' (Before {h_judge})' if h_judge else ''}")
+        if h_lines:
+            parts.append("**Recent Hearing Stages:**\n" + "\n".join(h_lines))
 
     return "\n".join(parts)
 

@@ -10,6 +10,7 @@ import structlog
 
 from app.clients.gemini_client import gemini_client
 from app.clients.kanoon_client import kanoon_client
+from app.clients.ecourts_client import ecourts_client
 from app.prompts.kanoon_extractor import KANOON_EXTRACTION_SYSTEM_PROMPT, KANOON_EXTRACTION_USER_PROMPT
 from app.core.config import settings
 from app.core.exceptions import ECourtsAPIError
@@ -217,10 +218,15 @@ def _get_demo_case_details(cnr: str) -> dict[str, Any]:
 
 
 def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetailsResponse:
-    """Transform raw eCourts API response into the frontend DTO."""
+    """Transform raw eCourts or Kanoon API response into the frontend DTO."""
+    enum_lookup: dict[str, Any] = {}
     if isinstance(raw, dict):
         if "data" in raw and isinstance(raw["data"], dict):
+            enum_lookup = raw["data"].get("descriptions", {}).get("enumLookup", {})
             raw = {**raw["data"], **raw}
+        elif "descriptions" in raw and isinstance(raw["descriptions"], dict):
+            enum_lookup = raw["descriptions"].get("enumLookup", {})
+
         if "courtCaseData" in raw and isinstance(raw["courtCaseData"], dict):
             cdata = raw["courtCaseData"]
             raw = {**cdata, **raw}
@@ -228,32 +234,48 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
     cnr_val = _to_str(raw.get("cnr", raw.get("id"))) or ""
     orders_list = _build_orders(raw)
 
+    # Extract hearings
     hearings_list = [
         HearingItem(
             hearing_date=_format_date_to_iso(_to_str(h.get("hearingDate", h.get("date", h.get("listingDate"))))),
-            business_date=_format_date_to_iso(_to_str(h.get("businessDate"))),
+            business_date=_format_date_to_iso(_to_str(h.get("businessDate", h.get("businessOnDate")))),
             judge=_to_str(h.get("judge")),
             purpose=_to_str(h.get("purposeOfListing", h.get("purpose"))),
         )
         for h in _get_hearings_list(raw)
     ]
 
+    # Extract businessOnDateEntries
+    business_history_list: list[BusinessHistoryItem] = []
+    for b in raw.get("businessOnDateEntries", []):
+        if isinstance(b, dict):
+            business_history_list.append(BusinessHistoryItem(
+                date=_format_date_to_iso(_to_str(b.get("date", b.get("businessOnDate")))),
+                court=_to_str(b.get("courtOf", b.get("court"))),
+                petitioner=_to_str(b.get("petitioner")),
+                respondent=_to_str(b.get("respondent")),
+                proceedings=_to_str(b.get("business", b.get("proceedings"))),
+                next_purpose=_to_str(b.get("nextPurpose")),
+                next_hearing_date=_format_date_to_iso(_to_str(b.get("nextHearingDate"))),
+            ))
+
     interim_cnt = sum(1 for o in orders_list if o.order_type == "interim")
     judgment_cnt = sum(1 for o in orders_list if o.order_type == "judgment")
 
     timeline: list[TimelineEvent] = []
 
-    # Proactively add filing event at the start if available
+    # 1. Proactively add filing event
     filing_date_val = _format_date_to_iso(_to_str(raw.get("filingDate")))
     if filing_date_val:
         timeline.append(TimelineEvent(
             date=filing_date_val,
             event_type="filing",
             title="Case Filed",
-            description="The case was officially filed.",
+            description=f"Case was officially filed. Registration Number: {raw.get('registrationNumber') or raw.get('filingNumber') or 'N/A'}",
             metadata={},
         ))
 
+    # 2. Add hearings to timeline
     for h in hearings_list:
         date = h.hearing_date or h.business_date
         if date:
@@ -266,6 +288,7 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
                 metadata={"judge": h.judge},
             ))
 
+    # 3. Add orders to timeline
     for o in orders_list:
         date = o.order_date
         if date:
@@ -278,9 +301,20 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
                 metadata={"filename": o.filename or o.order_url},
             ))
 
+    # 4. Add business proceedings if no detailed hearing descriptions
+    if len(hearings_list) == 0 and business_history_list:
+        for b in business_history_list:
+            if b.date:
+                timeline.append(TimelineEvent(
+                    date=b.date,
+                    event_type="hearing",
+                    title=f"Proceedings - {b.next_purpose or 'Court Business'}",
+                    description=b.proceedings or b.next_purpose,
+                    metadata={"court": b.court},
+                ))
+
     timeline.sort(key=lambda e: e.date or "", reverse=True)
 
-    # Dynamic fallback date (avoid static hardcoded date like "2021-08-03")
     fallback_date = (
         _format_date_to_iso(_to_str(raw.get("decisionDate"))) or
         _format_date_to_iso(_to_str(raw.get("registrationDate"))) or
@@ -288,7 +322,7 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
         datetime.now(timezone.utc).strftime("%Y-%m-%d")
     )
 
-    # FALLBACK: If timeline is empty (excluding the "filing" event), generate from orders and hearings
+    # FALLBACK: If timeline is empty (excluding the "filing" event)
     if len([e for e in timeline if e.event_type != "filing"]) == 0:
         for o in orders_list:
             timeline.append(TimelineEvent(
@@ -322,15 +356,45 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
 
         timeline.sort(key=lambda e: e.date or "", reverse=True)
 
+    # Resolve court info with enumLookup
     court_code_val = _to_str(raw.get("courtCode", raw.get("cnrCourtCode")))
     court_name_val = _to_str(raw.get("courtName"))
     if not court_name_val and court_code_val:
-        if "SCIN" in court_code_val:
-            court_name_val = "Supreme Court of India"
-        elif "DLHC" in court_code_val:
-            court_name_val = "Delhi High Court"
+        court_name_val = enum_lookup.get("courtCode", {}).get(court_code_val)
+        if not court_name_val:
+            if "SCIN" in court_code_val:
+                court_name_val = "Supreme Court of India"
+            elif "DLHC" in court_code_val:
+                court_name_val = "Delhi High Court"
+            else:
+                court_name_val = f"Court {court_code_val}"
+
+    # Resolve caseType and caseStatus with enumLookup
+    raw_case_type = _to_str(raw.get("caseType"))
+    case_type_label = (
+        enum_lookup.get("caseType", {}).get(raw_case_type or "")
+        or _to_str(raw.get("caseTypeLabel"))
+        or _to_str(raw.get("caseTypeSub"))
+        or raw_case_type
+    )
+
+    raw_case_status = _to_str(raw.get("caseStatus"))
+    case_status_label = (
+        enum_lookup.get("caseStatus", {}).get(raw_case_status or "")
+        or _to_str(raw.get("caseStatusLabel"))
+        or raw_case_status
+    )
+
+    # Calculate case duration if not provided
+    case_dur = _to_str(raw.get("caseDuration"))
+    if not case_dur and raw.get("caseDurationDays"):
+        days = int(raw.get("caseDurationDays"))
+        years = days // 365
+        months = (days % 365) // 30
+        if years > 0:
+            case_dur = f"{years} year{'s' if years > 1 else ''} {months} month{'s' if months != 1 else ''}"
         else:
-            court_name_val = f"Court {court_code_val}"
+            case_dur = f"{months} month{'s' if months != 1 else ''}"
 
     return CaseDetailsResponse(
         cnr=cnr_val,
@@ -344,11 +408,11 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
         next_hearing_date=_format_date_to_iso(_to_str(raw.get("nextHearingDate"))),
         last_hearing_date=_format_date_to_iso(_to_str(raw.get("lastHearingDate"))),
         decision_date=_format_date_to_iso(_to_str(raw.get("decisionDate"))),
-        case_status=_to_str(raw.get("caseStatus")),
-        case_status_label=_to_str(raw.get("caseStatusLabel", raw.get("caseStatus"))),
-        case_type=_to_str(raw.get("caseType")),
-        case_type_label=_to_str(raw.get("caseTypeLabel", raw.get("caseType"))),
-        case_duration=_to_str(raw.get("caseDuration")),
+        case_status=raw_case_status,
+        case_status_label=case_status_label,
+        case_type=raw_case_type,
+        case_type_label=case_type_label,
+        case_duration=case_dur,
         court=CourtInfo(
             court_name=court_name_val,
             court_number=_to_str(raw.get("courtNumber", raw.get("courtNo"))),
@@ -367,6 +431,7 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
         ),
         judges=[_to_str(j) for j in raw.get("judges", []) if j],
         hearings=hearings_list,
+        business_history=business_history_list,
         orders=orders_list,
         statistics=CaseStatistics(
             order_count=raw.get("orderCount") or len(orders_list),
@@ -376,10 +441,12 @@ def _transform_case(raw: dict[str, Any], is_cached: bool = False) -> CaseDetails
             ia_count=raw.get("iaCount", 0),
         ),
         timeline=timeline,
-        case_category=_to_str(raw.get("caseCategory")),
+        case_category=_to_str(raw.get("caseCategory", raw.get("caseCategoryFacetPath"))),
         bench_type=_to_str(raw.get("benchType")),
         judicial_section=_to_str(raw.get("judicialSection")),
-        related_cases=[_to_str(c) for c in raw.get("linkedCases", []) if c],
+        disposal_type=_to_str(raw.get("disposalType", raw.get("disposalTypeRaw"))),
+        fir_details=raw.get("firDetails") if isinstance(raw.get("firDetails"), dict) else None,
+        related_cases=[_to_str(c.get("caseNumber") if isinstance(c, dict) else c) for c in (raw.get("linkCases") or raw.get("linkedCases") or raw.get("taggedMatters") or []) if c],
         acts_and_sections=[_to_str(a) for a in raw.get("actsAndSections", []) if a],
         is_cached=is_cached,
     )
@@ -390,7 +457,7 @@ class CaseService:
         self.cache_repo = CacheRepository(db)
 
     async def get_case_details(self, cnr: str, user_id: Any = None) -> CaseDetailsResponse:
-        """Get case details with two-tier caching: Redis → PostgreSQL → Indian Kanoon API."""
+        """Get case details with multi-tier workflow: Redis → Postgres → eCourts API → Indian Kanoon Fallback."""
         redis_key = f"case:{cnr}"
 
         # Helper to log history safely
@@ -406,7 +473,7 @@ class CaseService:
         # Tier 1: Redis / In-Memory Cache
         cached_redis = await cache_service.get(redis_key)
         if cached_redis:
-            if "caseStatus" in cached_redis or "judgments" in cached_redis or "interimOrders" in cached_redis or "caseNumber" in cached_redis:
+            if "courtCaseData" in cached_redis or "caseStatus" in cached_redis or "judgments" in cached_redis or "interimOrders" in cached_redis or "caseNumber" in cached_redis:
                 response = _transform_case(cached_redis, is_cached=True)
                 await _log_view(response.case_title)
                 return response
@@ -417,8 +484,7 @@ class CaseService:
         cached_pg = await self.cache_repo.get_cached_case(cnr, check_expiry=False)
         if cached_pg:
             raw = json.loads(cached_pg.response_json)
-            # A fully extracted Kanoon case will have 'caseStatus', 'judgments', or 'caseNumber'
-            if "caseStatus" in raw or "judgments" in raw or "interimOrders" in raw or "caseNumber" in raw:
+            if "courtCaseData" in raw or "caseStatus" in raw or "judgments" in raw or "interimOrders" in raw or "caseNumber" in raw:
                 await cache_service.set(redis_key, raw, settings.cache_ttl_case)
                 response = _transform_case(raw, is_cached=True)
                 await _log_view(response.case_title)
@@ -426,71 +492,81 @@ class CaseService:
             else:
                 logger.info("ignoring_partial_search_cache", cnr=cnr)
 
-        # Tier 3: Indian Kanoon API with OpenRouter Extraction
-        try:
-            doc_raw = await kanoon_client.get_doc(cnr)
-            
-            # The raw response might be HTML/text or JSON depending on the API's actual return format.
-            # If Kanoon returned JSON, grab the doc text. Otherwise, it's already text.
-            doc_text = ""
-            if isinstance(doc_raw, dict):
-                doc_text = doc_raw.get("doc", doc_raw.get("title", str(doc_raw)))
-            else:
-                doc_text = str(doc_raw)
+        # Tier 3: eCourts Partner API (for standard alphanumeric CNR e.g. DLND020047882015)
+        raw: dict[str, Any] | None = None
+        is_numeric_tid = cnr.strip().lstrip("-").isdigit()
+
+        if not is_numeric_tid:
+            try:
+                logger.info("fetching_case_from_ecourts_api", cnr=cnr)
+                ecourts_resp = await ecourts_client.get_case_details(cnr)
+                if isinstance(ecourts_resp, dict) and ("data" in ecourts_resp or "courtCaseData" in ecourts_resp or "caseStatus" in ecourts_resp):
+                    raw = ecourts_resp
+                    logger.info("ecourts_api_case_found", cnr=cnr)
+            except Exception as ecourts_exc:
+                logger.warning("ecourts_api_fetch_failed", cnr=cnr, error=str(ecourts_exc))
+
+        # Tier 4: Indian Kanoon API (for numeric tid or eCourts fallback)
+        if not raw:
+            try:
+                logger.info("fetching_case_from_kanoon_api", tid=cnr)
+                doc_raw = await kanoon_client.get_doc(cnr)
+                doc_text = ""
+                if isinstance(doc_raw, dict):
+                    doc_text = doc_raw.get("doc", doc_raw.get("title", str(doc_raw)))
+                else:
+                    doc_text = str(doc_raw)
+                    
+                import re
+                doc_text = re.sub(r'<[^>]+>', ' ', doc_text)
+                logger.info("case_details_extracting_kanoon_metadata", tid=cnr)
+                extracted_json = await gemini_client.generate_json(
+                    system_prompt=KANOON_EXTRACTION_SYSTEM_PROMPT,
+                    user_prompt=KANOON_EXTRACTION_USER_PROMPT.format(doc_text=doc_text)
+                )
                 
-            import re
-            # Strip simple HTML tags to reduce token usage
-            doc_text = re.sub(r'<[^>]+>', ' ', doc_text)
-            logger.info("case_details_extracting_kanoon_metadata", tid=cnr)
-            extracted_json = await gemini_client.generate_json(
-                system_prompt=KANOON_EXTRACTION_SYSTEM_PROMPT,
-                user_prompt=KANOON_EXTRACTION_USER_PROMPT.format(doc_text=doc_text)
-            )
-            
-            interims = extracted_json.get("interimOrders", [])
-            hearings = extracted_json.get("hearingHistory", [])
+                interims = extracted_json.get("interimOrders", [])
+                hearings = extracted_json.get("hearingHistory", [])
 
-            # Map into raw eCourts-like format so `_transform_case` constructs a full timeline
-            raw = {
-                "cnr": cnr,
-                "caseNumber": extracted_json.get("caseNumber"),
-                "filingDate": extracted_json.get("filingDate"),
-                "decisionDate": extracted_json.get("decisionDate"),
-                "caseStatus": extracted_json.get("caseStatus", "DISPOSED"),
-                "caseType": extracted_json.get("caseType"),
-                "courtName": extracted_json.get("courtName"),
-                "petitioners": extracted_json.get("petitioners", []),
-                "respondents": extracted_json.get("respondents", []),
-                "petitionerAdvocates": extracted_json.get("petitionerAdvocates", []),
-                "respondentAdvocates": extracted_json.get("respondentAdvocates", []),
-                "judges": extracted_json.get("judges", []),
-                "actsAndSections": extracted_json.get("actsAndSections", []),
-                "judgmentCount": 1,
-                "orderCount": 1 + len(interims),
-                "hearingCount": len(hearings),
-                "hearingHistory": hearings,
-                "interimOrders": interims,
-                "judgments": [
-                    {
-                        "orderDate": extracted_json.get("decisionDate"),
-                        "description": extracted_json.get("summary", "Judgment Delivered"),
-                        "filename": str(cnr) # use tid as filename so order_service can fetch it
-                    }
-                ]
-            }
-
-        except Exception as exc:
-            logger.warning("kanoon_case_fetch_failed", cnr=cnr, error=str(exc))
-            raw = _get_demo_case_details(cnr)
+                raw = {
+                    "cnr": cnr,
+                    "caseNumber": extracted_json.get("caseNumber"),
+                    "filingDate": extracted_json.get("filingDate"),
+                    "decisionDate": extracted_json.get("decisionDate"),
+                    "caseStatus": extracted_json.get("caseStatus", "DISPOSED"),
+                    "caseType": extracted_json.get("caseType"),
+                    "courtName": extracted_json.get("courtName"),
+                    "petitioners": extracted_json.get("petitioners", []),
+                    "respondents": extracted_json.get("respondents", []),
+                    "petitionerAdvocates": extracted_json.get("petitionerAdvocates", []),
+                    "respondentAdvocates": extracted_json.get("respondentAdvocates", []),
+                    "judges": extracted_json.get("judges", []),
+                    "actsAndSections": extracted_json.get("actsAndSections", []),
+                    "judgmentCount": 1,
+                    "orderCount": 1 + len(interims),
+                    "hearingCount": len(hearings),
+                    "hearingHistory": hearings,
+                    "interimOrders": interims,
+                    "judgments": [
+                        {
+                            "orderDate": extracted_json.get("decisionDate"),
+                            "description": extracted_json.get("summary", "Judgment Delivered"),
+                            "filename": str(cnr)
+                        }
+                    ]
+                }
+            except Exception as kanoon_exc:
+                logger.warning("kanoon_case_fetch_failed", cnr=cnr, error=str(kanoon_exc))
+                raw = _get_demo_case_details(cnr)
 
         # Store in PostgreSQL cache
         now = datetime.now(timezone.utc)
         await self.cache_repo.save_cached_case(CachedCase(
             cnr=cnr,
             response_json=json.dumps(raw, default=str),
-            case_title=_make_case_title(raw),
-            case_status=raw.get("caseStatus"),
-            case_type=raw.get("caseType"),
+            case_title=_make_case_title(raw.get("courtCaseData", raw)),
+            case_status=raw.get("courtCaseData", raw).get("caseStatus"),
+            case_type=raw.get("courtCaseData", raw).get("caseType"),
             fetched_at=now,
             expires_at=now + timedelta(seconds=settings.cache_ttl_case),
         ))
@@ -504,7 +580,7 @@ class CaseService:
         return response
 
     async def refresh_case(self, cnr: str) -> RefreshResponse:
-        """Refresh case data by invalidating caches (will re-fetch from Kanoon on next load)."""
+        """Refresh case data by invalidating caches (will re-fetch on next load)."""
         # Invalidate caches
         await self.cache_repo.invalidate_case(cnr)
         await cache_service.delete(f"case:{cnr}")
@@ -512,6 +588,6 @@ class CaseService:
         return RefreshResponse(
             request_id=f"REF-{cnr[:8]}",
             status="COMPLETED",
-            message="Cache invalidated. Case will be re-fetched from Indian Kanoon on next load.",
+            message="Cache invalidated. Case will be re-fetched on next load.",
             timestamp=datetime.now(timezone.utc).isoformat(),
         )
