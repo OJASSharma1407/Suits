@@ -1,8 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Sun, Moon, User, LogOut } from "lucide-react";
+import { Sun, Moon } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 import { useThemeStore } from "@/store/theme-store";
-import { useState } from "react";
 
 // SVG icons matching the reference design (stroke-based, 18×18)
 function WorkspaceIcon() {
@@ -48,105 +47,66 @@ function ScalesIcon() {
 const navItems = [
   { path: "/dashboard",  label: "Workspace",  Icon: WorkspaceIcon },
   { path: "/bookmarks",  label: "Bookmarks",  Icon: BookmarkIcon },
-  { path: "/history",    label: "History",    Icon: HistoryIcon },
   { path: "/analytics",  label: "Analytics",  Icon: AnalyticsIcon },
+  { path: "/history",    label: "History",    Icon: HistoryIcon },
 ];
 
 export default function Sidebar() {
   const location = useLocation();
   const navigate = useNavigate();
-  const { user, logout } = useAuthStore();
+  const { user } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
-  const [showMenu, setShowMenu] = useState(false);
 
   const isDark = theme === "dark";
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
-
   return (
     <aside className="sidebar">
-      {/* Wordmark */}
-      <div className="wordmark">
-        <ScalesIcon />
-        <span className="mark">Suits</span>
+      {/* Logo + Nav grouped at top */}
+      <div className="sidebar-top">
+        <div className="wordmark">
+          <ScalesIcon />
+          <span className="mark">Suits</span>
+        </div>
+
+        {/* Nav */}
+        <nav className="sidebar-nav">
+          {navItems.map(({ path, label, Icon }) => {
+            const isActive =
+              location.pathname === path ||
+              (path !== "/dashboard" && location.pathname.startsWith(path));
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`nav-item${isActive ? " active" : ""}`}
+                title={label}
+              >
+                <Icon />
+                <span className="nav-label">{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
       </div>
 
-      {/* Nav (Search removed from sidebar as it is now at top center of page) */}
-      <nav className="sidebar-nav">
-        {navItems.map(({ path, label, Icon }) => {
-          const isActive =
-            location.pathname === path ||
-            (path !== "/dashboard" && location.pathname.startsWith(path));
-          return (
-            <Link
-              key={path}
-              to={path}
-              className={`nav-item${isActive ? " active" : ""}`}
-              title={label}
-            >
-              <Icon />
-              <span className="nav-label">{label}</span>
-            </Link>
-          );
-        })}
-      </nav>
-
-      {/* Footer: Profile & Dark Mode Toggle (Bottom Left) */}
+      {/* Footer: Profile pill → /profile + Theme toggle */}
       <div className="sidebar-foot">
         <div className="sidebar-foot-row">
-          {/* Profile Menu Button */}
-          <div className="relative flex-1 min-w-0">
-            <button
-              onClick={() => setShowMenu((v) => !v)}
-              className="sidebar-profile-btn"
-              aria-label="User Profile"
-              title={user?.full_name || "Profile"}
-            >
-              <div className="sidebar-avatar">
-                {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
-              </div>
-              <div className="sidebar-user-info">
-                <span className="sidebar-user-name">{user?.full_name || "User"}</span>
-                <span className="sidebar-user-role">Advocate</span>
-              </div>
-            </button>
-
-            {showMenu && (
-              <>
-                <div
-                  className="fixed inset-0 z-40"
-                  onClick={() => setShowMenu(false)}
-                />
-                <div className="sidebar-profile-dropdown animate-spring-in">
-                  <div style={{ padding: "10px 14px 8px" }}>
-                    <p style={{ margin: 0, fontSize: "14px", fontWeight: 600, color: "var(--ink)" }}>
-                      {user?.full_name}
-                    </p>
-                    <p style={{ margin: 0, fontSize: "11.5px", fontFamily: "var(--font-mono)", color: "var(--ink-faint)", marginTop: "2px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                      {user?.email}
-                    </p>
-                  </div>
-                  <div style={{ borderTop: "1px solid var(--hairline-soft)", margin: "4px 0" }} />
-                  <Link
-                    to="/profile"
-                    onClick={() => setShowMenu(false)}
-                    className="sidebar-dropdown-link"
-                  >
-                    <User size={15} /> Profile
-                  </Link>
-                  <button
-                    onClick={handleLogout}
-                    className="sidebar-dropdown-logout"
-                  >
-                    <LogOut size={15} /> Log out
-                  </button>
-                </div>
-              </>
-            )}
-          </div>
+          {/* Clicking anywhere on the pill goes to /profile */}
+          <button
+            onClick={() => navigate("/profile")}
+            className="sidebar-profile-btn"
+            aria-label="Go to profile"
+            title={user?.full_name || "Profile"}
+          >
+            <div className="sidebar-avatar">
+              {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
+            </div>
+            <div className="sidebar-user-info">
+              <span className="sidebar-user-name">{user?.full_name || "User"}</span>
+              <span className="sidebar-user-role">Advocate</span>
+            </div>
+          </button>
 
           {/* Dark Mode Toggle */}
           <button

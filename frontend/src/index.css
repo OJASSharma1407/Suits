@@ -73,8 +73,24 @@
     --shadow-ambient: 0 0 40px rgba(0,0,0,0.02);
 
     /* Glass */
-    --glass-bg:   rgba(255, 255, 255, 0.85);
-    --glass-blur: 20px;
+    --glass-bg:        rgba(255, 255, 255, 0.85);
+    --glass-blur:      20px;
+
+    /* Liquid Glass – Light (Subtle, Seamless & Fluid) */
+    --lg-sidebar-bg:   rgba(255, 255, 255, 0.55);
+    --lg-panel-bg:     linear-gradient(145deg, rgba(0, 0, 0, 0.03) 0%, rgba(0, 0, 0, 0.015) 100%);
+    --lg-pill-bg:      rgba(0, 0, 0, 0.035);
+    --lg-active-bg:    linear-gradient(145deg, rgba(0, 0, 0, 0.07) 0%, rgba(0, 0, 0, 0.04) 100%);
+    --lg-search-bg:    linear-gradient(145deg, rgba(255, 255, 255, 0.60) 0%, rgba(255, 255, 255, 0.35) 100%);
+    --lg-border:       rgba(0, 0, 0, 0.08);
+    --lg-border-subtle: rgba(0, 0, 0, 0.04);
+    --lg-highlight:    inset 0 1px 1px 0 rgba(255, 255, 255, 0.70), inset 0 -1px 1px 0 rgba(0, 0, 0, 0.03);
+    --lg-highlight-active: inset 0 1px 1px 0 rgba(255, 255, 255, 0.85), inset 0 -1px 1px 0 rgba(0, 0, 0, 0.04);
+    --lg-blur:         20px;
+    --lg-blur-sm:      16px;
+
+    /* Solid sidebar bg per theme */
+    --sidebar-solid-bg: var(--bg);
 
     /* Skeleton */
     --skeleton-base:  #ECE7DA;
@@ -127,6 +143,22 @@
 
     --glass-bg:   rgba(25, 29, 38, 0.88);
     --glass-blur: 24px;
+
+    /* Liquid Glass – Dark (Subtle, Seamless & Fluid) */
+    --lg-sidebar-bg:   rgba(36, 35, 35, 0.30);
+    --lg-panel-bg:     linear-gradient(145deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+    --lg-pill-bg:      rgba(255, 255, 255, 0.04);
+    --lg-active-bg:    linear-gradient(145deg, rgba(255, 255, 255, 0.12) 0%, rgba(255, 255, 255, 0.05) 100%);
+    --lg-search-bg:    linear-gradient(145deg, rgba(255, 255, 255, 0.06) 0%, rgba(255, 255, 255, 0.02) 100%);
+    --lg-border:       rgba(255, 255, 255, 0.09);
+    --lg-border-subtle: rgba(255, 255, 255, 0.05);
+    --lg-highlight:    inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.22), inset 0 -1px 0.5px 0 rgba(255, 255, 255, 0.04);
+    --lg-highlight-active: inset 0 1px 0.5px 0 rgba(255, 255, 255, 0.35), inset 0 -1px 0.5px 0 rgba(255, 255, 255, 0.08);
+    --lg-blur:         24px;
+    --lg-blur-sm:      18px;
+
+    /* Solid sidebar bg – dark */
+    --sidebar-solid-bg: #14171f;
 
     --skeleton-base:  #222838;
     --skeleton-shine: #2C3444;
@@ -225,18 +257,27 @@ input, button, select, textarea {
   background: var(--bg);
 }
 
-/* ── SIDEBAR ── */
+/* Groups logo + nav together at the top */
+.sidebar-top {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
-  background: var(--surface);
-  border-right: 1px solid var(--hairline);
-  padding: 28px 20px 20px;
+  background: var(--sidebar-solid-bg);
+  border-right: none;
+  /* Tighter horizontal padding so pills stretch wider */
+  padding: 24px 10px;
   display: flex;
   flex-direction: column;
-  gap: 30px;
+  /* Equal space between wordmark / nav / profile */
+  justify-content: space-between;
   height: 100vh;
   overflow: hidden;
+  position: relative;
+  z-index: 10;
 }
 
 .wordmark {
@@ -244,13 +285,39 @@ input, button, select, textarea {
   align-items: center;
   justify-content: center;
   gap: 11px;
-  padding: 8px 0 24px;
-  border-bottom: 1px solid var(--hairline-soft);
-  margin-bottom: 24px;
+  padding: 14px 18px;
+  margin-bottom: 0;
+  background: var(--lg-panel-bg);
+  backdrop-filter: blur(var(--lg-blur-sm));
+  -webkit-backdrop-filter: blur(var(--lg-blur-sm));
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-highlight);
+  border-radius: 24px;
+  position: relative;
+  overflow: hidden;
+  transition: transform 300ms cubic-bezier(0.25, 1, 0.5, 1), box-shadow 300ms ease, border-color 300ms ease;
+}
+.wordmark::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.08), transparent);
+  transition: left 600ms ease;
+  pointer-events: none;
+}
+.wordmark:hover::before {
+  left: 100%;
+}
+.wordmark:hover {
+  transform: translateY(-1px);
+  border-color: var(--brass-soft);
 }
 .wordmark svg {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   color: var(--brass);
   flex-shrink: 0;
 }
@@ -263,25 +330,38 @@ input, button, select, textarea {
   white-space: nowrap;
 }
 
+/* Glass nav container card */
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  flex: 1;
+  gap: 5px;
+  flex: 0 0 auto;
+  background: var(--lg-panel-bg);
+  backdrop-filter: blur(var(--lg-blur-sm));
+  -webkit-backdrop-filter: blur(var(--lg-blur-sm));
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-highlight);
+  border-radius: 26px;
+  padding: 8px;
+  position: relative;
+  transition: border-color 300ms ease, box-shadow 300ms ease;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 12px 16px;
-  border-radius: var(--radius);
-  font-size: 15px;
+  padding: 12px 18px;
+  border-radius: 20px;
+  font-size: 15.5px;
+  font-weight: 450;
   color: var(--ink-dim);
   cursor: pointer;
-  border-left: 2px solid transparent;
+  border: 1px solid transparent;
   text-decoration: none;
-  transition: color 140ms ease, background 140ms ease, border-color 140ms ease;
+  position: relative;
+  overflow: hidden;
+  transition: all 260ms cubic-bezier(0.25, 1, 0.5, 1);
   white-space: nowrap;
 }
 .nav-item svg {
@@ -290,53 +370,93 @@ input, button, select, textarea {
   opacity: 0.85;
   flex-shrink: 0;
 }
+.nav-item::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: radial-gradient(circle at 30% 0%, rgba(255, 255, 255, 0.12), transparent 70%);
+  opacity: 0;
+  transition: opacity 300ms ease;
+  pointer-events: none;
+}
 .nav-item:hover {
   color: var(--ink);
-  background: var(--surface-hover);
+  background: var(--lg-pill-bg);
+  border-color: var(--lg-border-subtle);
+  transform: translateY(-1px);
   text-decoration: none;
+}
+.nav-item:hover svg {
+  opacity: 1;
+}
+.nav-item:hover::after {
+  opacity: 1;
+}
+.nav-item:active {
+  transform: scale(0.98);
 }
 .nav-item.active {
   color: var(--ink);
-  background: var(--surface-raised);
-  border-left: 2px solid var(--brass);
-  font-weight: 500;
+  background: var(--lg-active-bg);
+  border-color: var(--lg-border);
+  box-shadow: var(--lg-highlight-active);
+  font-weight: 550;
+}
+.nav-item.active svg {
+  opacity: 1;
+  color: var(--brass);
+}
+.nav-item.active::after {
+  opacity: 0.6;
 }
 .nav-item.active svg {
   opacity: 1;
   color: var(--brass);
 }
 
-/* ── SIDEBAR FOOTER (Profile + Dark Mode at Bottom Left) ── */
+/* ── SIDEBAR FOOTER — Liquid Glass ── */
 .sidebar-foot {
-  margin-top: auto;
-  padding-top: 14px;
-  border-top: 1px solid var(--hairline-soft);
   flex-shrink: 0;
 }
 
+/* Glass pill wrapping profile + theme toggle */
 .sidebar-foot-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  background: var(--lg-panel-bg);
+  backdrop-filter: blur(var(--lg-blur-sm));
+  -webkit-backdrop-filter: blur(var(--lg-blur-sm));
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-highlight);
+  border-radius: 9999px;
+  padding: 6px 6px 6px 8px;
+  position: relative;
+  overflow: hidden;
+  transition: all 300ms cubic-bezier(0.25, 1, 0.5, 1);
+}
+.sidebar-foot-row:hover {
+  border-color: var(--brass-soft);
 }
 
 .sidebar-profile-btn {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 6px 8px;
-  border-radius: var(--radius);
+  padding: 4px 6px;
+  border-radius: 9999px;
   background: transparent;
   border: none;
   cursor: pointer;
   width: 100%;
   text-align: left;
-  transition: background 140ms ease;
+  transition: background 160ms ease;
   min-width: 0;
 }
 .sidebar-profile-btn:hover {
-  background: var(--surface-hover);
+  background: var(--lg-pill-bg);
 }
 
 .sidebar-avatar {
@@ -384,18 +504,18 @@ input, button, select, textarea {
   justify-content: center;
   width: 34px;
   height: 34px;
-  border-radius: var(--radius);
+  border-radius: 9999px;
   background: transparent;
-  border: 1px solid var(--hairline);
+  border: 1px solid var(--lg-border);
   color: var(--ink-dim);
   cursor: pointer;
   flex-shrink: 0;
-  transition: background 140ms ease, color 140ms ease, border-color 140ms ease;
+  transition: background 160ms ease, color 160ms ease, border-color 160ms ease;
 }
 .sidebar-theme-btn:hover {
-  background: var(--surface-hover);
+  background: var(--lg-pill-bg);
   color: var(--ink);
-  border-color: var(--ink-faint);
+  border-color: var(--hairline);
 }
 
 .sidebar-profile-dropdown {
@@ -403,10 +523,11 @@ input, button, select, textarea {
   bottom: calc(100% + 8px);
   left: 0;
   width: 230px;
-  background: var(--surface);
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-float);
+  background: var(--lg-panel-bg);
+  backdrop-filter: blur(var(--lg-blur)) saturate(1.5);
+  -webkit-backdrop-filter: blur(var(--lg-blur)) saturate(1.5);
+  border: 1px solid var(--lg-border);
+  border-radius: 20px;
   z-index: 50;
   padding: 6px;
 }
@@ -447,16 +568,16 @@ input, button, select, textarea {
   background: var(--surface-raised);
 }
 
-/* ── TOP SEARCH HEADER (Centered at top of main column) ── */
+/* ── TOP SEARCH HEADER — Liquid Glass ── */
 .top-search-header {
   display: flex;
   justify-content: center;
   align-items: center;
   width: 100%;
-  height: 68px;
+  height: 72px;
   padding: 0 40px;
   border-bottom: none;
-  background: var(--bg);
+  background: transparent;
   flex-shrink: 0;
 }
 
@@ -464,17 +585,29 @@ input, button, select, textarea {
   display: flex;
   align-items: center;
   gap: 12px;
-  border: 1px solid var(--hairline);
-  border-radius: var(--radius-md);
-  padding: 4px 4px 4px 18px;
-  background: var(--surface);
-  transition: border-color 150ms ease, box-shadow 150ms ease;
+  border-radius: 9999px;
+  padding: 6px 8px 6px 22px;
+  background: var(--lg-search-bg);
+  backdrop-filter: blur(var(--lg-blur));
+  -webkit-backdrop-filter: blur(var(--lg-blur));
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-highlight);
+  transition: all 300ms cubic-bezier(0.25, 1, 0.5, 1);
   width: 100%;
-  max-width: 680px;
-  box-shadow: var(--shadow-card);
+  max-width: 640px;
+  position: relative;
+  overflow: hidden;
+}
+.top-search-bar:hover {
+  border-color: var(--brass-soft);
+  transform: translateY(-1px);
 }
 .top-search-bar:focus-within {
   border-color: var(--brass);
+  box-shadow:
+    var(--lg-highlight),
+    0 0 0 3px var(--brass-soft);
+  transform: translateY(-1px);
 }
 
 .top-search-icon {
@@ -504,7 +637,7 @@ input, button, select, textarea {
   color: var(--ink-faint);
   display: flex;
   align-items: center;
-  border-radius: var(--radius-sm);
+  border-radius: 9999px;
   flex-shrink: 0;
   transition: color 140ms ease;
 }
@@ -513,9 +646,10 @@ input, button, select, textarea {
 }
 
 .top-search-btn {
-  padding: 7px 18px;
+  padding: 7px 20px;
   font-size: 13.5px;
   flex-shrink: 0;
+  border-radius: 9999px !important;
 }
 
 /* ── MAIN COLUMN & CONTENT (Edge to Edge Spanning) ── */
