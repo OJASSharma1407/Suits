@@ -88,39 +88,48 @@ export default function CaseDashboardPage() {
   // Load chat history for the case from localStorage and backend
   const loadChatForCase = async (caseCnr: string) => {
     const localKey = `suits_chat_${caseCnr}`;
-    const localData = localStorage.getItem(localKey);
-    let hasLocal = false;
+    let cachedMessages: ChatMessage[] = [];
 
-    if (localData) {
+    if (localStorage.getItem(localKey)) {
       try {
-        const parsed = JSON.parse(localData);
-        if (parsed.conversationId) setConversationId(parsed.conversationId);
+        const parsed = JSON.parse(localStorage.getItem(localKey)!);
         if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
-          setMessages(parsed.messages);
-          hasLocal = true;
+          cachedMessages = parsed.messages;
         }
       } catch {
         // ignore parsing error
       }
     }
 
-    // Sync with remote conversation history
+    // Always sync with backend first — do NOT apply cached conversationId eagerly
+    // because it may refer to a deleted conversation (causes 404s).
     try {
       const convos = await chatService.getConversations();
       const matched = convos.find((c) => c.cnr === caseCnr || c.title?.includes(caseCnr));
       if (matched) {
+        // Backend has a valid conversation — use it as the authoritative ID
         setConversationId(matched.id);
         const remoteMsgs = await chatService.getMessages(matched.id);
         if (remoteMsgs && remoteMsgs.length > 0) {
           setMessages(remoteMsgs);
           localStorage.setItem(localKey, JSON.stringify({ conversationId: matched.id, messages: remoteMsgs }));
+        } else if (cachedMessages.length > 0) {
+          // Remote conversation exists but has no messages yet — keep cached messages
+          setMessages(cachedMessages);
         }
-      } else if (!hasLocal) {
-        setMessages([]);
+      } else {
+        // No backend conversation found — clear any stale cached ID and show cached messages
+        localStorage.removeItem(localKey);
         setConversationId(null);
+        if (cachedMessages.length > 0) {
+          setMessages(cachedMessages);
+        }
       }
     } catch {
-      // Keep local state if remote fetch fails
+      // Backend unreachable — fall back to cached messages only (no conversationId)
+      if (cachedMessages.length > 0) {
+        setMessages(cachedMessages);
+      }
     }
   };
 
