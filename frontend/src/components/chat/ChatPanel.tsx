@@ -28,10 +28,13 @@ export function ChatPanel({
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isPromptsOpen, setIsPromptsOpen] = useState(false);
 
-  // Auto-scroll whenever messages or streaming content changes
+  // Auto-scroll whenever messages or streaming content changes with smooth frame batching
   useEffect(() => {
     if (scrollRef.current) {
-      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+      const el = scrollRef.current;
+      requestAnimationFrame(() => {
+        el.scrollTop = el.scrollHeight;
+      });
     }
   }, [messages, streamingMessage, isLoading]);
 
@@ -63,7 +66,7 @@ export function ChatPanel({
               className="text-base sm:text-lg font-semibold tracking-tight mb-1.5"
               style={{ color: "var(--text-primary)" }}
             >
-              AI Research Assistant
+              Assistant
             </h3>
             <p
               className="text-xs sm:text-sm max-w-sm mb-6 leading-relaxed"
@@ -160,11 +163,8 @@ export function ChatPanel({
           </div>
         )}
 
-        {/* Compact Horizontal Quick Prompt Strip */}
-        <div className="flex items-center gap-2">
-          <span className="text-[10px] font-bold uppercase tracking-wider text-[var(--text-muted)] flex-shrink-0 flex items-center gap-1">
-            <Sparkles size={10} style={{ color: "var(--primary)" }} /> Quick:
-          </span>
+        {/* Compact Horizontal Prompt Strip */}
+        <div className="flex items-center gap-2 overflow-hidden">
           <SuggestedQuestions
             onSelect={handleSelectQuestion}
             customQuestions={suggestedQuestions}

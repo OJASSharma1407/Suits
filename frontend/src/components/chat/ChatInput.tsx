@@ -90,29 +90,11 @@ export function ChatInput({
           disabled={!text.trim() || disabled}
           className="p-2.5 rounded-xl flex-shrink-0 transition-opacity disabled:opacity-40 cursor-pointer flex items-center justify-center"
           style={{ background: "var(--primary)", color: "var(--on-primary)" }}
-          title="Send (Enter ↵)"
+          title="Send"
         >
           <ArrowUp size={16} />
         </button>
       </form>
-
-      {/* Micro-hint */}
-      <div className="flex items-center justify-between px-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
-        <span className="flex items-center gap-1">
-          <CornerDownLeft size={10} /> <strong>Enter</strong> to send • <strong>Shift+Enter</strong> for new line
-        </span>
-        {onTogglePrompts && (
-          <button
-            type="button"
-            onClick={onTogglePrompts}
-            className="hover:underline flex items-center gap-1 cursor-pointer"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            <Sparkles size={10} style={{ color: "var(--primary)" }} />
-            {isPromptsOpen ? "Hide Prompts" : "Quick Prompts"}
-          </button>
-        )}
-      </div>
     </div>
   );
 }

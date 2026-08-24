@@ -70,9 +70,7 @@ class CacheRepository:
             stmt = stmt.where(*conditions)
 
         result = await self.db.execute(stmt)
-        cases = list(result.scalars().all())
-        now = datetime.now(timezone.utc)
-        return [c for c in cases if not c.expires_at or _ensure_utc(c.expires_at) >= now]
+        return list(result.scalars().all())
 
     async def save_cached_case(self, cached_case: CachedCase) -> CachedCase:
         existing = await self.db.execute(

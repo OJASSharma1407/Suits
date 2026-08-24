@@ -16,7 +16,8 @@ from app.core.config import settings
 
 logger = structlog.get_logger()
 
-MODEL = settings.openrouter_model
+def _get_model() -> str:
+    return settings.openrouter_model or "nvidia/nemotron-3-ultra-550b-a55b:free"
 BASE_URL = "https://openrouter.ai/api/v1"
 
 # Optional OpenRouter leaderboard headers
@@ -27,7 +28,7 @@ _OR_EXTRA_HEADERS = {
 
 
 class OpenRouterClient:
-    """Async client for OpenRouter's openai/gpt-oss-120b model."""
+    """Async client for OpenRouter's nvidia/nemotron-3-ultra-550b-a55b:free model."""
 
     def __init__(self) -> None:
         self._configured = False
@@ -99,29 +100,24 @@ class OpenRouterClient:
         temperature: float = 0.3,
         max_output_tokens: int = 4096,
     ) -> str:
-        """Generate a free-form text response with reasoning enabled."""
+        """Generate a free-form text response."""
         if not self._ensure_configured():
-            logger.warning("openrouter_unconfigured_using_fallback")
-            return self._get_fallback_analysis()
+            raise RuntimeError("OpenRouter is not configured")
 
-        try:
-            response = await self.client.chat.completions.create(  # type: ignore[union-attr]
-                model=MODEL,
-                messages=[
-                    {"role": "system", "content": system_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-                max_tokens=max_output_tokens,
-                extra_body={"reasoning": {"enabled": True}},
-            )
-            if response and response.choices and response.choices[0].message.content:
-                logger.info("openrouter_generate_success", model=MODEL)
-                return response.choices[0].message.content
-        except Exception as exc:
-            logger.error("openrouter_generate_failed", model=MODEL, error=str(exc))
+        response = await self.client.chat.completions.create(  # type: ignore[union-attr]
+            model=_get_model(),
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_output_tokens,
+        )
+        if response and response.choices and response.choices[0].message.content:
+            logger.info("openrouter_generate_success", model=_get_model())
+            return response.choices[0].message.content
 
-        return self._get_fallback_analysis()
+        raise RuntimeError("OpenRouter returned empty response")
 
     async def generate_json(
         self,
@@ -130,35 +126,30 @@ class OpenRouterClient:
         temperature: float = 0.2,
         max_output_tokens: int | None = None,
     ) -> dict[str, Any]:
-        """Generate a structured JSON response with reasoning enabled."""
+        """Generate a structured JSON response."""
         if max_output_tokens is None:
             max_output_tokens = settings.openrouter_max_tokens
         if not self._ensure_configured():
-            logger.warning("openrouter_unconfigured_json_fallback")
-            return {}
+            raise RuntimeError("OpenRouter is not configured")
 
-        try:
-            response = await self.client.chat.completions.create(  # type: ignore[union-attr]
-                model=MODEL,
-                messages=[
-                    {
-                        "role": "system",
-                        "content": system_prompt + "\nReturn ONLY valid JSON.",
-                    },
-                    {"role": "user", "content": user_prompt},
-                ],
-                temperature=temperature,
-                max_tokens=max_output_tokens,
-                response_format={"type": "json_object"},
-                extra_body={"reasoning": {"enabled": True}},
-            )
-            if response and response.choices and response.choices[0].message.content:
-                logger.info("openrouter_json_success", model=MODEL)
-                return json.loads(response.choices[0].message.content)
-        except Exception as exc:
-            logger.error("openrouter_json_failed", model=MODEL, error=str(exc))
+        response = await self.client.chat.completions.create(  # type: ignore[union-attr]
+            model=_get_model(),
+            messages=[
+                {
+                    "role": "system",
+                    "content": system_prompt + "\nReturn ONLY valid JSON.",
+                },
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=temperature,
+            max_tokens=max_output_tokens,
+            response_format={"type": "json_object"},
+        )
+        if response and response.choices and response.choices[0].message.content:
+            logger.info("openrouter_json_success", model=_get_model())
+            return json.loads(response.choices[0].message.content)
 
-        return {}
+        raise RuntimeError("OpenRouter returned empty JSON response")
 
     async def generate_with_context(
         self,
@@ -169,14 +160,9 @@ class OpenRouterClient:
         order_context: str | None = None,
         temperature: float = 0.3,
     ) -> str:
-        """Generate a response that preserves conversation history and reasoning.
-
-        Reasoning details from previous turns are included in the message list
-        so the model can continue its chain-of-thought across turns.
-        """
+        """Generate a response that preserves conversation history."""
         if not self._ensure_configured():
-            logger.warning("openrouter_unconfigured_context_fallback")
-            return self._get_fallback_analysis()
+            raise RuntimeError("OpenRouter is not configured")
 
         if case_context and len(case_context) > 100000:
             case_context = case_context[:50000] + "\n...[TRUNCATED]...\n" + case_context[-50000:]
@@ -189,20 +175,15 @@ class OpenRouterClient:
             context_parts.append(f"## Relevant Order\n{order_context}")
         context_parts.append(
             "## Response Instructions\n"
-            "- Provide a comprehensive, detailed, and thorough legal analysis "
-            "(do NOT provide brief or 1-sentence answers)\n"
-            "- Structure your response with clear Markdown headings (##, ###), "
-            "bullet lists, and bold text\n"
-            "- Cover: 1. Executive Summary, 2. Procedural & Case History, "
-            "3. Legal Arguments & Laws Cited, 4. Bench Directions & Orders, "
-            "5. Next Steps\n"
-            "- Cite specific dates, judges, acts, and party names from the case context\n"
-            "- Keep the tone professional, objective, and authoritative"
+            "- Answer the user's question directly and concisely — match your length to the complexity of the question\n"
+            "- Use **bold** for key terms, bullet points for lists, and Markdown headings only when genuinely useful\n"
+            "- Cite specific case names, section numbers, judge names, and dates from the context when relevant\n"
+            "- Do NOT use raw JSON field names (e.g. statutesCited, sectionsApplied) — write in plain English\n"
+            "- Do NOT pad the response with boilerplate — skip any section that has nothing to add\n"
+            "- Keep the tone clear, professional, and easy to read"
         )
         context_block = "\n\n".join(context_parts)
 
-        # Reconstruct the message list, preserving any reasoning_details that
-        # were stored alongside prior assistant messages.
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": system_prompt},
             {"role": "system", "content": context_block},
@@ -214,28 +195,23 @@ class OpenRouterClient:
                 "role": "user" if role == "user" else "assistant",
                 "content": entry.get("message", ""),
             }
-            # Preserve reasoning_details so the model can continue its thinking
             if role != "user" and entry.get("reasoning_details"):
                 msg["reasoning_details"] = entry["reasoning_details"]
             messages.append(msg)
 
         messages.append({"role": "user", "content": user_message})
 
-        try:
-            response = await self.client.chat.completions.create(  # type: ignore[union-attr]
-                model=MODEL,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=settings.openrouter_max_tokens,
-                extra_body={"reasoning": {"enabled": True}},
-            )
-            if response and response.choices and response.choices[0].message.content:
-                logger.info("openrouter_context_success", model=MODEL)
-                return response.choices[0].message.content
-        except Exception as exc:
-            logger.error("openrouter_context_failed", model=MODEL, error=str(exc))
+        response = await self.client.chat.completions.create(  # type: ignore[union-attr]
+            model=_get_model(),
+            messages=messages,
+            temperature=temperature,
+            max_tokens=settings.openrouter_max_tokens,
+        )
+        if response and response.choices and response.choices[0].message.content:
+            logger.info("openrouter_context_success", model=_get_model())
+            return response.choices[0].message.content
 
-        return self._get_fallback_analysis()
+        raise RuntimeError("OpenRouter returned empty context response")
 
     async def generate_suggested_questions(
         self,
@@ -265,7 +241,7 @@ class OpenRouterClient:
 
         try:
             response = await self.client.chat.completions.create(  # type: ignore[union-attr]
-                model=MODEL,
+                model=_get_model(),
                 messages=[
                     {
                         "role": "system",
@@ -289,10 +265,10 @@ class OpenRouterClient:
                 elif isinstance(content, list):
                     questions = content
                 if questions:
-                    logger.info("openrouter_suggest_success", model=MODEL)
+                    logger.info("openrouter_suggest_success", model=_get_model())
                     return [str(q) for q in questions[:n]]
         except Exception as exc:
-            logger.warning("openrouter_suggest_failed", model=MODEL, error=str(exc))
+            logger.warning("openrouter_suggest_failed", model=_get_model(), error=str(exc))
 
         return default_questions
 
@@ -322,8 +298,7 @@ class OpenRouterClient:
         empty string as the final sentinel to signal completion.
         """
         if not self._ensure_configured():
-            yield self._get_fallback_analysis()
-            return
+            raise RuntimeError("OpenRouter is not configured")
 
         if case_context and len(case_context) > 100000:
             case_context = case_context[:50000] + "\n...[TRUNCATED]...\n" + case_context[-50000:]
@@ -336,15 +311,12 @@ class OpenRouterClient:
             context_parts.append(f"## Relevant Order\n{order_context}")
         context_parts.append(
             "## Response Instructions\n"
-            "- Provide a comprehensive, detailed, and thorough legal analysis "
-            "(do NOT provide brief or 1-sentence answers)\n"
-            "- Structure your response with clear Markdown headings (##, ###), "
-            "bullet lists, and bold text\n"
-            "- Cover: 1. Executive Summary, 2. Procedural & Case History, "
-            "3. Legal Arguments & Laws Cited, 4. Bench Directions & Orders, "
-            "5. Next Steps\n"
-            "- Cite specific dates, judges, acts, and party names from the case context\n"
-            "- Keep the tone professional, objective, and authoritative"
+            "- Answer the user's question directly and concisely — match your length to the complexity of the question\n"
+            "- Use **bold** for key terms, bullet points for lists, and Markdown headings only when genuinely useful\n"
+            "- Cite specific case names, section numbers, judge names, and dates from the context when relevant\n"
+            "- Do NOT use raw JSON field names (e.g. statutesCited, sectionsApplied) — write in plain English\n"
+            "- Do NOT pad the response with boilerplate — skip any section that has nothing to add\n"
+            "- Keep the tone clear, professional, and easy to read"
         )
         context_block = "\n\n".join(context_parts)
 
@@ -363,23 +335,18 @@ class OpenRouterClient:
             messages.append(msg)
         messages.append({"role": "user", "content": user_message})
 
-        try:
-            stream = await self.client.chat.completions.create(  # type: ignore[union-attr]
-                model=MODEL,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=settings.openrouter_max_tokens,
-                stream=True,
-                extra_body={"reasoning": {"enabled": True}},
-            )
-            async for chunk in stream:
-                delta = chunk.choices[0].delta if chunk.choices else None
-                if delta and delta.content:
-                    yield delta.content
-            logger.info("openrouter_stream_complete", model=MODEL)
-        except Exception as exc:
-            logger.error("openrouter_stream_failed", model=MODEL, error=str(exc))
-            yield self._get_fallback_analysis()
+        stream = await self.client.chat.completions.create(  # type: ignore[union-attr]
+            model=_get_model(),
+            messages=messages,
+            temperature=temperature,
+            max_tokens=settings.openrouter_max_tokens,
+            stream=True,
+        )
+        async for chunk in stream:
+            delta = chunk.choices[0].delta if chunk.choices else None
+            if delta and delta.content:
+                yield delta.content
+        logger.info("openrouter_stream_complete", model=_get_model())
 
 
 # Singleton

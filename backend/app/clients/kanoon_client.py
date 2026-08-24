@@ -53,7 +53,7 @@ class KanoonClient:
             self._client = httpx.AsyncClient(
                 base_url=self.BASE_URL,
                 headers=headers,
-                timeout=httpx.Timeout(8.0),
+                timeout=httpx.Timeout(15.0),
             )
         return self._client
 

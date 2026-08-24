@@ -117,13 +117,26 @@ class AIService:
         except Exception:
             pass
 
-        ai_response = await openrouter_client.generate_with_context(
-            system_prompt=MASTER_SYSTEM_PROMPT,
-            conversation_history=history,
-            user_message=user_message,
-            case_context=case_context or "No case context available.",
-            order_context=order_context,
-        )
+        # Generate response via OpenRouter Nemotron 3 Ultra (with Gemini fallback)
+        try:
+            ai_response = await openrouter_client.generate_with_context(
+                system_prompt=MASTER_SYSTEM_PROMPT,
+                conversation_history=history,
+                user_message=user_message,
+                case_context=case_context or "No case context available.",
+                order_context=order_context,
+            )
+            if not ai_response or not ai_response.strip():
+                raise RuntimeError("Empty response from OpenRouter")
+        except Exception as or_err:
+            logger.warning("openrouter_generate_failed_using_gemini", error=str(or_err))
+            ai_response = await gemini_client.generate_with_context(
+                system_prompt=MASTER_SYSTEM_PROMPT,
+                conversation_history=history,
+                user_message=user_message,
+                case_context=case_context or "No case context available.",
+                order_context=order_context,
+            )
 
         assistant_msg = Message(
             conversation_id=conversation_id,
@@ -165,40 +178,9 @@ class AIService:
             )
             await self.conversation_repo.add_message(user_msg)
 
-            # RAG Precedent Search via Indian Kanoon API
-            try:
-                from app.clients.kanoon_client import kanoon_client
-                kanoon_results = await kanoon_client.search_docs(query=user_message.strip(), pagenum=1)
-                docs = kanoon_results.get("docs", []) if isinstance(kanoon_results, dict) else []
-                if docs:
-                    precedent_items = []
-                    for d in docs[:3]:
-                        t_id = d.get("tid")
-                        t_title = d.get("title", "")
-                        import re
-                        t_title = re.sub(r'<[^>]+>', '', str(t_title))
-                        t_court = d.get("docsource", "Indian Kanoon")
-                        precedent_items.append(f"- **{t_title}** ({t_court}) [Kanoon TID: {t_id}]")
-                    if precedent_items:
-                        case_context = (case_context or "") + "\n\n### Relevant Indian Kanoon Legal Precedents & Citations:\n" + "\n".join(precedent_items)
-            except Exception:
-                pass
-
-            # Stream tokens and accumulate the full response (Gemini with OpenRouter fallback)
+            # Stream tokens via OpenRouter Nemotron 3 Ultra (with Gemini fallback)
             full_response: list[str] = []
             try:
-                async for token in gemini_client.generate_with_context_stream(
-                    system_prompt=MASTER_SYSTEM_PROMPT,
-                    conversation_history=history,
-                    user_message=user_message,
-                    case_context=case_context or "No case context available.",
-                    order_context=order_context,
-                ):
-                    full_response.append(token)
-                    safe = token.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-                    yield f'data: {{"token": "{safe}"}}\n\n'
-            except Exception as stream_err:
-                logger.warning("gemini_stream_failed_using_openrouter", error=str(stream_err))
                 async for token in openrouter_client.generate_with_context_stream(
                     system_prompt=MASTER_SYSTEM_PROMPT,
                     conversation_history=history,
@@ -206,9 +188,25 @@ class AIService:
                     case_context=case_context or "No case context available.",
                     order_context=order_context,
                 ):
-                    full_response.append(token)
-                    safe = token.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-                    yield f'data: {{"token": "{safe}"}}\n\n'
+                    if token:
+                        full_response.append(token)
+                        safe = token.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+                        yield f'data: {{"token": "{safe}"}}\n\n'
+                if not full_response:
+                    raise RuntimeError("OpenRouter produced empty stream")
+            except Exception as stream_err:
+                logger.warning("openrouter_stream_failed_using_gemini", error=str(stream_err))
+                async for token in gemini_client.generate_with_context_stream(
+                    system_prompt=MASTER_SYSTEM_PROMPT,
+                    conversation_history=history,
+                    user_message=user_message,
+                    case_context=case_context or "No case context available.",
+                    order_context=order_context,
+                ):
+                    if token:
+                        full_response.append(token)
+                        safe = token.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
+                        yield f'data: {{"token": "{safe}"}}\n\n'
 
             # Save completed assistant message
             ai_response = "".join(full_response)

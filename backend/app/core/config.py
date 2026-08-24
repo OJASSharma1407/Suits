@@ -34,10 +34,10 @@ class Settings(BaseSettings):
     gemini_api_key: str = Field(default="")
     gemini_model: str = Field(default="gemini-3.6-flash")
 
-    # OpenRouter API
+    # OpenRouter API (Used for Interactive AI Chatbot)
     openrouter_api_key: str = Field(default="")
-    openrouter_model: str = Field(default="openai/gpt-oss-120b")
-    openrouter_max_tokens: int = Field(default=2048)
+    openrouter_model: str = Field(default="nvidia/nemotron-3-ultra-550b-a55b:free")
+    openrouter_max_tokens: int = Field(default=4096)
 
     # Application
     environment: str = Field(default="development")

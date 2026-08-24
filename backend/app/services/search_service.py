@@ -105,7 +105,7 @@ def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
     """Convert a raw API response item (dict or str) safely into a SearchResultItem DTO."""
     if isinstance(item, str):
         clean_str = item.strip()
-        if clean_str.lower() in RESERVED_METADATA_KEYS or len(clean_str) < 8:
+        if clean_str.lower() in RESERVED_METADATA_KEYS or len(clean_str) < 4:
             return None  # Ignore JSON keys / metadata strings
         return SearchResultItem(
             cnr=clean_str,
@@ -134,9 +134,11 @@ def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
     # Indian Kanoon uses "title", eCourts uses "case_title"
     case_title = item.get("title", item.get("case_title", item.get("caseTitle", _make_case_title(petitioners, respondents))))
     
-    # Strip HTML tags from Kanoon title if present
-    import re
+    # Strip HTML tags and normalize unicode characters
     case_title = re.sub(r'<[^>]+>', '', str(case_title))
+    case_title = case_title.replace('\u2011', '-').replace('\u2013', '-').replace('\u2014', '-').strip()
+    # Remove trailing ' on <date>' from Kanoon titles
+    case_title = re.sub(r'\s+on\s+\d{1,2}\s+[A-Za-z]+,\s+\d{4}$', '', case_title, flags=re.IGNORECASE).strip()
     
     if not case_title or case_title == "Unknown vs Unknown":
         case_title = f"Document {cnr}"
@@ -425,46 +427,81 @@ class SearchService:
 
         # 3. Fallback: Query Local Database
         local_db_cases = await self.cache_repo.search_local_cases(
-            query=request.query,
+            query=request.query if request.query and request.query.strip() else None,
             court_code=request.court_code,
             case_status=request.case_status,
             case_type=request.case_type,
             filing_year=request.filing_year,
         )
 
+        seen_cnrs: set[str] = set()
         if local_db_cases:
             logger.info("search_local_db_hit", query=request.query, match_count=len(local_db_cases))
             for db_case in local_db_cases:
                 try:
                     data = json.loads(db_case.response_json)
                     item = _raw_to_search_item(data)
-                    if item:
+                    if item and item.cnr and item.cnr not in seen_cnrs:
+                        seen_cnrs.add(item.cnr)
                         results.append(item)
                 except Exception:
                     continue
 
-            results = _apply_filters(results, request)
-            if results:
-                total_hits = len(results)
-                offset = ((request.page or 1) - 1) * page_size
-                paginated_results = results[offset : offset + page_size]
+        # 4. Search / Augment with Built-in DEMO_CASES_DATASET
+        q_clean = (request.query or "").strip().lower()
+        for demo in DEMO_CASES_DATASET:
+            demo_cnr = demo.get("cnr", "")
+            if demo_cnr in seen_cnrs:
+                continue
 
-                response = SearchResponse(
-                    results=paginated_results,
-                    total_hits=total_hits,
-                    page=request.page,
-                    page_size=page_size,
-                    total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1,
-                    facets={},
-                )
-                await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
-                return response
+            # Match query if provided
+            if q_clean:
+                title = demo.get("case_title", "").lower()
+                cnr_val = demo_cnr.lower()
+                court = demo.get("courtName", "").lower()
+                pets = " ".join(demo.get("petitioners", [])).lower()
+                resps = " ".join(demo.get("respondents", [])).lower()
+                acts = " ".join(demo.get("actsAndSections", [])).lower()
+                keywords = " ".join(demo.get("aiKeywords", [])).lower()
+
+                if (
+                    q_clean not in title
+                    and q_clean not in cnr_val
+                    and q_clean not in court
+                    and q_clean not in pets
+                    and q_clean not in resps
+                    and q_clean not in acts
+                    and q_clean not in keywords
+                ):
+                    continue
+
+            item = _raw_to_search_item(demo)
+            if item and item.cnr and item.cnr not in seen_cnrs:
+                seen_cnrs.add(item.cnr)
+                results.append(item)
+
+        results = _apply_filters(results, request)
+        if results:
+            total_hits = len(results)
+            offset = ((request.page or 1) - 1) * page_size
+            paginated_results = results[offset : offset + page_size]
+
+            response = SearchResponse(
+                results=paginated_results,
+                total_hits=total_hits,
+                page=request.page or 1,
+                page_size=page_size,
+                total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1,
+                facets={},
+            )
+            await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
+            return response
 
         # Return empty response gracefully
         return SearchResponse(
             results=[],
             total_hits=0,
-            page=request.page,
+            page=request.page or 1,
             page_size=page_size,
             total_pages=0,
             facets={},

@@ -375,7 +375,7 @@ export default function CaseDashboardPage() {
                     <Sparkles size={15} />
                   </div>
                   <h3 className="text-sm font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
-                    AI Research Assistant
+                    Assistant
                   </h3>
                 </div>
                 <div className="flex items-center gap-1.5">
@@ -387,13 +387,6 @@ export default function CaseDashboardPage() {
                   >
                     <RotateCcw size={12} />
                     <span className="text-[11px] font-medium">New Chat</span>
-                  </button>
-                  <button 
-                    onClick={() => setIsChatOpen(false)}
-                    className="p-1 rounded-lg hover:bg-[var(--surface-container)] transition-colors cursor-pointer"
-                    style={{ color: "var(--text-secondary)" }}
-                  >
-                    <X size={16} />
                   </button>
                 </div>
               </div>

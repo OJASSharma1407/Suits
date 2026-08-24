@@ -1,5 +1,6 @@
 import React from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import type { ChatMessage } from "@/types/chat";
 import { renderTextWithCitations } from "./CitationChip";
 
@@ -44,7 +45,28 @@ export function MessageBubble({ message, isStreaming = false }: MessageBubblePro
         ) : (
           <div className="prose prose-sm max-w-none text-xs sm:text-sm leading-relaxed" style={{ color: "var(--text-primary)" }}>
             <ReactMarkdown
+              remarkPlugins={[remarkGfm]}
               components={{
+                h1: ({ children }) => (
+                  <p className="text-sm font-bold mb-1.5 mt-3 first:mt-0" style={{ color: "var(--text-primary)" }}>
+                    {processChildren(children)}
+                  </p>
+                ),
+                h2: ({ children }) => (
+                  <p className="text-xs font-bold mb-1 mt-2.5 first:mt-0 uppercase tracking-wide" style={{ color: "var(--primary)" }}>
+                    {processChildren(children)}
+                  </p>
+                ),
+                h3: ({ children }) => (
+                  <p className="text-xs font-semibold mb-1 mt-2 first:mt-0" style={{ color: "var(--text-primary)" }}>
+                    {processChildren(children)}
+                  </p>
+                ),
+                h4: ({ children }) => (
+                  <p className="text-xs font-semibold mb-0.5 mt-1.5 first:mt-0 italic" style={{ color: "var(--text-secondary)" }}>
+                    {processChildren(children)}
+                  </p>
+                ),
                 p: ({ children }) => (
                   <p className="mb-2.5 last:mb-0 leading-relaxed">
                     {processChildren(children)}
