@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from "react";
-import { Sparkles, RotateCcw } from "lucide-react";
+import { Sparkles } from "lucide-react";
 import { MessageBubble } from "./MessageBubble";
 import { ChatInput } from "./ChatInput";
 import { SuggestedQuestions } from "./SuggestedQuestions";
@@ -23,7 +23,6 @@ export function ChatPanel({
   isLoading,
   streamingMessage,
   suggestedQuestions = [],
-  onClearChat,
 }: ChatPanelProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [isPromptsOpen, setIsPromptsOpen] = useState(false);
@@ -53,32 +52,20 @@ export function ChatPanel({
       }}
     >
       {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto p-3.5 sm:p-4 space-y-4" ref={scrollRef}>
+      <div
+        className="flex-1 overflow-y-auto overscroll-contain p-3.5 sm:p-4 space-y-4"
+        ref={scrollRef}
+        style={{ overscrollBehavior: "contain" }}
+      >
         {messages.length === 0 && !streamingMessage ? (
-          <div className="h-full flex flex-col items-center justify-center text-center p-4 sm:p-6">
-            <div
-              className="w-12 h-12 rounded-2xl flex items-center justify-center mb-3"
-              style={{ background: "var(--surface-container)", color: "var(--primary)" }}
-            >
-              <Sparkles size={22} />
+          <div className="h-full flex flex-col items-center justify-center p-3 sm:p-4 w-full">
+            <div className="w-full max-w-md my-auto">
+              <SuggestedQuestions
+                onSelect={handleSelectQuestion}
+                customQuestions={suggestedQuestions}
+                variant="list"
+              />
             </div>
-            <h3
-              className="text-base sm:text-lg font-semibold tracking-tight mb-1.5"
-              style={{ color: "var(--text-primary)" }}
-            >
-              Assistant
-            </h3>
-            <p
-              className="text-xs sm:text-sm max-w-sm mb-6 leading-relaxed"
-              style={{ color: "var(--text-secondary)" }}
-            >
-              Ask legal questions, extract binding ratio, analyze cited precedents, or explore court directives.
-            </p>
-            <SuggestedQuestions
-              onSelect={handleSelectQuestion}
-              customQuestions={suggestedQuestions}
-              variant="list"
-            />
           </div>
         ) : (
           <>
@@ -104,7 +91,7 @@ export function ChatPanel({
             {isLoading && !streamingMessage && (
               <div className="flex justify-start">
                 <div
-                  className="px-4 py-3 rounded-2xl rounded-tl-sm text-sm"
+                  className="px-4 py-3 rounded-2xl rounded-tl-xs text-sm"
                   style={{
                     background: "var(--card)",
                     border: "1px solid var(--border)",
@@ -114,15 +101,15 @@ export function ChatPanel({
                   <div className="flex gap-1.5 items-center">
                     <span
                       className="w-2 h-2 rounded-full animate-bounce"
-                      style={{ background: "var(--primary)", animationDelay: "0ms" }}
+                      style={{ background: "var(--brass)", animationDelay: "0ms" }}
                     />
                     <span
                       className="w-2 h-2 rounded-full animate-bounce"
-                      style={{ background: "var(--primary)", animationDelay: "150ms" }}
+                      style={{ background: "var(--brass)", animationDelay: "150ms" }}
                     />
                     <span
                       className="w-2 h-2 rounded-full animate-bounce"
-                      style={{ background: "var(--primary)", animationDelay: "300ms" }}
+                      style={{ background: "var(--brass)", animationDelay: "300ms" }}
                     />
                   </div>
                 </div>
@@ -132,7 +119,7 @@ export function ChatPanel({
         )}
       </div>
 
-      {/* Persistent Prompt Toolbar & Expandable Tray */}
+      {/* Persistent Prompt Toolbar & Input Section */}
       <div
         className="p-3 border-t space-y-2"
         style={{
@@ -140,17 +127,21 @@ export function ChatPanel({
           borderColor: "var(--border)",
         }}
       >
-        {/* Horizontal Quick Prompt Chips (Always available throughout the conversation) */}
+        {/* Quick Legal Prompt Drawer (When toggled via '+' button) */}
         {isPromptsOpen && (
-          <div className="p-2.5 rounded-xl border animate-in fade-in slide-in-from-bottom-2 space-y-2" style={{ background: "var(--card)", borderColor: "var(--border)" }}>
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase font-bold tracking-wider flex items-center gap-1" style={{ color: "var(--text-muted)" }}>
-                <Sparkles size={11} style={{ color: "var(--primary)" }} /> Legal Research Prompts
+          <div
+            className="p-3 rounded-2xl border animate-in fade-in slide-in-from-bottom-2 space-y-2.5 max-h-60 overflow-y-auto"
+            style={{ background: "var(--card)", borderColor: "var(--border)" }}
+          >
+            <div className="flex items-center justify-between pb-1 border-b" style={{ borderColor: "var(--hairline-soft)" }}>
+              <span className="text-[10px] uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink-faint)" }}>
+                <Sparkles size={11} style={{ color: "var(--brass)" }} /> Legal Research Prompts
               </span>
               <button
+                type="button"
                 onClick={() => setIsPromptsOpen(false)}
-                className="text-[10px] hover:underline cursor-pointer"
-                style={{ color: "var(--text-secondary)" }}
+                className="text-[11px] font-medium hover:underline cursor-pointer"
+                style={{ color: "var(--ink-dim)" }}
               >
                 Close
               </button>
@@ -162,15 +153,6 @@ export function ChatPanel({
             />
           </div>
         )}
-
-        {/* Compact Horizontal Prompt Strip */}
-        <div className="flex items-center gap-2 overflow-hidden">
-          <SuggestedQuestions
-            onSelect={handleSelectQuestion}
-            customQuestions={suggestedQuestions}
-            variant="chips"
-          />
-        </div>
 
         {/* Input Box with Multi-Line Support and '+' Prompt Menu */}
         <ChatInput

@@ -60,6 +60,7 @@ const router = createBrowserRouter([
           { path: "/dashboard", element: <Suspense fallback={<PageLoader />}><DashboardPage /></Suspense> },
           { path: "/search", element: <Suspense fallback={<PageLoader />}><SearchPage /></Suspense> },
           { path: "/case/:cnr", element: <Suspense fallback={<PageLoader />}><CaseDashboardPage /></Suspense> },
+          { path: "/chat", element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
           { path: "/chat/:conversationId", element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
           { path: "/bookmarks", element: <Suspense fallback={<PageLoader />}><BookmarksPage /></Suspense> },
           { path: "/history", element: <Suspense fallback={<PageLoader />}><HistoryPage /></Suspense> },

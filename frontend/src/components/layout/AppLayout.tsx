@@ -37,7 +37,7 @@ export default function AppLayout() {
       <CommandPalette />
 
       <Toaster
-        position="bottom-right"
+        position="top-right"
         theme={theme}
         toastOptions={{
           style: {

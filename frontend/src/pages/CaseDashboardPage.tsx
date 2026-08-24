@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import { createPortal } from "react-dom";
-import { useParams } from "react-router-dom";
+import { useParams, useNavigate } from "react-router-dom";
 import { CaseHeader } from "@/components/case/CaseHeader";
 import { Timeline } from "@/components/case/Timeline";
 import { PartyCard } from "@/components/case/PartyCard";
@@ -19,11 +19,12 @@ import { chatService } from "@/services/chat";
 import { historyService } from "@/services/history";
 import type { CaseDetails, OrderAI } from "@/types/case";
 import type { ChatMessage } from "@/types/chat";
-import { Sparkles, MessageSquare, X, RotateCcw } from "lucide-react";
+import { Sparkles, MessageSquare, X, RotateCcw, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function CaseDashboardPage() {
   const { cnr } = useParams<{ cnr: string }>();
+  const navigate = useNavigate();
 
   const [caseData, setCaseData] = useState<CaseDetails | null>(null);
   const [loading, setLoading] = useState(true);
@@ -48,14 +49,90 @@ export default function CaseDashboardPage() {
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const streamAbortRef = React.useRef<AbortController | null>(null);
 
-  const handleClearChat = () => {
+  const handleClearChat = async () => {
     streamAbortRef.current?.abort();
-    setMessages([]);
     setStreamingContent("");
-    setConversationId(null);
     setSuggestedQuestions([]);
-    toast.info("Started new research chat.");
+    setMessages([]);
+    if (cnr) {
+      localStorage.removeItem(`suits_chat_${cnr}`);
+      try {
+        const convo = await chatService.createConversation(cnr, `Case - ${cnr}`);
+        setConversationId(convo.id);
+        toast.success("New chat session started.");
+      } catch {
+        setConversationId(null);
+      }
+    } else {
+      setConversationId(null);
+    }
   };
+
+  const handleExpandChat = async () => {
+    setIsChatOpen(false);
+    if (conversationId) {
+      navigate(`/chat/${conversationId}`);
+    } else if (cnr) {
+      try {
+        const convo = await chatService.createConversation(cnr, `Case - ${cnr}`);
+        setConversationId(convo.id);
+        navigate(`/chat/${convo.id}`);
+      } catch {
+        navigate("/chat");
+      }
+    } else {
+      navigate("/chat");
+    }
+  };
+
+  // Load chat history for the case from localStorage and backend
+  const loadChatForCase = async (caseCnr: string) => {
+    const localKey = `suits_chat_${caseCnr}`;
+    const localData = localStorage.getItem(localKey);
+    let hasLocal = false;
+
+    if (localData) {
+      try {
+        const parsed = JSON.parse(localData);
+        if (parsed.conversationId) setConversationId(parsed.conversationId);
+        if (Array.isArray(parsed.messages) && parsed.messages.length > 0) {
+          setMessages(parsed.messages);
+          hasLocal = true;
+        }
+      } catch {
+        // ignore parsing error
+      }
+    }
+
+    // Sync with remote conversation history
+    try {
+      const convos = await chatService.getConversations();
+      const matched = convos.find((c) => c.cnr === caseCnr || c.title?.includes(caseCnr));
+      if (matched) {
+        setConversationId(matched.id);
+        const remoteMsgs = await chatService.getMessages(matched.id);
+        if (remoteMsgs && remoteMsgs.length > 0) {
+          setMessages(remoteMsgs);
+          localStorage.setItem(localKey, JSON.stringify({ conversationId: matched.id, messages: remoteMsgs }));
+        }
+      } else if (!hasLocal) {
+        setMessages([]);
+        setConversationId(null);
+      }
+    } catch {
+      // Keep local state if remote fetch fails
+    }
+  };
+
+  // Persist messages locally whenever they change
+  useEffect(() => {
+    if (cnr && messages.length > 0 && !streamingContent) {
+      localStorage.setItem(
+        `suits_chat_${cnr}`,
+        JSON.stringify({ conversationId, messages })
+      );
+    }
+  }, [cnr, messages, conversationId, streamingContent]);
 
   const fetchCase = async () => {
     if (!cnr) return;
@@ -91,6 +168,9 @@ export default function CaseDashboardPage() {
 
   useEffect(() => {
     fetchCase();
+    if (cnr) {
+      loadChatForCase(cnr);
+    }
   }, [cnr]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleBookmarkToggle = async () => {
@@ -363,30 +443,44 @@ export default function CaseDashboardPage() {
         <div className="fixed bottom-6 right-6 z-[1000] flex flex-col items-end pointer-events-auto">
           {isChatOpen && (
             <div 
-              className="mb-4 w-[480px] h-[650px] max-h-[80vh] flex flex-col rounded-2xl overflow-hidden animate-slide-up shadow-2xl"
-              style={{ border: "1px solid var(--border-strong)", background: "var(--card)" }}
+              className="mb-4 w-[480px] h-[650px] max-h-[80vh] flex flex-col rounded-2xl overflow-hidden animate-slide-up shadow-2xl border overscroll-contain"
+              style={{
+                borderColor: "var(--border)",
+                background: "var(--card)",
+                overscrollBehavior: "contain",
+              }}
             >
-              <div className="p-3.5 border-b flex items-center justify-between" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-                <div className="flex items-center gap-2">
+              <div className="p-3 px-4 border-b flex items-center justify-between" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
+                <div className="flex items-center gap-2.5">
                   <div
-                    className="w-7 h-7 rounded-lg flex items-center justify-center"
-                    style={{ background: "var(--surface-container)", color: "var(--primary)" }}
+                    className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
                   >
                     <Sparkles size={15} />
                   </div>
-                  <h3 className="text-sm font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
+                  <h3 className="text-sm font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
                     Assistant
                   </h3>
                 </div>
                 <div className="flex items-center gap-1.5">
                   <button 
+                    type="button"
                     onClick={handleClearChat}
                     title="Clear conversation and start new chat"
                     className="px-2.5 py-1 rounded-lg hover:bg-[var(--surface-container)] text-xs flex items-center gap-1.5 transition-colors cursor-pointer border"
-                    style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                    style={{ borderColor: "var(--border)", color: "var(--ink-dim)" }}
                   >
                     <RotateCcw size={12} />
                     <span className="text-[11px] font-medium">New Chat</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleExpandChat}
+                    title="Expand to Full Chat Window"
+                    className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] transition-colors cursor-pointer"
+                    style={{ color: "var(--ink-dim)" }}
+                  >
+                    <Maximize2 size={15} />
                   </button>
                 </div>
               </div>

@@ -67,8 +67,8 @@ class GeminiClient:
 
     def _model_candidates(self) -> list[str]:
         """Return ordered list of model names to try, deduplicating while preserving order."""
-        primary = settings.gemini_model or "gemini-2.5-flash"
-        candidates = [primary, "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash", "gemini-3.6-flash"]
+        primary = settings.gemini_model or "gemini-3.6-flash"
+        candidates = [primary, "gemini-3.6-flash", "gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
         seen: set[str] = set()
         return [m for m in candidates if not (m in seen or seen.add(m))]
 

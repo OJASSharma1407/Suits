@@ -178,7 +178,7 @@ class AIService:
             )
             await self.conversation_repo.add_message(user_msg)
 
-            # Stream tokens via OpenRouter Nemotron 3 Ultra (with Gemini fallback)
+            # Stream tokens via OpenRouter (gpt-oss-120b) with Gemini fallback
             full_response: list[str] = []
             try:
                 async for token in openrouter_client.generate_with_context_stream(
@@ -190,8 +190,8 @@ class AIService:
                 ):
                     if token:
                         full_response.append(token)
-                        safe = token.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-                        yield f'data: {{"token": "{safe}"}}\n\n'
+                        chunk_json = json.dumps({"token": token})
+                        yield f"data: {chunk_json}\n\n"
                 if not full_response:
                     raise RuntimeError("OpenRouter produced empty stream")
             except Exception as stream_err:
@@ -205,8 +205,8 @@ class AIService:
                 ):
                     if token:
                         full_response.append(token)
-                        safe = token.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-                        yield f'data: {{"token": "{safe}"}}\n\n'
+                        chunk_json = json.dumps({"token": token})
+                        yield f"data: {chunk_json}\n\n"
 
             # Save completed assistant message
             ai_response = "".join(full_response)
@@ -217,12 +217,13 @@ class AIService:
             )
             await self.conversation_repo.add_message(assistant_msg)
 
-            # Generate suggested questions
-            suggested = await openrouter_client.generate_suggested_questions(
-                case_context=case_context or "",
-                last_ai_response=ai_response,
-                n=4,
-            )
+            # Fast contextual suggested questions
+            suggested = [
+                "What is the ratio decidendi established in this case?",
+                "List all precedents and statutes cited.",
+                "Explain the court's substantive reasoning on the merits.",
+                "What specific directions or relief were ordered by the Court?",
+            ]
 
             done_payload = json.dumps({"done": True, "suggested_questions": suggested})
             yield f"data: {done_payload}\n\n"

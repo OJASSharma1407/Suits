@@ -1,5 +1,5 @@
-import React, { useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import React, { useEffect, useState, useRef } from "react";
+import { useParams, useNavigate } from "react-router-dom";
 import { ConversationSidebar } from "@/components/chat/ConversationSidebar";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { chatService } from "@/services/chat";
@@ -8,11 +8,15 @@ import { toast } from "sonner";
 
 export default function ChatPage() {
   const { conversationId: urlConversationId } = useParams<{ conversationId: string }>();
+  const navigate = useNavigate();
 
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [activeId, setActiveId] = useState<string | undefined>(urlConversationId);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [loading, setLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
+  const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
+  const streamAbortRef = useRef<AbortController | null>(null);
 
   const loadConversations = async () => {
     try {
@@ -29,9 +33,9 @@ export default function ChatPage() {
   const loadMessages = async (id: string) => {
     try {
       const msgs = await chatService.getMessages(id);
-      setMessages(msgs);
+      setMessages(msgs || []);
     } catch {
-      toast.error("Failed to load messages.");
+      setMessages([]);
     }
   };
 
@@ -54,17 +58,80 @@ export default function ChatPage() {
     }
   }, [activeId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const handleSendMessage = async (text: string) => {
-    if (!activeId) return;
-    setLoading(true);
+  const handleNewChat = async () => {
     try {
-      await chatService.sendMessage(activeId, text);
-      await loadMessages(activeId);
+      streamAbortRef.current?.abort();
+      setStreamingContent("");
+      setSuggestedQuestions([]);
+      const newConv = await chatService.createConversation("GENERAL", "General Legal Research");
+      setConversations((prev) => [newConv, ...prev]);
+      setActiveId(newConv.id);
+      setMessages([]);
+      navigate(`/chat/${newConv.id}`, { replace: true });
+      toast.success("New legal research chat started.");
     } catch {
-      toast.error("Failed to send message.");
-    } finally {
-      setLoading(false);
+      toast.error("Failed to start new chat.");
     }
+  };
+
+  const handleSendMessage = async (text: string) => {
+    let targetId = activeId;
+    if (!targetId) {
+      try {
+        const newConv = await chatService.createConversation("GENERAL", "General Legal Research");
+        setConversations((prev) => [newConv, ...prev]);
+        targetId = newConv.id;
+        setActiveId(targetId);
+        navigate(`/chat/${targetId}`, { replace: true });
+      } catch {
+        toast.error("Failed to initialize chat session.");
+        return;
+      }
+    }
+
+    streamAbortRef.current?.abort();
+    setStreamingContent("");
+    setSuggestedQuestions([]);
+    setLoading(true);
+
+    const userMsg: ChatMessage = {
+      id: `local-${Date.now()}`,
+      role: "user",
+      message: text,
+      created_at: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, userMsg]);
+
+    const convoId = targetId;
+    let accumulated = "";
+    const controller = chatService.streamMessage(
+      convoId,
+      text,
+      (token) => {
+        accumulated += token;
+        setStreamingContent(accumulated);
+      },
+      (questions) => {
+        const assistantMsg: ChatMessage = {
+          id: `server-${Date.now()}`,
+          role: "assistant",
+          message: accumulated,
+          created_at: new Date().toISOString(),
+        };
+        setMessages((prev) => [...prev, assistantMsg]);
+        setStreamingContent("");
+        setSuggestedQuestions(questions || []);
+        setLoading(false);
+      },
+      (err) => {
+        if (err !== "AbortError") {
+          toast.error(err || "Error receiving response.");
+        }
+        setLoading(false);
+        setStreamingContent("");
+      }
+    );
+    streamAbortRef.current = controller;
   };
 
   const handleDeleteConversation = async (id: string) => {
@@ -74,39 +141,50 @@ export default function ChatPage() {
       const updated = conversations.filter((c) => c.id !== id);
       setConversations(updated);
       if (activeId === id) {
-        setActiveId(updated[0]?.id);
+        const nextId = updated[0]?.id;
+        setActiveId(nextId);
+        if (nextId) {
+          navigate(`/chat/${nextId}`, { replace: true });
+        } else {
+          navigate("/chat", { replace: true });
+        }
       }
     } catch {
       toast.error("Failed to delete conversation.");
     }
   };
 
+  const handleSelectConversation = (id: string) => {
+    setActiveId(id);
+    navigate(`/chat/${id}`);
+  };
+
   return (
     <div
-      className="flex overflow-hidden card-float"
-      style={{ height: "calc(100vh - var(--header-height) - 80px)" }}
+      className="flex overflow-hidden rounded-2xl border"
+      style={{
+        height: "calc(100vh - var(--header-height, 64px) - 48px)",
+        borderColor: "var(--border)",
+        background: "var(--card)",
+        boxShadow: "var(--shadow-card)",
+      }}
     >
       <ConversationSidebar
         conversations={conversations}
         activeId={activeId}
-        onSelect={(id) => setActiveId(id)}
-        onNew={() => {
-          toast.info("Open a case from search to start a new chat!");
-        }}
+        onSelect={handleSelectConversation}
+        onNew={handleNewChat}
         onDelete={handleDeleteConversation}
       />
-      <div className="flex-1 p-4">
-        {activeId ? (
-          <ChatPanel
-            messages={messages}
-            onSendMessage={handleSendMessage}
-            isLoading={loading}
-          />
-        ) : (
-          <div className="h-full flex items-center justify-center text-sm" style={{ color: "var(--text-muted)" }}>
-            Select a conversation to continue research.
-          </div>
-        )}
+      <div className="flex-1 p-3 sm:p-4 overflow-hidden h-full flex flex-col">
+        <ChatPanel
+          messages={messages}
+          onSendMessage={handleSendMessage}
+          isLoading={loading}
+          streamingMessage={streamingContent}
+          suggestedQuestions={suggestedQuestions}
+          onClearChat={handleNewChat}
+        />
       </div>
     </div>
   );
