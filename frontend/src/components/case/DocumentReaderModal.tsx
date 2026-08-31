@@ -31,6 +31,7 @@ interface DocumentReaderModalProps {
   orderDate?: string;
   initialMode?: "pdf" | "text";
   orders?: OrderItem[];
+  allowModeToggle?: boolean;
 }
 
 type ViewMode = "pdf" | "text";
@@ -51,6 +52,7 @@ export function DocumentReaderModal({
   orderDate: initialOrderDate = "Record Copy",
   initialMode = "pdf",
   orders = [],
+  allowModeToggle = true,
 }: DocumentReaderModalProps) {
   const [currentFilename, setCurrentFilename] = useState<string>(initialFilename);
   const [currentOrderDate, setCurrentOrderDate] = useState<string>(initialOrderDate);
@@ -97,10 +99,10 @@ export function DocumentReaderModal({
       if (!isOpen) return;
       if (e.key === "Escape") {
         onClose();
-      } else if (e.key === "1" && (e.altKey || e.metaKey)) {
+      } else if (allowModeToggle && e.key === "1" && (e.altKey || e.metaKey)) {
         e.preventDefault();
         setMode("pdf");
-      } else if (e.key === "2" && (e.altKey || e.metaKey)) {
+      } else if (allowModeToggle && e.key === "2" && (e.altKey || e.metaKey)) {
         e.preventDefault();
         setMode("text");
       }
@@ -108,7 +110,7 @@ export function DocumentReaderModal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, onClose]);
+  }, [isOpen, onClose, allowModeToggle]);
 
   const loadPDF = async (fname: string) => {
     const cacheKey = `${cnr}_${fname}`;
@@ -278,39 +280,41 @@ export function DocumentReaderModal({
           </div>
 
           {/* Center: Segmented View Switcher */}
-          <div
-            className="flex items-center p-0.5 rounded-full border"
-            style={{
-              background: "var(--surface-container)",
-              borderColor: "var(--border)",
-            }}
-          >
-            <button
-              onClick={() => setMode("pdf")}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all"
+          {allowModeToggle && (
+            <div
+              className="flex items-center p-0.5 rounded-full border"
               style={{
-                background: mode === "pdf" ? "var(--card)" : "transparent",
-                color: mode === "pdf" ? "var(--text-primary)" : "var(--text-muted)",
-                boxShadow: mode === "pdf" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                background: "var(--surface-container)",
+                borderColor: "var(--border)",
               }}
             >
-              <FileText size={12} />
-              <span>Court PDF</span>
-            </button>
+              <button
+                onClick={() => setMode("pdf")}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all"
+                style={{
+                  background: mode === "pdf" ? "var(--card)" : "transparent",
+                  color: mode === "pdf" ? "var(--text-primary)" : "var(--text-muted)",
+                  boxShadow: mode === "pdf" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                }}
+              >
+                <FileText size={12} />
+                <span>Court PDF</span>
+              </button>
 
-            <button
-              onClick={() => setMode("text")}
-              className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all"
-              style={{
-                background: mode === "text" ? "var(--card)" : "transparent",
-                color: mode === "text" ? "var(--text-primary)" : "var(--text-muted)",
-                boxShadow: mode === "text" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
-              }}
-            >
-              <BookOpen size={12} />
-              <span>Clean Text</span>
-            </button>
-          </div>
+              <button
+                onClick={() => setMode("text")}
+                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all"
+                style={{
+                  background: mode === "text" ? "var(--card)" : "transparent",
+                  color: mode === "text" ? "var(--text-primary)" : "var(--text-muted)",
+                  boxShadow: mode === "text" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                }}
+              >
+                <BookOpen size={12} />
+                <span>Clean Text</span>
+              </button>
+            </div>
+          )}
 
           {/* Right: Clean View Typography Actions & Close */}
           <div className="flex items-center gap-1.5">

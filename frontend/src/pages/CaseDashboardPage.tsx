@@ -9,6 +9,7 @@ import { StatisticsCard } from "@/components/case/StatisticsCard";
 import { DocumentLiquidNavBar } from "@/components/case/DocumentLiquidNavBar";
 import { AISummaryCard } from "@/components/case/AISummaryCard";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
+import { CitationNetworkView } from "@/components/case/citation/CitationNetworkView";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { ErrorState } from "@/components/common/ErrorState";
@@ -19,6 +20,7 @@ import { chatService } from "@/services/chat";
 import { historyService } from "@/services/history";
 import type { CaseDetails, OrderAI } from "@/types/case";
 import type { ChatMessage } from "@/types/chat";
+import type { CitationNode } from "@/types/citation";
 import { Sparkles, MessageSquare, X, RotateCcw, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -38,8 +40,14 @@ export default function CaseDashboardPage() {
 
   // In-Built Document Reader State
   const [isReaderOpen, setIsReaderOpen] = useState(false);
+  const [readerCnr, setReaderCnr] = useState<string | null>(null);
   const [readerFilename, setReaderFilename] = useState<string | null>(null);
+  const [readerCaseTitle, setReaderCaseTitle] = useState<string | null>(null);
+  const [readerCourtName, setReaderCourtName] = useState<string | null>(null);
+  const [readerOrderDate, setReaderOrderDate] = useState<string | null>(null);
+  const [readerOrders, setReaderOrders] = useState<OrderItem[]>([]);
   const [readerMode, setReaderMode] = useState<"pdf" | "text">("pdf");
+  const [readerAllowToggle, setReaderAllowToggle] = useState<boolean>(true);
 
   const [isChatOpen, setIsChatOpen] = useState(false);
   const [conversationId, setConversationId] = useState<string | null>(null);
@@ -253,8 +261,31 @@ export default function CaseDashboardPage() {
       toast.error("No court document available for this record.");
       return;
     }
+    setReaderCnr(caseData?.cnr || "");
     setReaderFilename(targetFile);
+    setReaderCaseTitle(caseData?.case_title || "Court Document");
+    setReaderCourtName(caseData?.court?.court_name || "Court Record");
+    setReaderOrderDate(caseData?.decision_date || caseData?.next_hearing_date || "Court Order");
+    setReaderOrders(caseData?.orders || []);
     setReaderMode(initialMode);
+    setReaderAllowToggle(true);
+    setIsReaderOpen(true);
+  };
+
+  const handleOpenPrecedentReader = (node: CitationNode) => {
+    const docId = node.tid || node.title;
+    if (!docId) {
+      toast.error("Precedent document identifier unavailable.");
+      return;
+    }
+    setReaderCnr(docId);
+    setReaderFilename(docId);
+    setReaderCaseTitle(node.title);
+    setReaderCourtName(node.court || "Precedent / Statutory Authority");
+    setReaderOrderDate(node.year ? `Decided in ${node.year}` : "Legal Provision");
+    setReaderOrders([]);
+    setReaderMode("text");
+    setReaderAllowToggle(false);
     setIsReaderOpen(true);
   };
 
@@ -423,6 +454,15 @@ export default function CaseDashboardPage() {
           )}
         </div>
 
+        {/* Interactive Citation Network Graph Section */}
+        <div id="citation-network-section">
+          <CitationNetworkView
+            cnr={caseData.cnr}
+            caseTitle={caseData.case_title}
+            onReadDocument={handleOpenPrecedentReader}
+          />
+        </div>
+
         {/* Timeline */}
         <div className="space-y-4">
           <h3 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
@@ -437,13 +477,14 @@ export default function CaseDashboardPage() {
         <DocumentReaderModal
           isOpen={isReaderOpen}
           onClose={() => setIsReaderOpen(false)}
-          cnr={caseData.cnr}
+          cnr={readerCnr || caseData.cnr}
           filename={readerFilename}
-          caseTitle={caseData.case_title}
-          courtName={caseData.court?.court_name || "Court Record"}
-          orderDate={caseData.decision_date || caseData.next_hearing_date || "Court Order"}
+          caseTitle={readerCaseTitle || caseData.case_title}
+          courtName={readerCourtName || caseData.court?.court_name || "Court Record"}
+          orderDate={readerOrderDate || caseData.decision_date || caseData.next_hearing_date || "Court Order"}
           initialMode={readerMode}
-          orders={caseData.orders}
+          orders={readerOrders}
+          allowModeToggle={readerAllowToggle}
         />
       )}
 

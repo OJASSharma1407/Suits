@@ -69,44 +69,73 @@ class OrderService:
         self.cache_repo = CacheRepository(db)
 
     async def _resolve_kanoon_tid(self, cnr: str, filename: str) -> str | None:
-        """Helper to resolve a numeric Indian Kanoon TID from filename, CNR, or search."""
+        """Helper to resolve a numeric Indian Kanoon TID from filename, CNR, or search query."""
         import re as _re
 
-        # 0. Extract TID from full Kanoon URLs like https://indiankanoon.org/doc/193792759/
-        url_match = _re.search(r'indiankanoon\.org/doc/(\d+)', filename)
-        if url_match:
-            return url_match.group(1)
-
-        # Also check CNR for a Kanoon URL
-        cnr_url_match = _re.search(r'indiankanoon\.org/doc/(\d+)', cnr)
-        if cnr_url_match:
-            return cnr_url_match.group(1)
-
-        # 1. Check if filename contains digits (e.g. "29724830", "doc_29724830", "29724830.pdf")
-        filename_digits = "".join(filter(str.isdigit, filename))
-        if filename_digits and len(filename_digits) >= 3 and not filename.startswith("order-"):
-            return filename_digits
-
-        # 2. Check if CNR itself is a numeric TID
+        filename_clean = filename.strip()
         cnr_clean = cnr.strip()
+
+        # 0. Direct numeric check on filename
+        if filename_clean.isdigit():
+            return filename_clean
+
+        # Direct numeric check on CNR
         if cnr_clean.isdigit():
             return cnr_clean
 
-        # 3. If filename is like "order-1.pdf" but CNR is a known search term or alphanumeric CNR
+        # 1. Extract TID from full Kanoon URLs like https://indiankanoon.org/doc/193792759/
+        url_match = _re.search(r'indiankanoon\.org/doc/(\d+)', filename_clean)
+        if url_match:
+            return url_match.group(1)
+
+        cnr_url_match = _re.search(r'indiankanoon\.org/doc/(\d+)', cnr_clean)
+        if cnr_url_match:
+            return cnr_url_match.group(1)
+
+        # 2. Check if filename contains pure standalone digits (e.g. "doc_29724830")
+        filename_digits = "".join(filter(str.isdigit, filename_clean))
+        if (
+            filename_digits
+            and len(filename_digits) >= 4
+            and not filename_clean.startswith("order-")
+            and not "section" in filename_clean.lower()
+            and not "article" in filename_clean.lower()
+        ):
+            return filename_digits
+
+        # 3. Search Indian Kanoon using filename if it is a descriptive precedent title or statutory provision
+        if (
+            filename_clean
+            and not filename_clean.startswith("order-")
+            and not filename_clean.startswith("interim-")
+        ):
+            try:
+                query_term = _re.sub(r'\.(pdf|txt|html)$', '', filename_clean, flags=_re.IGNORECASE).strip()
+                logger.info("resolving_kanoon_tid_by_filename_search", query=query_term)
+                search_res = await kanoon_client.search_docs(query=query_term, pagenum=1)
+                docs = search_res.get("docs", [])
+                if docs:
+                    tid = str(docs[0].get("tid"))
+                    logger.info("resolved_kanoon_tid_from_filename_search", query=query_term, tid=tid, title=docs[0].get("title"))
+                    return tid
+            except Exception as exc:
+                logger.warning("failed_to_resolve_kanoon_tid_from_filename", error=str(exc))
+
+        # 4. Search Indian Kanoon using CNR
         try:
-            logger.info("resolving_kanoon_tid_via_search", cnr=cnr, filename=filename)
+            logger.info("resolving_kanoon_tid_via_cnr_search", cnr=cnr_clean)
             search_res = await kanoon_client.search_docs(query=cnr_clean, pagenum=1)
             docs = search_res.get("docs", [])
             if docs:
                 tid = str(docs[0].get("tid"))
-                logger.info("resolved_kanoon_tid_from_search", cnr=cnr, tid=tid, title=docs[0].get("title"))
+                logger.info("resolved_kanoon_tid_from_search", cnr=cnr_clean, tid=tid, title=docs[0].get("title"))
                 return tid
         except Exception as exc:
-            logger.warning("failed_to_resolve_kanoon_tid", cnr=cnr, error=str(exc))
+            logger.warning("failed_to_resolve_kanoon_tid", cnr=cnr_clean, error=str(exc))
 
-        # 4. Fallback: Check if cached case in DB has a title or search query we can use
+        # 5. Fallback: Check if cached case in DB has a title or search query we can use
         try:
-            cached_case = await self.cache_repo.get_cached_case(cnr)
+            cached_case = await self.cache_repo.get_cached_case(cnr_clean)
             if cached_case and cached_case.case_title and "Unknown" not in cached_case.case_title:
                 search_res2 = await kanoon_client.search_docs(query=cached_case.case_title, pagenum=1)
                 docs2 = search_res2.get("docs", [])

@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookOpen, Sparkles, Download } from "lucide-react";
+import { BookOpen, Sparkles, Download, Network } from "lucide-react";
 import type { OrderItem } from "@/types/case";
 
 export type DocumentTab = "read" | "summary" | "pdf";
