@@ -1,51 +1,128 @@
-import { Link, useLocation } from "react-router-dom";
-import { LayoutDashboard, Search, Bookmark, Clock, BarChart3, Settings, User } from "lucide-react";
-import { useSidebarStore } from "@/store/sidebar-store";
+import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Sun, Moon } from "lucide-react";
+import { useAuthStore } from "@/store/auth-store";
+import { useThemeStore } from "@/store/theme-store";
+
+// SVG icons matching the reference design (stroke-based, 18×18)
+function WorkspaceIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <rect x="3" y="3" width="7" height="7" />
+      <rect x="14" y="3" width="7" height="7" />
+      <rect x="3" y="14" width="7" height="7" />
+      <rect x="14" y="14" width="7" height="7" />
+    </svg>
+  );
+}
+function BookmarkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M6 3h12v18l-6-4-6 4z" />
+    </svg>
+  );
+}
+function HistoryIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7v5l3 3" />
+    </svg>
+  );
+}
+function AnalyticsIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M4 19h16M7 15v4M12 9v10M17 5v14" />
+    </svg>
+  );
+}
+function ScalesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M12 3v18M5 7l-3 6a3.5 3.5 0 007 0l-3-6zM19 7l-3 6a3.5 3.5 0 007 0l-3-6zM5 7h14M8 21h8" />
+    </svg>
+  );
+}
 
 const navItems = [
-  { path: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
-  { path: "/search", label: "Search", icon: Search },
-  { path: "/bookmarks", label: "Bookmarks", icon: Bookmark },
-  { path: "/history", label: "History", icon: Clock },
-  { path: "/analytics", label: "Analytics", icon: BarChart3 },
+  { path: "/dashboard",  label: "Workspace",  Icon: WorkspaceIcon },
+  { path: "/bookmarks",  label: "Bookmarks",  Icon: BookmarkIcon },
+  { path: "/analytics",  label: "Analytics",  Icon: AnalyticsIcon },
+  { path: "/history",    label: "History",    Icon: HistoryIcon },
 ];
 
 export default function Sidebar() {
   const location = useLocation();
-  const isOpen = useSidebarStore((s) => s.isOpen);
+  const navigate = useNavigate();
+  const { user } = useAuthStore();
+  const { theme, toggleTheme } = useThemeStore();
+
+  const isDark = theme === "dark";
 
   return (
-    <aside
-      className="fixed left-0 bottom-0 flex flex-col py-5 transition-all duration-200 z-40 glass"
-      style={{
-        top: "var(--header-height)",
-        borderRight: "1px solid var(--border)",
-        width: isOpen ? "240px" : "68px",
-      }}
-    >
-      <nav className="flex-1 flex flex-col gap-1 px-3">
-        {navItems.map(({ path, label, icon: Icon }) => {
-          const isActive = location.pathname === path || location.pathname.startsWith(path + "/");
-          return (
-            <Link
-              key={path}
-              to={path}
-              className="flex items-center gap-3 py-2.5 text-sm font-medium transition-all"
-              style={{
-                padding: isOpen ? "10px 16px" : "10px 0",
-                justifyContent: isOpen ? "flex-start" : "center",
-                borderRadius: "var(--radius-button)",
-                background: isActive ? "var(--primary)" : "transparent",
-                color: isActive ? "var(--on-primary)" : "var(--text-secondary)",
-              }}
-              title={label}
-            >
-              <Icon size={18} />
-              {isOpen && <span>{label}</span>}
-            </Link>
-          );
-        })}
-      </nav>
+    <aside className="sidebar">
+      {/* Logo + Nav grouped at top */}
+      <div className="sidebar-top">
+        <div className="wordmark">
+          <ScalesIcon />
+          <span className="mark">Suits</span>
+        </div>
+
+        {/* Nav */}
+        <nav className="sidebar-nav">
+          {navItems.map(({ path, label, Icon }) => {
+            const isActive =
+              location.pathname === path ||
+              (path !== "/dashboard" && location.pathname.startsWith(path));
+            return (
+              <Link
+                key={path}
+                to={path}
+                className={`nav-item${isActive ? " active" : ""}`}
+                title={label}
+              >
+                <Icon />
+                <span className="nav-label">{label}</span>
+              </Link>
+            );
+          })}
+        </nav>
+      </div>
+
+      {/* Footer: Profile pill → /profile + Theme toggle */}
+      <div className="sidebar-foot">
+        <div className="sidebar-foot-row">
+          {/* Clicking anywhere on the pill goes to /profile */}
+          <button
+            onClick={() => navigate("/profile")}
+            className="sidebar-profile-btn"
+            aria-label="Go to profile"
+            title={user?.full_name || "Profile"}
+          >
+            <div className="sidebar-avatar">
+              {user?.full_name?.charAt(0)?.toUpperCase() || "U"}
+            </div>
+            <div className="sidebar-user-info">
+              <span className="sidebar-user-name">{user?.full_name || "User"}</span>
+              <span className="sidebar-user-role">Advocate</span>
+            </div>
+          </button>
+
+          {/* Dark Mode Toggle */}
+          <button
+            onClick={toggleTheme}
+            className="sidebar-theme-btn"
+            aria-label={isDark ? "Switch to light mode" : "Switch to dark mode"}
+            title={isDark ? "Light mode" : "Dark mode"}
+          >
+            {isDark ? (
+              <Sun size={17} key="sun" className="animate-icon-swap" />
+            ) : (
+              <Moon size={17} key="moon" className="animate-icon-swap" />
+            )}
+          </button>
+        </div>
+      </div>
     </aside>
   );
 }

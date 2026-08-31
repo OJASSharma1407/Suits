@@ -24,10 +24,10 @@ class CacheRepository:
 
     # --- Cached Cases & Local Search ---
 
-    async def get_cached_case(self, cnr: str) -> CachedCase | None:
+    async def get_cached_case(self, cnr: str, check_expiry: bool = False) -> CachedCase | None:
         result = await self.db.execute(select(CachedCase).where(CachedCase.cnr == cnr))
         case = result.scalar_one_or_none()
-        if case and case.expires_at:
+        if case and check_expiry and case.expires_at:
             now = datetime.now(timezone.utc)
             expires_at = _ensure_utc(case.expires_at)
             if expires_at < now:
@@ -70,9 +70,7 @@ class CacheRepository:
             stmt = stmt.where(*conditions)
 
         result = await self.db.execute(stmt)
-        cases = list(result.scalars().all())
-        now = datetime.now(timezone.utc)
-        return [c for c in cases if not c.expires_at or _ensure_utc(c.expires_at) >= now]
+        return list(result.scalars().all())
 
     async def save_cached_case(self, cached_case: CachedCase) -> CachedCase:
         existing = await self.db.execute(

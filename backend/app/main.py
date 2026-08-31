@@ -44,20 +44,26 @@ async def lifespan(app: FastAPI):
     # Automatically create database tables if they do not exist
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-
-    # --- DIAGNOSTIC TEST FOR KANOON PDF ---
-    try:
-        import httpx
-        logger.info("kanoon_diagnostic_starting")
-        async with httpx.AsyncClient(follow_redirects=True) as c:
-            r = await c.post("https://indiankanoon.org/doc/77326406/?type=pdf", data={}, headers={"User-Agent": "Mozilla/5.0"})
-            logger.info("kanoon_diagnostic_post", status=r.status_code, content=str(r.content[:100]))
-            
-            r2 = await c.get("https://indiankanoon.org/doc/77326406/?type=pdf", headers={"User-Agent": "Mozilla/5.0"})
-            logger.info("kanoon_diagnostic_get", status=r2.status_code, content=str(r2.content[:100]))
-    except Exception as e:
-        logger.error("kanoon_diagnostic_error", error=str(e))
-    # --------------------------------------
+        # Clean any stale/failed cache entries so they can be re-fetched cleanly
+        from sqlalchemy import text
+        await conn.execute(
+            text("""
+                DELETE FROM cached_orders
+                WHERE markdown LIKE '*PDF extraction failed%'
+                OR markdown LIKE '*This court order%'
+                OR markdown LIKE '%could not be retrieved%'
+            """)
+        )
+        await conn.execute(
+            text("""
+                DELETE FROM cached_ai_analysis
+                WHERE ai_json LIKE '%"extractionConfidence": 0.0%'
+                AND (
+                    ai_json LIKE '%could not be analyzed%'
+                    OR ai_json LIKE '%unavailable%'
+                )
+            """)
+        )
 
     yield
 

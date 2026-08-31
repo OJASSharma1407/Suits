@@ -5,6 +5,7 @@ from app.models.conversation import Conversation
 from app.models.message import Message
 from app.models.bookmark import Bookmark
 from app.models.search_history import SearchHistory
+from app.models.case_view_history import CaseViewHistory
 from app.models.cached_case import CachedCase
 from app.models.cached_order import CachedOrder
 from app.models.cached_ai_analysis import CachedAIAnalysis
@@ -17,6 +18,7 @@ __all__ = [
     "Message",
     "Bookmark",
     "SearchHistory",
+    "CaseViewHistory",
     "CachedCase",
     "CachedOrder",
     "CachedAIAnalysis",

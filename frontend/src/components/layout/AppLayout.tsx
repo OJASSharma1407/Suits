@@ -1,53 +1,51 @@
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import { useEffect } from "react";
-import Navbar from "./Navbar";
 import Sidebar from "./Sidebar";
+import { TopSearchBar } from "./TopSearchBar";
 import { CommandPalette } from "@/components/common/CommandPalette";
-import { useSidebarStore } from "@/store/sidebar-store";
 import { useThemeStore } from "@/store/theme-store";
 import { Toaster } from "sonner";
 
 export default function AppLayout() {
-  const isOpen = useSidebarStore((s) => s.isOpen);
   const { theme } = useThemeStore();
+  const location = useLocation();
+  const hideTopSearchBar =
+    location.pathname === "/search" ||
+    location.pathname.startsWith("/search") ||
+    location.pathname === "/profile" ||
+    location.pathname.startsWith("/profile");
 
-  // Keep data-theme in sync with store on every mount/update
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
   }, [theme]);
 
   return (
-    <div className="min-h-screen relative" style={{ background: "var(--bg)" }}>
-      {/* Decorative gradient orbs */}
-      <div className="orb orb-1" style={{ top: "-120px", right: "-100px", opacity: 0.5 }} />
-      <div className="orb orb-2" style={{ top: "300px", left: "-80px", opacity: 0.4 }} />
-
-      <Navbar />
+    <div className="app-shell">
+      {/* Left sidebar with navigation, user profile, and dark mode toggle */}
       <Sidebar />
-      <main
-        className="transition-all duration-200 relative z-10"
-        style={{
-          marginLeft: isOpen ? "240px" : "68px",
-          paddingTop: "calc(var(--header-height) + 32px)",
-          paddingBottom: "48px",
-          paddingLeft: "40px",
-          paddingRight: "40px",
-        }}
-      >
-        <Outlet />
-      </main>
+
+      {/* Main column: top search bar (when not on search or profile) + page content */}
+      <div className="main-column">
+        {!hideTopSearchBar && <TopSearchBar />}
+        <main className="main-content">
+          <div className="main-inner">
+            <Outlet />
+          </div>
+        </main>
+      </div>
 
       <CommandPalette />
 
       <Toaster
-        position="bottom-right"
+        position="top-right"
         theme={theme}
         toastOptions={{
           style: {
-            background: "var(--card)",
-            color: "var(--text-primary)",
-            border: "1px solid var(--border)",
-            borderRadius: "var(--radius-card)",
+            background: "var(--surface)",
+            color: "var(--ink)",
+            border: "1px solid var(--hairline)",
+            borderRadius: "var(--radius-md)",
+            fontFamily: "var(--font-sans)",
             boxShadow: "var(--shadow-float)",
           },
         }}

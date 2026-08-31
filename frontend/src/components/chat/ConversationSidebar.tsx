@@ -18,54 +18,96 @@ export function ConversationSidebar({
   onDelete,
 }: ConversationSidebarProps) {
   return (
-    <div className="w-72 flex flex-col h-full border-r bg-white" style={{ borderColor: "var(--border)" }}>
-      <div className="p-4 border-b" style={{ borderColor: "var(--border)" }}>
+    <div
+      className="w-72 flex flex-col h-full border-r overflow-hidden"
+      style={{
+        background: "var(--surface)",
+        borderColor: "var(--border)",
+      }}
+    >
+      <div className="p-3.5 border-b" style={{ borderColor: "var(--border)" }}>
         <button
+          type="button"
           onClick={onNew}
-          className="btn-primary w-full justify-center"
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-2xl font-medium text-sm transition-all duration-200 cursor-pointer shadow-xs hover:opacity-95 active:scale-[0.98]"
+          style={{
+            background: "var(--brass)",
+            color: "var(--on-primary)",
+            boxShadow: "0 2px 10px rgba(0, 0, 0, 0.08)",
+          }}
         >
-          <Plus size={16} /> New Chat
+          <Plus size={16} />
+          <span>New Chat</span>
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-2 space-y-1">
+      <div className="flex-1 overflow-y-auto overscroll-contain p-2.5 space-y-1">
         {conversations.length === 0 ? (
-          <p className="text-center text-xs p-4" style={{ color: "var(--text-muted)" }}>
+          <p className="text-center text-xs p-4" style={{ color: "var(--ink-faint)" }}>
             No recent conversations.
           </p>
         ) : (
-          conversations.map((c) => (
-            <div
-              key={c.id}
-              className="group flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-colors"
-              style={{
-                background: activeId === c.id ? "var(--surface-container)" : "transparent",
-              }}
-              onClick={() => onSelect(c.id)}
-            >
-              <div className="flex items-center gap-3 overflow-hidden">
-                <MessageSquare size={16} style={{ color: activeId === c.id ? "var(--primary)" : "var(--text-muted)" }} flex-shrink-0 />
-                <div className="truncate">
-                  <p className="text-sm font-medium truncate" style={{ color: activeId === c.id ? "var(--text-primary)" : "var(--text-secondary)" }}>
-                    {c.title}
-                  </p>
-                  <p className="text-[10px] font-mono truncate" style={{ color: "var(--text-muted)" }}>
-                    {c.cnr}
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onDelete(c.id);
+          conversations.map((c) => {
+            const isActive = activeId === c.id;
+            const displayTitle = (
+              c.title ||
+              (c.cnr === "GENERAL" ? "General Legal Research" : `Case - ${c.cnr}`)
+            ).replace(/^Chat\s*-\s*/i, "Case - ");
+            const displaySub = c.cnr === "GENERAL" ? "Legal Research" : c.cnr;
+
+            return (
+              <div
+                key={c.id}
+                className="group flex items-center justify-between p-2.5 rounded-2xl cursor-pointer transition-all duration-150 border"
+                style={{
+                  background: isActive ? "var(--surface-container)" : "transparent",
+                  borderColor: isActive ? "var(--border)" : "transparent",
                 }}
-                className="opacity-0 group-hover:opacity-100 p-1.5 rounded-lg hover:bg-gray-200 transition-all text-red-500"
-                title="Delete"
+                onClick={() => onSelect(c.id)}
               >
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))
+                <div className="flex items-center gap-2.5 overflow-hidden min-w-0 flex-1">
+                  <div
+                    className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
+                    style={{
+                      background: isActive ? "var(--brass-soft)" : "var(--surface-container-high)",
+                      color: isActive ? "var(--brass-bright)" : "var(--ink-dim)",
+                    }}
+                  >
+                    <MessageSquare size={14} />
+                  </div>
+                  <div className="truncate min-w-0 flex-1">
+                    <p
+                      className="text-xs sm:text-[13px] font-medium truncate"
+                      style={{ color: isActive ? "var(--ink)" : "var(--ink-dim)" }}
+                    >
+                      {displayTitle}
+                    </p>
+                    <p
+                      className="text-[10.5px] font-mono truncate"
+                      style={{ color: "var(--ink-faint)" }}
+                    >
+                      {displaySub}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(c.id);
+                  }}
+                  className="opacity-0 group-hover:opacity-100 p-1.5 rounded-xl transition-all cursor-pointer flex-shrink-0"
+                  style={{
+                    color: "var(--danger)",
+                    background: "transparent",
+                  }}
+                  title="Delete Conversation"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
+            );
+          })
         )}
       </div>
     </div>

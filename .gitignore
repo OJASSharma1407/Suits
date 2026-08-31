@@ -223,5 +223,6 @@ backend/data/pdf_cache
 
 backend/suits.db-shm
 backend/suits.db-wal
-backend/suits.db-shm
-backend/suits.db-wal
+backend/app/suits.db-shm
+backend/app/suits.db-wal
+backend/app/suits.db

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowUp, Sparkles, Plus, CornerDownLeft } from "lucide-react";
+import { ArrowUp, Sparkles, Plus } from "lucide-react";
 
 interface ChatInputProps {
   onSend: (text: string) => void;
@@ -17,12 +17,12 @@ export function ChatInput({
   const [text, setText] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  // Dynamic auto-grow from 40px to 180px
+  // Dynamic auto-grow from 38px to 160px
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
       const scrollHeight = textareaRef.current.scrollHeight;
-      textareaRef.current.style.height = `${Math.min(Math.max(scrollHeight, 40), 180)}px`;
+      textareaRef.current.style.height = `${Math.min(Math.max(scrollHeight, 38), 160)}px`;
     }
   }, [text]);
 
@@ -32,7 +32,7 @@ export function ChatInput({
       onSend(text.trim());
       setText("");
       if (textareaRef.current) {
-        textareaRef.current.style.height = "40px";
+        textareaRef.current.style.height = "38px";
       }
     }
   };
@@ -45,14 +45,14 @@ export function ChatInput({
   };
 
   return (
-    <div className="space-y-1.5 w-full">
+    <div className="w-full">
       <form
         onSubmit={handleSubmit}
-        className="relative flex items-end gap-2 p-2 rounded-2xl border transition-all focus-within:ring-2 focus-within:border-[var(--primary)]"
+        className="relative flex items-center gap-2 p-1.5 sm:p-2 rounded-2xl border transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--brass-soft)] focus-within:border-[var(--brass)]"
         style={{
-          borderColor: "var(--border-strong)",
+          borderColor: "var(--border)",
           background: "var(--card)",
-          boxShadow: "var(--shadow-ambient)",
+          boxShadow: "var(--shadow-card)",
         }}
       >
         {/* Quick Prompts '+' Button */}
@@ -60,10 +60,10 @@ export function ChatInput({
           <button
             type="button"
             onClick={onTogglePrompts}
-            className="p-2.5 rounded-xl flex-shrink-0 transition-colors cursor-pointer flex items-center justify-center"
+            className="w-9 h-9 rounded-xl flex-shrink-0 transition-colors cursor-pointer flex items-center justify-center self-end"
             style={{
-              background: isPromptsOpen ? "var(--surface-container-high)" : "var(--surface-container)",
-              color: isPromptsOpen ? "var(--primary)" : "var(--text-secondary)",
+              background: isPromptsOpen ? "var(--brass-soft)" : "var(--surface-container)",
+              color: isPromptsOpen ? "var(--brass-bright)" : "var(--ink-dim)",
             }}
             title="Toggle Quick Legal Prompts"
           >
@@ -79,8 +79,8 @@ export function ChatInput({
           onKeyDown={handleKeyDown}
           disabled={disabled}
           placeholder="Ask a legal question, analyze citations, or request ratio..."
-          className="flex-1 max-h-[180px] min-h-[40px] py-2 px-2 text-xs sm:text-sm resize-none outline-none bg-transparent leading-relaxed"
-          style={{ color: "var(--text-primary)" }}
+          className="flex-1 max-h-[160px] min-h-[38px] py-2 px-1.5 text-xs sm:text-[13.5px] resize-none outline-none bg-transparent leading-relaxed"
+          style={{ color: "var(--ink)" }}
           rows={1}
         />
 
@@ -88,31 +88,13 @@ export function ChatInput({
         <button
           type="submit"
           disabled={!text.trim() || disabled}
-          className="p-2.5 rounded-xl flex-shrink-0 transition-opacity disabled:opacity-40 cursor-pointer flex items-center justify-center"
-          style={{ background: "var(--primary)", color: "var(--on-primary)" }}
-          title="Send (Enter ↵)"
+          className="w-9 h-9 rounded-xl flex-shrink-0 transition-all disabled:opacity-35 cursor-pointer flex items-center justify-center self-end"
+          style={{ background: "var(--brass)", color: "#FFFFFF" }}
+          title="Send"
         >
           <ArrowUp size={16} />
         </button>
       </form>
-
-      {/* Micro-hint */}
-      <div className="flex items-center justify-between px-1 text-[10px]" style={{ color: "var(--text-muted)" }}>
-        <span className="flex items-center gap-1">
-          <CornerDownLeft size={10} /> <strong>Enter</strong> to send • <strong>Shift+Enter</strong> for new line
-        </span>
-        {onTogglePrompts && (
-          <button
-            type="button"
-            onClick={onTogglePrompts}
-            className="hover:underline flex items-center gap-1 cursor-pointer"
-            style={{ color: "var(--text-secondary)" }}
-          >
-            <Sparkles size={10} style={{ color: "var(--primary)" }} />
-            {isPromptsOpen ? "Hide Prompts" : "Quick Prompts"}
-          </button>
-        )}
-      </div>
     </div>
   );
 }

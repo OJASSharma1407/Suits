@@ -125,15 +125,6 @@ export default function Navbar() {
                 >
                   <User size={15} /> Profile
                 </Link>
-                <Link
-                  to="/settings"
-                  className="flex items-center gap-2 px-3 py-2 text-sm rounded-xl hover:bg-[var(--surface-container)]"
-                  style={{ color: "var(--text-primary)" }}
-                  onClick={() => setShowMenu(false)}
-                >
-                  {isDark ? <Sun size={15} /> : <Moon size={15} />}
-                  {isDark ? "Light Mode" : "Dark Mode"}
-                </Link>
                 <button
                   onClick={handleLogout}
                   className="w-full text-left flex items-center gap-2 px-3 py-2 text-sm rounded-xl hover:bg-[var(--surface-container)] cursor-pointer"

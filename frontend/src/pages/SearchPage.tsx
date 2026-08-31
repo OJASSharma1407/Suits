@@ -1,16 +1,12 @@
 import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { SearchBar } from "@/components/search/SearchBar";
-import { SearchFilters } from "@/components/search/SearchFilters";
 import { SearchResultCard } from "@/components/search/SearchResultCard";
-import { SearchResultTable } from "@/components/search/SearchResultTable";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
-import { EmptyState } from "@/components/common/EmptyState";
 import { searchService } from "@/services/search";
 import { bookmarkService } from "@/services/bookmarks";
 import { getErrorMessage } from "@/lib/error";
 import type { SearchResultItem, SearchFilters as SearchFiltersType } from "@/types/search";
-import { LayoutGrid, Table } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SearchPage() {
@@ -18,20 +14,15 @@ export default function SearchPage() {
   const [results, setResults] = useState<SearchResultItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
-  const [viewMode, setViewMode] = useState<"grid" | "table">("grid");
   const [bookmarkedCnrs, setBookmarkedCnrs] = useState<Set<string>>(new Set());
   const [togglingCnrs, setTogglingCnrs] = useState<Set<string>>(new Set());
 
   const [filters, setFilters] = useState<SearchFiltersType>({
     query: searchParams.get("query") || "",
-    case_status: searchParams.get("case_status") || undefined,
-    court_code: searchParams.get("court_code") || undefined,
-    filing_year: searchParams.get("filing_year") ? Number(searchParams.get("filing_year")) : undefined,
     page: 1,
     page_size: 20,
   });
 
-  // Fetch initial bookmarks to synchronize state
   useEffect(() => {
     const fetchBookmarks = async () => {
       try {
@@ -40,16 +31,13 @@ export default function SearchPage() {
           setBookmarkedCnrs(new Set(bookmarks.map((b) => b.cnr)));
         }
       } catch {
-        // Silent fail if unauthenticated or on initial load
+        // Silent fail
       }
     };
     fetchBookmarks();
   }, []);
 
   const fetchResults = useCallback(async (currentFilters: SearchFiltersType) => {
-    if (!currentFilters.query && !currentFilters.case_status && !currentFilters.court_code && !currentFilters.filing_year) {
-      return;
-    }
     setLoading(true);
     setHasSearched(true);
     try {
@@ -62,12 +50,15 @@ export default function SearchPage() {
     }
   }, []);
 
-  // Only auto-search if there's a query param from URL
+  // Synchronize when searchParams changes (e.g. from top bar or direct navigation)
   useEffect(() => {
-    if (filters.query) {
-      fetchResults(filters);
-    }
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+    const q = searchParams.get("query") || "";
+    setFilters((prev) => {
+      const updated = { ...prev, query: q, page: 1 };
+      fetchResults(updated);
+      return updated;
+    });
+  }, [searchParams, fetchResults]);
 
   const handleSearch = (query: string) => {
     const updated = { ...filters, query, page: 1 };
@@ -76,23 +67,24 @@ export default function SearchPage() {
     fetchResults(updated);
   };
 
+  const QUICK_SEARCH_PILLS = [
+    "Bachan Singh",
+    "Editors Guild",
+    "Apex Infrastructure",
+    "Anticipatory Bail",
+    "Supreme Court",
+    "Delhi High Court",
+  ];
+
   const handleBookmarkToggle = async (cnr: string, title?: string) => {
     if (togglingCnrs.has(cnr)) return;
-
     setTogglingCnrs((prev) => new Set(prev).add(cnr));
     const wasBookmarked = bookmarkedCnrs.has(cnr);
-
-    // Optimistically update UI
     setBookmarkedCnrs((prev) => {
       const next = new Set(prev);
-      if (wasBookmarked) {
-        next.delete(cnr);
-      } else {
-        next.add(cnr);
-      }
+      wasBookmarked ? next.delete(cnr) : next.add(cnr);
       return next;
     });
-
     try {
       if (wasBookmarked) {
         await bookmarkService.remove(cnr);
@@ -102,21 +94,13 @@ export default function SearchPage() {
         toast.success("Case bookmarked.");
       }
     } catch (err: unknown) {
-      // Revert optimistic update on failure
       setBookmarkedCnrs((prev) => {
         const next = new Set(prev);
-        if (wasBookmarked) {
-          next.add(cnr);
-        } else {
-          next.delete(cnr);
-        }
+        wasBookmarked ? next.add(cnr) : next.delete(cnr);
         return next;
       });
-
       const fallbackMsg = wasBookmarked ? "Failed to remove bookmark." : "Failed to save bookmark.";
-      const errorMessage = getErrorMessage(err, fallbackMsg);
-      
-      toast.error(errorMessage);
+      toast.error(getErrorMessage(err, fallbackMsg));
     } finally {
       setTogglingCnrs((prev) => {
         const next = new Set(prev);
@@ -127,80 +111,57 @@ export default function SearchPage() {
   };
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight" style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}>
-          Case Search
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          Search cases across courts using keywords, party names, advocates, or CNRs.
-        </p>
-      </div>
-
+    <div className="dashboard-layout">
+      {/* In-page Search bar */}
       <SearchBar initialValue={filters.query} onSearch={handleSearch} />
 
-      <SearchFilters
-        filters={filters}
-        onChange={(newFilters: SearchFiltersType) => {
-          setFilters(newFilters);
-          fetchResults(newFilters);
-        }}
-        onReset={() => {
-          const reset: SearchFiltersType = { page: 1, page_size: 20 };
-          setFilters(reset);
-          setResults([]);
-          setHasSearched(false);
-        }}
-      />
+      {/* Quick Search Suggestions */}
+      <div className="flex items-center gap-2 overflow-x-auto pb-2 -mt-2 mb-4 scrollbar-none text-xs">
+        <span className="text-[var(--text-muted)] shrink-0 font-medium">Try searching:</span>
+        {QUICK_SEARCH_PILLS.map((pill) => (
+          <button
+            key={pill}
+            type="button"
+            onClick={() => handleSearch(pill)}
+            className="px-2.5 py-1 rounded-full border transition-all hover:border-[var(--primary)] hover:text-[var(--primary)] shrink-0"
+            style={{
+              background: "var(--card)",
+              borderColor: "var(--border)",
+              color: "var(--text-secondary)",
+            }}
+          >
+            {pill}
+          </button>
+        ))}
+      </div>
 
-      {/* View Toggle */}
+      {/* Results Header */}
       {hasSearched && (
-        <div className="flex items-center justify-between">
-          <span className="text-xs font-medium" style={{ color: "var(--text-muted)" }}>
-            {results.length} {results.length === 1 ? "case found" : "cases found"}
+        <div className="flex items-center justify-between text-xs text-[var(--text-muted)] mb-2 px-1">
+          <span>
+            {filters.query
+              ? `Showing results for "${filters.query}"`
+              : "Featured & Recent Cases"}
           </span>
-          <div className="flex items-center gap-1 p-1 rounded-full" style={{ background: "var(--surface-container)", border: "1px solid var(--border)" }}>
-            <button
-              onClick={() => setViewMode("grid")}
-              className="p-1.5 rounded-full cursor-pointer"
-              style={{
-                background: viewMode === "grid" ? "var(--card)" : "transparent",
-                color: viewMode === "grid" ? "var(--text-primary)" : "var(--text-muted)",
-                boxShadow: viewMode === "grid" ? "var(--shadow-ambient)" : "none",
-              }}
-            >
-              <LayoutGrid size={16} />
-            </button>
-            <button
-              onClick={() => setViewMode("table")}
-              className="p-1.5 rounded-full cursor-pointer"
-              style={{
-                background: viewMode === "table" ? "var(--card)" : "transparent",
-                color: viewMode === "table" ? "var(--text-primary)" : "var(--text-muted)",
-                boxShadow: viewMode === "table" ? "var(--shadow-ambient)" : "none",
-              }}
-            >
-              <Table size={16} />
-            </button>
-          </div>
+          <span>{results.length} cases found</span>
         </div>
       )}
 
-      {/* Results */}
+      {/* Content */}
       {loading ? (
-        <SkeletonLoader count={4} height="120px" />
-      ) : !hasSearched ? (
-        <EmptyState
-          title="Start your research"
-          description="Enter a search query or apply filters to find court cases."
-        />
+        <div style={{ marginTop: 16 }}>
+          <SkeletonLoader count={5} height="72px" />
+        </div>
       ) : results.length === 0 ? (
-        <EmptyState
-          title="No cases found"
-          description="Try broadening your search query or removing filters."
-        />
-      ) : viewMode === "grid" ? (
-        <div className="grid grid-cols-1 gap-3">
+        <div className="empty-note" style={{ marginTop: 12 }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+            <circle cx="11" cy="11" r="7" />
+            <path d="M21 21l-4.3-4.3" />
+          </svg>
+          No cases found{filters.query ? ` for "${filters.query}"` : ""}. Try a different spelling or keyword.
+        </div>
+      ) : (
+        <div className="ledger-list" style={{ marginTop: 16 }}>
           {results.map((item) => (
             <SearchResultCard
               key={item.cnr}
@@ -211,13 +172,6 @@ export default function SearchPage() {
             />
           ))}
         </div>
-      ) : (
-        <SearchResultTable
-          items={results}
-          bookmarkedCnrs={bookmarkedCnrs}
-          togglingCnrs={togglingCnrs}
-          onBookmarkToggle={handleBookmarkToggle}
-        />
       )}
     </div>
   );

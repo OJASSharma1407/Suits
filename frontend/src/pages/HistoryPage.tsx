@@ -1,7 +1,17 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { Search, MessageSquare, Trash2, ArrowRight, Clock, Calendar } from "lucide-react";
-import api from "@/lib/axios";
+import { useNavigate } from "react-router-dom";
+import {
+  FileText,
+  MessageSquare,
+  Trash2,
+  ArrowRight,
+  Clock,
+  Calendar,
+  Database,
+  X,
+} from "lucide-react";
+import { historyService, type CaseHistoryItem, type ConversationHistoryItem } from "@/services/history";
+import { chatService } from "@/services/chat";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { toast } from "sonner";
@@ -33,9 +43,9 @@ const BUCKET_META: Record<string, { label: string; icon: React.ReactNode }> = {
   earlier:   { label: "Earlier",            icon: <Calendar size={13} /> },
 };
 
-function groupByDate<T extends { created_at?: string; updated_at?: string }>(
+function groupByDate<T extends { viewed_at?: string; updated_at?: string; created_at?: string }>(
   items: T[],
-  dateKey: "created_at" | "updated_at" = "created_at"
+  dateKey: "viewed_at" | "updated_at" | "created_at" = "viewed_at"
 ): GroupedItems<T>[] {
   const buckets: Record<string, T[]> = { today: [], yesterday: [], week: [], earlier: [] };
   items.forEach((item) => {
@@ -69,21 +79,22 @@ function relativeTime(dateStr: string): string {
 
 /* ── Main Component ────────────────────────────────────────── */
 export default function HistoryPage() {
-  const [searches, setSearches] = useState<any[]>([]);
-  const [conversations, setConversations] = useState<any[]>([]);
+  const [cases, setCases] = useState<CaseHistoryItem[]>([]);
+  const [conversations, setConversations] = useState<ConversationHistoryItem[]>([]);
   const [loading, setLoading] = useState(true);
   const navigate = useNavigate();
 
   const loadHistory = async () => {
     setLoading(true);
     try {
-      const searchRes = await api.get("/history/searches");
-      setSearches(searchRes.data.data);
-
-      const convoRes = await api.get("/history/conversations");
-      setConversations(convoRes.data.data);
+      const [caseData, convoData] = await Promise.all([
+        historyService.getCases().catch(() => []),
+        historyService.getConversations().catch(() => []),
+      ]);
+      setCases(caseData);
+      setConversations(convoData);
     } catch {
-      toast.error("Failed to load history.");
+      // Safe fallback
     } finally {
       setLoading(false);
     }
@@ -93,129 +104,162 @@ export default function HistoryPage() {
     loadHistory();
   }, []);
 
-  const handleClearSearches = async () => {
+  const handleClearCases = async () => {
     try {
-      await api.delete("/history/searches");
-      setSearches([]);
-      toast.info("Search history cleared.");
+      await historyService.clearCaseHistory();
+      setCases([]);
+      toast.info("Opened cases history cleared.");
     } catch {
-      toast.error("Failed to clear history.");
+      toast.error("Failed to clear case history.");
     }
   };
 
-  const groupedSearches = useMemo(() => groupByDate(searches, "created_at"), [searches]);
+  const handleClearConversations = async () => {
+    try {
+      await Promise.allSettled(conversations.map((c) => chatService.deleteConversation(c.id)));
+      setConversations([]);
+      toast.info("AI conversations history cleared.");
+    } catch {
+      toast.error("Failed to clear AI conversations.");
+    }
+  };
+
+  const handleDeleteCase = async (e: React.MouseEvent, cnr: string) => {
+    e.stopPropagation();
+    try {
+      await historyService.deleteCaseView(cnr);
+      setCases((prev) => prev.filter((c) => c.cnr !== cnr));
+      toast.info("Case removed from history.");
+    } catch {
+      toast.error("Failed to remove case.");
+    }
+  };
+
+  const groupedCases = useMemo(() => groupByDate(cases, "viewed_at"), [cases]);
   const groupedConversations = useMemo(() => groupByDate(conversations, "updated_at"), [conversations]);
 
-  return (
-    <div className="space-y-6 max-w-5xl mx-auto">
-      {/* ── Page Header ───────────────────────────────────────── */}
-      <div>
-        <h1
-          className="text-2xl font-semibold tracking-tight"
-          style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}
-        >
-          Research History
-        </h1>
-        <p className="text-sm mt-1" style={{ color: "var(--text-secondary)" }}>
-          View and resume your recent searches and AI conversations.
-        </p>
-      </div>
+  const BucketHeader = ({ group }: { group: GroupedItems<any> }) => (
+    <div className="flex items-center gap-2 mb-2.5">
+      <span style={{ color: "var(--text-muted)" }}>{group.icon}</span>
+      <span className="text-[11px] font-semibold uppercase tracking-widest" style={{ color: "var(--text-muted)" }}>
+        {group.label}
+      </span>
+      <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
+      <span
+        className="text-[10px] font-medium px-2 py-0.5 rounded-full"
+        style={{ background: "var(--surface-container)", color: "var(--text-muted)" }}
+      >
+        {group.items.length}
+      </span>
+    </div>
+  );
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        {/* ── Recent Searches Column ───────────────────────────── */}
+  return (
+    <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%" }}>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-12" style={{ marginTop: 44 }}>
+
+        {/* ── Recently Opened Cases Column ──────────────────────── */}
         <div className="space-y-5">
-          <div className="flex items-center justify-between">
-            <h3
-              className="text-sm font-semibold flex items-center gap-2"
-              style={{ color: "var(--text-primary)" }}
-            >
-              <Search size={16} style={{ color: "var(--text-secondary)" }} /> Recent Searches
+          <div className="flex items-center justify-between pb-1 border-b" style={{ borderColor: "var(--border)" }}>
+            <h3 className="text-base font-medium flex items-center gap-2" style={{ color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>
+              <FileText size={17} style={{ color: "var(--brass)" }} /> Recently Opened Cases
             </h3>
-            {searches.length > 0 && (
+            {cases.length > 0 && (
               <button
-                onClick={handleClearSearches}
+                onClick={handleClearCases}
                 className="text-xs font-medium hover:underline flex items-center gap-1 cursor-pointer"
                 style={{ color: "var(--danger)" }}
               >
-                <Trash2 size={12} /> Clear All
+                <Trash2 size={13} /> Clear All
               </button>
             )}
           </div>
 
           {loading ? (
-            <SkeletonLoader count={3} height="50px" />
-          ) : searches.length === 0 ? (
-            <EmptyState title="No recent searches" description="Your search queries will appear here." />
+            <SkeletonLoader count={3} height="56px" />
+          ) : cases.length === 0 ? (
+            <EmptyState
+              title="No opened cases yet"
+              description="Cases and judgments you view will be saved here for instant local retrieval."
+            />
           ) : (
-            <div className="space-y-5">
-              {groupedSearches.map((group) => (
+            <div className="space-y-6">
+              {groupedCases.map((group) => (
                 <div key={group.label}>
-                  {/* Group Header */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <span style={{ color: "var(--text-muted)" }}>{group.icon}</span>
-                    <span
-                      className="text-[11px] font-semibold uppercase tracking-widest"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      {group.label}
-                    </span>
-                    <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-                    <span
-                      className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                      style={{
-                        background: "var(--surface-container)",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {group.items.length}
-                    </span>
-                  </div>
-
-                  {/* Items */}
-                  <div className="space-y-1.5">
-                    {group.items.map((s: any) => (
+                  <BucketHeader group={group} />
+                  <div className="space-y-2">
+                    {group.items.map((c) => (
                       <div
-                        key={s.id}
-                        className="card-float group flex items-center justify-between gap-3"
-                        style={{ padding: "12px 16px", borderRadius: "var(--radius-lg)" }}
+                        key={c.id}
+                        onClick={() => navigate(`/case/${c.cnr}`)}
+                        className="card-float group flex items-center justify-between gap-3 cursor-pointer hover:-translate-y-0.5 transition-all"
+                        style={{ padding: "14px 18px", borderRadius: "var(--radius-md)" }}
                       >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div className="flex items-center gap-3.5 min-w-0 flex-1">
                           <div
-                            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                            style={{ background: "var(--surface-container)", color: "var(--text-muted)" }}
+                            className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                            style={{
+                              background: "var(--brass-soft)",
+                              color: "var(--brass-bright)",
+                            }}
                           >
-                            <Search size={14} />
+                            <FileText size={16} />
                           </div>
                           <div className="min-w-0 flex-1">
                             <span
-                              className="text-sm font-medium block truncate"
+                              className="text-sm font-medium block truncate group-hover:text-primary transition-colors"
                               style={{ color: "var(--text-primary)" }}
+                              title={c.title}
                             >
-                              {s.query}
+                              {c.title}
                             </span>
-                            <span
-                              className="text-[11px] font-medium"
-                              style={{ color: "var(--text-muted)" }}
-                            >
-                              {relativeTime(s.created_at)}
-                            </span>
+                            <div className="flex items-center gap-2 mt-1">
+                              <span
+                                className="text-[10.5px] font-mono px-1.5 py-0.5 rounded"
+                                style={{
+                                  background: "var(--surface-container)",
+                                  color: "var(--text-secondary)",
+                                }}
+                              >
+                                {c.cnr}
+                              </span>
+                              <span
+                                className="text-[10.5px] font-medium flex items-center gap-1 px-1.5 py-0.5 rounded"
+                                style={{
+                                  background: "rgba(16, 185, 129, 0.12)",
+                                  color: "var(--seal-disposed)",
+                                }}
+                                title="Saved locally — opens without external API calls"
+                              >
+                                <Database size={10} /> Local
+                              </span>
+                              <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+                                {relativeTime(c.viewed_at)}
+                              </span>
+                            </div>
                           </div>
                         </div>
 
-                        {/* 1-click resume */}
-                        <button
-                          onClick={() => navigate(`/search?query=${encodeURIComponent(s.query)}`)}
-                          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full cursor-pointer flex-shrink-0 opacity-0 group-hover:opacity-100"
-                          style={{
-                            background: "var(--primary)",
-                            color: "var(--on-primary)",
-                            border: "none",
-                            transition: "opacity 200ms ease, transform 150ms ease",
-                          }}
-                          title="Resume this search"
-                        >
-                          Resume <ArrowRight size={12} />
-                        </button>
+                        {/* Actions */}
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <button
+                            onClick={(e) => handleDeleteCase(e, c.cnr)}
+                            className="p-1.5 rounded opacity-0 group-hover:opacity-60 hover:!opacity-100 transition-opacity cursor-pointer"
+                            style={{ color: "var(--text-muted)" }}
+                            title="Remove from history"
+                          >
+                            <X size={15} />
+                          </button>
+                          <span
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{
+                              background: "var(--brass)",
+                              color: "var(--on-primary)",
+                            }}
+                          >
+                            Open Case <ArrowRight size={12} />
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -227,106 +271,88 @@ export default function HistoryPage() {
 
         {/* ── Recent Conversations Column ──────────────────────── */}
         <div className="space-y-5">
-          <h3
-            className="text-sm font-semibold flex items-center gap-2"
-            style={{ color: "var(--text-primary)" }}
-          >
-            <MessageSquare size={16} style={{ color: "var(--text-secondary)" }} /> Recent Conversations
-          </h3>
+          <div className="flex items-center justify-between pb-1 border-b" style={{ borderColor: "var(--border)" }}>
+            <h3 className="text-base font-medium flex items-center gap-2" style={{ color: "var(--text-primary)", fontFamily: "var(--font-display)" }}>
+              <MessageSquare size={17} style={{ color: "var(--brass)" }} /> AI Conversations
+            </h3>
+            {conversations.length > 0 && (
+              <button
+                onClick={handleClearConversations}
+                className="text-xs font-medium hover:underline flex items-center gap-1 cursor-pointer"
+                style={{ color: "var(--danger)" }}
+              >
+                <Trash2 size={13} /> Clear All
+              </button>
+            )}
+          </div>
 
           {loading ? (
-            <SkeletonLoader count={3} height="50px" />
+            <SkeletonLoader count={3} height="56px" />
           ) : conversations.length === 0 ? (
-            <EmptyState title="No recent chats" description="Your AI conversations will appear here." />
+            <EmptyState
+              title="No recent chats"
+              description="AI research conversations and chat sessions will appear here."
+            />
           ) : (
-            <div className="space-y-5">
+            <div className="space-y-6">
               {groupedConversations.map((group) => (
                 <div key={group.label}>
-                  {/* Group Header */}
-                  <div className="flex items-center gap-2 mb-2">
-                    <span style={{ color: "var(--text-muted)" }}>{group.icon}</span>
-                    <span
-                      className="text-[11px] font-semibold uppercase tracking-widest"
-                      style={{ color: "var(--text-muted)" }}
-                    >
-                      {group.label}
-                    </span>
-                    <div className="flex-1 h-px" style={{ background: "var(--border)" }} />
-                    <span
-                      className="text-[10px] font-medium px-2 py-0.5 rounded-full"
-                      style={{
-                        background: "var(--surface-container)",
-                        color: "var(--text-muted)",
-                      }}
-                    >
-                      {group.items.length}
-                    </span>
-                  </div>
-
-                  {/* Items */}
-                  <div className="space-y-1.5">
-                    {group.items.map((c: any) => (
-                      <div
-                        key={c.id}
-                        className="card-float group flex items-center justify-between gap-3"
-                        style={{ padding: "12px 16px", borderRadius: "var(--radius-lg)" }}
-                      >
-                        <div className="flex items-center gap-3 min-w-0 flex-1">
-                          <div
-                            className="w-8 h-8 rounded-xl flex items-center justify-center flex-shrink-0"
-                            style={{ background: "rgba(30, 58, 95, 0.08)", color: "#1e3a5f" }}
-                          >
-                            <MessageSquare size={14} />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <span
-                              className="text-sm font-medium block truncate"
-                              style={{ color: "var(--text-primary)" }}
+                  <BucketHeader group={group} />
+                  <div className="space-y-2">
+                    {group.items.map((c) => {
+                      const displayTitle = c.title ? c.title.replace(/^Chat\s*-\s*/i, "Case - ") : `Case - ${c.cnr}`;
+                      return (
+                        <div
+                          key={c.id}
+                          onClick={() => navigate(`/chat/${c.id}`)}
+                          className="card-float group flex items-center justify-between gap-3 cursor-pointer hover:-translate-y-0.5 transition-all"
+                          style={{ padding: "14px 18px", borderRadius: "var(--radius-md)" }}
+                        >
+                          <div className="flex items-center gap-3.5 min-w-0 flex-1">
+                            <div
+                              className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0"
+                              style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
                             >
-                              {c.title}
-                            </span>
-                            <div className="flex items-center gap-2 mt-0.5">
+                              <MessageSquare size={15} />
+                            </div>
+                            <div className="min-w-0 flex-1">
                               <span
-                                className="text-[10px] font-mono px-1.5 py-0.5 rounded"
-                                style={{
-                                  background: "var(--surface-container)",
-                                  color: "var(--text-muted)",
-                                }}
+                                className="text-sm font-medium block truncate"
+                                style={{ color: "var(--text-primary)" }}
+                                title={displayTitle}
                               >
-                                {c.cnr}
+                                {displayTitle}
                               </span>
-                              <span
-                                className="text-[11px] font-medium"
-                                style={{ color: "var(--text-muted)" }}
-                              >
-                                {relativeTime(c.updated_at)}
-                              </span>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span
+                                  className="text-[10.5px] font-mono px-1.5 py-0.5 rounded"
+                                  style={{ background: "var(--surface-container)", color: "var(--text-secondary)" }}
+                                >
+                                  {c.cnr}
+                                </span>
+                                <span className="text-[11px] font-medium" style={{ color: "var(--text-muted)" }}>
+                                  {relativeTime(c.updated_at)}
+                                </span>
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        {/* 1-click resume */}
-                        <button
-                          onClick={() => navigate(`/chat/${c.id}`)}
-                          className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full cursor-pointer flex-shrink-0 opacity-0 group-hover:opacity-100"
-                          style={{
-                            background: "#1e3a5f",
-                            color: "#ffffff",
-                            border: "none",
-                            transition: "opacity 200ms ease, transform 150ms ease",
-                          }}
-                          title="Resume this conversation"
-                        >
-                          Resume <ArrowRight size={12} />
-                        </button>
-                      </div>
-                    ))}
+                          <span
+                            className="flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity"
+                            style={{ background: "var(--brass)", color: "var(--on-primary)" }}
+                          >
+                            Open Chat <ArrowRight size={12} />
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               ))}
             </div>
           )}
         </div>
+
       </div>
     </div>
   );

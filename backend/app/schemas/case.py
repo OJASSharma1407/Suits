@@ -104,6 +104,8 @@ class CaseDetailsResponse(BaseModel):
     case_category: str | None = None
     bench_type: str | None = None
     judicial_section: str | None = None
+    disposal_type: str | None = None
+    fir_details: dict[str, Any] | None = None
 
     related_cases: list[str] = []
     acts_and_sections: list[str] = []

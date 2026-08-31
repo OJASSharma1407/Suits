@@ -99,51 +99,13 @@ def _extract_results_list(raw_response: Any) -> list:
     return []
 
 
-# Kanoon doctype identifiers per their documentation
-_COURT_CODE_TO_DOCTYPE: dict[str, str] = {
-    "SCIN": "supremecourt",
-    "DLHC": "delhi",
-    "BMBH": "bombay",
-    "CALHC": "kolkata",
-    "MDHC": "chennai",
-    "ALHC": "allahabad",
-    "APHC": "andhra",
-    "GUHC": "gauhati",
-    "JKHC": "jammu",
-    "KRHC": "kerala",
-    "ORRHC": "orissa",
-    "GUJHC": "gujarat",
-    "HPHC": "himachal_pradesh",
-    "JHHC": "jharkhand",
-    "KARHC": "karnataka",
-    "MPHC": "madhyapradesh",
-    "PHHC": "punjab",
-    "RAJHC": "rajasthan",
-}
-
-
-def _map_court_to_doctype(court_code: str | None) -> str | None:
-    """Map our court_code prefix to a Kanoon doctype filter string."""
-    if not court_code:
-        return None
-    for prefix, doctype in _COURT_CODE_TO_DOCTYPE.items():
-        if court_code.upper().startswith(prefix):
-            return doctype
-    return None
-
-
-def _year_to_fromdate(filing_year: int | None) -> str | None:
-    """Convert a filing year integer to Kanoon fromdate format (DD-MM-YYYY)."""
-    if not filing_year:
-        return None
-    return f"1-1-{filing_year}"
 
 
 def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
     """Convert a raw API response item (dict or str) safely into a SearchResultItem DTO."""
     if isinstance(item, str):
         clean_str = item.strip()
-        if clean_str.lower() in RESERVED_METADATA_KEYS or len(clean_str) < 8:
+        if clean_str.lower() in RESERVED_METADATA_KEYS or len(clean_str) < 4:
             return None  # Ignore JSON keys / metadata strings
         return SearchResultItem(
             cnr=clean_str,
@@ -172,9 +134,11 @@ def _raw_to_search_item(item: dict[str, Any] | str) -> SearchResultItem | None:
     # Indian Kanoon uses "title", eCourts uses "case_title"
     case_title = item.get("title", item.get("case_title", item.get("caseTitle", _make_case_title(petitioners, respondents))))
     
-    # Strip HTML tags from Kanoon title if present
-    import re
+    # Strip HTML tags and normalize unicode characters
     case_title = re.sub(r'<[^>]+>', '', str(case_title))
+    case_title = case_title.replace('\u2011', '-').replace('\u2013', '-').replace('\u2014', '-').strip()
+    # Remove trailing ' on <date>' from Kanoon titles
+    case_title = re.sub(r'\s+on\s+\d{1,2}\s+[A-Za-z]+,\s+\d{4}$', '', case_title, flags=re.IGNORECASE).strip()
     
     if not case_title or case_title == "Unknown vs Unknown":
         case_title = f"Document {cnr}"
@@ -395,29 +359,7 @@ class SearchService:
         params = _build_search_params(request)
         cache_key = f"search:{hashlib.md5(json.dumps(params, sort_keys=True).encode()).hexdigest()}"
 
-        # 0. Direct Kanoon tid lookup — if user typed a numeric id (e.g. 29724830)
-        #    short-circuit everything and return a single result pointing to that document
-        query_clean = (request.query or "").strip()
-        if query_clean.isdigit():
-            tid = query_clean
-            logger.info("search_direct_kanoon_tid", tid=tid)
-            try:
-                meta = await kanoon_client.get_doc_meta(tid)
-                title = meta.get("title", f"Document {tid}")
-                import re
-                title = re.sub(r'<[^>]+>', '', str(title))
-                court = meta.get("docsource", "Indian Kanoon")
-                date = meta.get("publishdate")
-                single = SearchResultItem(
-                    cnr=tid,
-                    case_title=title,
-                    court_name=court,
-                    decision_date=date,
-                )
-                return SearchResponse(results=[single], total_hits=1, page=1, page_size=1, total_pages=1, facets={})
-            except Exception as exc:
-                logger.warning("kanoon_direct_tid_failed", tid=tid, error=str(exc))
-                # Fall through to normal search
+
 
         # 1. Check Redis cache
         cached = await cache_service.get(cache_key)
@@ -425,105 +367,145 @@ class SearchService:
             logger.info("search_redis_hit", query=request.query)
             return SearchResponse(**cached)
 
-        # 2. Query Local Database First
+        results: list[SearchResultItem] = []
+        page_size = request.page_size or 20
+        total_hits = 0
+
+        # 2. Search Indian Kanoon Live API as Primary Search Provider
+        if request.query and request.query.strip():
+            try:
+                logger.info("searching_via_kanoon_primary", query=request.query, page=request.page)
+                kanoon_res = await kanoon_client.search_docs(
+                    query=request.query.strip(),
+                    pagenum=request.page or 1,
+                )
+                docs = kanoon_res.get("docs", [])
+                if docs:
+                    for doc in docs:
+                        item = _raw_to_search_item(doc)
+                        if item and item.cnr:
+                            results.append(item)
+                    results = _apply_filters(results, request)
+
+                    # Parse total hits safely from Kanoon string or int
+                    raw_found = kanoon_res.get("found")
+                    total_hits = len(results)
+                    if isinstance(raw_found, int):
+                        total_hits = raw_found
+                    elif isinstance(raw_found, str):
+                        match = re.search(r'of\s+([0-9,]+)', raw_found)
+                        if match:
+                            total_hits = int(match.group(1).replace(',', ''))
+                        else:
+                            digits = re.findall(r'\d+', raw_found)
+                            if digits:
+                                total_hits = int(digits[-1])
+
+                    # Format facets safely as dict
+                    facets_dict: dict[str, Any] = {}
+                    cats = kanoon_res.get("categories")
+                    if isinstance(cats, dict):
+                        facets_dict = cats
+                    elif isinstance(cats, list):
+                        for cat_item in cats:
+                            if isinstance(cat_item, list) and len(cat_item) == 2:
+                                facets_dict[str(cat_item[0])] = cat_item[1]
+
+                    if results:
+                        response = SearchResponse(
+                            results=results,
+                            total_hits=total_hits,
+                            page=request.page or 1,
+                            page_size=page_size,
+                            total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1,
+                            facets=facets_dict,
+                        )
+                        await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
+                        return response
+            except Exception as kanoon_exc:
+                logger.warning("kanoon_search_failed", error=str(kanoon_exc))
+
+        # 3. Fallback: Query Local Database
         local_db_cases = await self.cache_repo.search_local_cases(
-            query=request.query,
+            query=request.query if request.query and request.query.strip() else None,
             court_code=request.court_code,
             case_status=request.case_status,
             case_type=request.case_type,
             filing_year=request.filing_year,
         )
 
+        seen_cnrs: set[str] = set()
         if local_db_cases:
             logger.info("search_local_db_hit", query=request.query, match_count=len(local_db_cases))
-            results = []
             for db_case in local_db_cases:
                 try:
                     data = json.loads(db_case.response_json)
                     item = _raw_to_search_item(data)
-                    if item:
+                    if item and item.cnr and item.cnr not in seen_cnrs:
+                        seen_cnrs.add(item.cnr)
                         results.append(item)
                 except Exception:
                     continue
 
-            results = _apply_filters(results, request)
-            if results:
-                page_size = request.page_size or 20
-                total_hits = len(results)
-                offset = ((request.page or 1) - 1) * page_size
-                paginated_results = results[offset : offset + page_size]
-                
-                response = SearchResponse(
-                    results=paginated_results,
-                    total_hits=total_hits,
-                    page=request.page,
-                    page_size=page_size,
-                    total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1,
-                    facets={},
-                )
-                await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
-                return response
+        # 4. Search / Augment with Built-in DEMO_CASES_DATASET
+        q_clean = (request.query or "").strip().lower()
+        for demo in DEMO_CASES_DATASET:
+            demo_cnr = demo.get("cnr", "")
+            if demo_cnr in seen_cnrs:
+                continue
 
-        # 3. Not in Local Database -> Perform Kanoon API Call
-        logger.info("search_local_db_miss_calling_kanoon_api", query=request.query)
+            # Match query if provided
+            if q_clean:
+                title = demo.get("case_title", "").lower()
+                cnr_val = demo_cnr.lower()
+                court = demo.get("courtName", "").lower()
+                pets = " ".join(demo.get("petitioners", [])).lower()
+                resps = " ".join(demo.get("respondents", [])).lower()
+                acts = " ".join(demo.get("actsAndSections", [])).lower()
+                keywords = " ".join(demo.get("aiKeywords", [])).lower()
 
-        try:
-            # Indian Kanoon uses formInput with operators and filter suffixes
-            raw_response = await kanoon_client.search_docs(
-                query=request.query or "",
-                pagenum=request.page,  # client converts 1-indexed to 0-indexed
-                doctypes=_map_court_to_doctype(request.court_code),
-                fromdate=_year_to_fromdate(request.filing_year),
-            )
-            # Per docs: search results are in response["docs"], total in response["found"]
-            raw_docs = raw_response.get("docs", []) if isinstance(raw_response, dict) else []
-            found_val = raw_response.get("found", len(raw_docs)) if isinstance(raw_response, dict) else len(raw_docs)
-            if isinstance(found_val, str):
-                import re
-                nums = re.findall(r'\d+', found_val.replace(',', ''))
-                kanoon_total = int(nums[-1]) if nums else len(raw_docs)
-            else:
-                kanoon_total = int(found_val)
-            raw_results = _extract_results_list(raw_docs)
-            results = []
-
-            now = datetime.now(timezone.utc)
-            for item in raw_results:
-                search_item = _raw_to_search_item(item)
-                if not search_item or not search_item.cnr:
+                if (
+                    q_clean not in title
+                    and q_clean not in cnr_val
+                    and q_clean not in court
+                    and q_clean not in pets
+                    and q_clean not in resps
+                    and q_clean not in acts
+                    and q_clean not in keywords
+                ):
                     continue
 
-                results.append(search_item)
+            item = _raw_to_search_item(demo)
+            if item and item.cnr and item.cnr not in seen_cnrs:
+                seen_cnrs.add(item.cnr)
+                results.append(item)
 
-                # Removed eager caching of search results to CachedCase.
-                # Caching partial search results breaks CaseService which expects full extracted details.
-
-            # Removed eCourts CNR fallback — Kanoon uses tid-based lookups
-
-            results = _apply_filters(results, request)
-            # Use Kanoon's authoritative `found` count, not just the local slice count
-            total_hits = kanoon_total if kanoon_total > len(results) else len(results)
-            page_size = request.page_size or 20
-            # Kanoon already returns the right page, no client-side slicing needed
-            paginated_results = results
+        results = _apply_filters(results, request)
+        if results:
+            total_hits = len(results)
+            offset = ((request.page or 1) - 1) * page_size
+            paginated_results = results[offset : offset + page_size]
 
             response = SearchResponse(
                 results=paginated_results,
                 total_hits=total_hits,
-                page=request.page,
+                page=request.page or 1,
                 page_size=page_size,
-                total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 0,
+                total_pages=(total_hits + page_size - 1) // page_size if page_size > 0 else 1,
                 facets={},
             )
-
-            if results:
-                await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
+            await cache_service.set(cache_key, response.model_dump(), settings.cache_ttl_search)
             return response
 
-        except ECourtsAPIError as exc:
-            logger.error("kanoon_search_failed", error=str(exc))
-            from fastapi import HTTPException
-            raise HTTPException(status_code=502, detail="Search failed: Indian Kanoon API error (check your API token)") from exc
+        # Return empty response gracefully
+        return SearchResponse(
+            results=[],
+            total_hits=0,
+            page=request.page or 1,
+            page_size=page_size,
+            total_pages=0,
+            facets={},
+        )
 
     async def get_capabilities(self) -> SearchCapabilitiesResponse:
         """Get search capabilities with 24-hour cache."""

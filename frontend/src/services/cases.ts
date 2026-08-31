@@ -2,6 +2,19 @@ import api from "@/lib/axios";
 import type { APIResponse } from "@/types/common";
 import type { CaseDetails, OrderMarkdown, OrderAI } from "@/types/case";
 
+/**
+ * Sanitize a filename for use in API URL path segments.
+ * Extracts the numeric TID from Kanoon URLs and encodes other special chars.
+ */
+function sanitizeFilename(filename: string): string {
+  // Extract numeric TID from full Kanoon URLs like https://indiankanoon.org/doc/193792759/
+  const kanoonMatch = filename.match(/indiankanoon\.org\/doc\/(\d+)/);
+  if (kanoonMatch) {
+    return kanoonMatch[1];
+  }
+  return filename;
+}
+
 export const caseService = {
   getDetails: async (cnr: string) => {
     const res = await api.get<APIResponse<CaseDetails>>(`/cases/${cnr}`);
@@ -14,21 +27,24 @@ export const caseService = {
   },
 
   getOrderMarkdown: async (cnr: string, filename: string) => {
-    const res = await api.get<APIResponse<OrderMarkdown>>(`/orders/${cnr}/markdown/${filename}`);
+    const safeFilename = sanitizeFilename(filename);
+    const res = await api.get<APIResponse<OrderMarkdown>>(`/orders/${cnr}/markdown/${safeFilename}`);
     return res.data.data;
   },
 
   getOrderAI: async (cnr: string, filename: string) => {
-    const res = await api.get<APIResponse<OrderAI>>(`/orders/${cnr}/ai/${filename}`);
+    const safeFilename = sanitizeFilename(filename);
+    const res = await api.get<APIResponse<OrderAI>>(`/orders/${cnr}/ai/${safeFilename}`);
     return res.data.data;
   },
 
   downloadOrderPDF: async (cnr: string, filename: string) => {
-    const res = await api.get(`/orders/${cnr}/download/${filename}`, {
+    const safeFilename = sanitizeFilename(filename);
+    const res = await api.get(`/orders/${cnr}/download/${safeFilename}`, {
       responseType: "blob",
     });
     
-    let extractedFilename = `${cnr}_${filename}`;
+    let extractedFilename = `${cnr}_${safeFilename}`;
     const disposition = res.headers['content-disposition'];
     if (disposition && disposition.indexOf('filename=') !== -1) {
         const filenameMatch = disposition.match(/filename="?([^"]+)"?/);
@@ -40,7 +56,8 @@ export const caseService = {
   },
 
   getOrderPDFArrayBuffer: async (cnr: string, filename: string) => {
-    const res = await api.get(`/orders/${cnr}/download/${filename}`, {
+    const safeFilename = sanitizeFilename(filename);
+    const res = await api.get(`/orders/${cnr}/download/${safeFilename}`, {
       responseType: "arraybuffer",
     });
     return res.data as ArrayBuffer;

@@ -50,58 +50,99 @@ export const chatService = {
     orderFilename?: string,
   ): AbortController => {
     const controller = new AbortController();
-    const token = localStorage.getItem("access_token");
+
+    const doStream = async (accessToken: string): Promise<boolean> => {
+      const response = await fetch(
+        `${BASE_URL}/chat/conversations/${conversationId}/stream`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${accessToken}`,
+          },
+          body: JSON.stringify({ message, order_filename: orderFilename }),
+          signal: controller.signal,
+        }
+      );
+
+      if (response.status === 401) {
+        return false; // signal caller to refresh token and retry
+      }
+
+      if (!response.ok || !response.body) {
+        onError(`Server error: ${response.status}`);
+        return true;
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop() ?? "";
+
+        for (const part of parts) {
+          const line = part.trim();
+          if (!line.startsWith("data:")) continue;
+          try {
+            const payload = JSON.parse(line.slice(5).trim());
+            if (payload.token !== undefined) {
+              onToken(payload.token);
+            } else if (payload.done) {
+              onDone(payload.suggested_questions ?? []);
+            } else if (payload.error) {
+              onError(payload.error);
+            }
+          } catch {
+            // ignore malformed chunks
+          }
+        }
+      }
+      return true;
+    };
 
     const run = async () => {
       try {
-        const response = await fetch(
-          `${BASE_URL}/chat/conversations/${conversationId}/stream`,
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {}),
-            },
-            body: JSON.stringify({ message, order_filename: orderFilename }),
-            signal: controller.signal,
-          }
-        );
+        let token = localStorage.getItem("access_token") ?? "";
+        const ok = await doStream(token);
 
-        if (!response.ok || !response.body) {
-          onError(`Server error: ${response.status}`);
-          return;
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = "";
-
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-
-          buffer += decoder.decode(value, { stream: true });
-
-          // SSE events are separated by double newlines
-          const parts = buffer.split("\n\n");
-          buffer = parts.pop() ?? "";   // keep incomplete trailing chunk
-
-          for (const part of parts) {
-            const line = part.trim();
-            if (!line.startsWith("data:")) continue;
+        if (!ok) {
+          // 401 — try to refresh the token once
+          const refreshToken = localStorage.getItem("refresh_token");
+          if (refreshToken) {
             try {
-              const payload = JSON.parse(line.slice(5).trim());
-              if (payload.token !== undefined) {
-                onToken(payload.token);
-              } else if (payload.done) {
-                onDone(payload.suggested_questions ?? []);
-              } else if (payload.error) {
-                onError(payload.error);
+              const res = await fetch(
+                `${BASE_URL}/auth/refresh`,
+                {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ refresh_token: refreshToken }),
+                }
+              );
+              if (res.ok) {
+                const data = await res.json();
+                const newToken = data?.data?.access_token;
+                if (newToken) {
+                  localStorage.setItem("access_token", newToken);
+                  if (data?.data?.refresh_token) {
+                    localStorage.setItem("refresh_token", data.data.refresh_token);
+                  }
+                  await doStream(newToken);
+                  return;
+                }
               }
             } catch {
-              // ignore malformed chunks
+              // refresh network failure
             }
           }
+          window.dispatchEvent(new Event("auth:logout"));
+          onError("Session expired. Please log in again.");
         }
       } catch (err: unknown) {
         if ((err as Error).name !== "AbortError") {

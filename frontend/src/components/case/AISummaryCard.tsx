@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { motion } from "motion/react";
 import {
   Sparkles,
   Copy,
@@ -11,10 +12,7 @@ import {
   Layers,
   ChevronRight,
   ShieldAlert,
-  Users,
   History,
-  Compass,
-  ArrowRight,
 } from "lucide-react";
 import type { CaseDetails, OrderAI } from "@/types/case";
 
@@ -31,7 +29,7 @@ interface AISummaryCardProps {
   onReadDocument?: (filename?: string) => void;
 }
 
-type TabType = "overview" | "procedural" | "facts" | "issues" | "ratio" | "next_steps" | "all";
+type TabType = "overview" | "procedural" | "facts" | "issues" | "ratio" | "all";
 
 export function AISummaryCard({
   caseData,
@@ -43,7 +41,6 @@ export function AISummaryCard({
   ratioDecidendi: propRatioDecidendi,
   directions: propDirections,
   statutesCited: propStatutesCited,
-  onReadDocument,
 }: AISummaryCardProps) {
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [copied, setCopied] = useState(false);
@@ -59,9 +56,6 @@ export function AISummaryCard({
   const caseLaws = aiData?.case_laws_referenced || [];
   const petArguments = aiData?.petitioner_arguments || [];
   const respArguments = aiData?.respondent_arguments || [];
-  const complianceDirs = aiData?.compliance_directions || [];
-  const implications = aiData?.implications || [];
-  const risks = aiData?.risks || [];
 
   // Case metadata helpers
   const caseTitle = caseData?.case_title || aiData?.case_number || "Court Case Summary";
@@ -115,11 +109,6 @@ export function AISummaryCard({
       directions.length > 0 && `## 5. BENCH DIRECTIONS & OPERATIVE ORDERS\n${directions.map((d, i) => `${i + 1}. ${d}`).join("\n")}`,
       statutesCited.length > 0 && `**Statutes Cited:** ${statutesCited.join(", ")}`,
       caseLaws.length > 0 && `**Precedents Referenced:** ${caseLaws.join(", ")}`,
-      "",
-      `## 6. NEXT STEPS & PRACTICAL IMPLICATIONS`,
-      `- **Procedural Action:** Await final adjudication / next hearing as indicated in court docket.`,
-      `- **Compliance:** Parties must adhere to status quo and any operative directives ordered by the Bench.`,
-      complianceDirs.length > 0 && `- **Directives:** ${complianceDirs.join("; ")}`,
     ]
       .filter(Boolean)
       .join("\n");
@@ -129,142 +118,135 @@ export function AISummaryCard({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const tabs: { id: TabType; label: string; icon: React.ReactNode }[] = [
+  const tabs: { id: "overview" | "procedural" | "facts" | "issues" | "ratio"; label: string; icon: React.ReactNode }[] = [
     { id: "overview", label: "Executive Brief", icon: <FileText size={14} /> },
-    { id: "procedural", label: "1. Procedural History", icon: <History size={14} /> },
-    { id: "facts", label: "2. Key Facts & Dispute", icon: <BookOpen size={14} /> },
-    { id: "issues", label: "3. Legal Issues", icon: <HelpCircle size={14} /> },
-    { id: "ratio", label: "4. Ratio & Reasoning", icon: <Scale size={14} /> },
-    { id: "next_steps", label: "5. Next Steps", icon: <Compass size={14} /> },
-    { id: "all", label: "Full Brief View", icon: <Layers size={14} /> },
+    { id: "procedural", label: "Procedural History", icon: <History size={14} /> },
+    { id: "facts", label: "Key Facts & Dispute", icon: <BookOpen size={14} /> },
+    { id: "issues", label: "Legal Issues", icon: <HelpCircle size={14} /> },
+    { id: "ratio", label: "Ratio & Reasoning", icon: <Scale size={14} /> },
   ];
 
   return (
-    <div className="card-float p-6 sm:p-8 space-y-6 relative overflow-hidden animate-spring-in">
-      {/* Top Accent Indicator */}
-      <div
-        className="absolute top-0 left-0 w-1.5 h-full"
-        style={{ background: "var(--primary)" }}
-      />
-
+    <div className="card-float p-6 sm:p-8 space-y-6 relative overflow-hidden" style={{ borderRadius: "var(--radius-md)" }}>
       {/* Header */}
-      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b" style={{ borderColor: "var(--border)" }}>
+      <div className="flex flex-wrap items-center justify-between gap-4 pb-4 border-b" style={{ borderColor: "var(--hairline-soft)" }}>
         <div className="flex items-center gap-3">
           <div
-            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-            style={{ background: "var(--surface-container)", color: "var(--primary)", border: "1px solid var(--border)" }}
+            className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
+            style={{ background: "var(--brass-soft)", color: "var(--brass-bright)", border: "1px solid var(--hairline)" }}
           >
-            <Sparkles size={19} />
+            <Sparkles size={18} />
           </div>
           <div>
-            <h3 className="text-lg font-semibold tracking-tight" style={{ color: "var(--text-primary)" }}>
-              Summary
+            <h3 className="text-lg font-medium tracking-tight" style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}>
+              Case Intelligence & Analysis
             </h3>
-            <p className="text-xs mt-0.5" style={{ color: "var(--text-muted)" }}>
-              End-to-end case intelligence covering procedural history, facts, legal questions, ratio, and next steps.
+            <p className="text-xs mt-0.5" style={{ color: "var(--ink-faint)" }}>
+              Procedural history, key facts, legal issues, ratio decidendi, and plain language synthesis.
             </p>
           </div>
         </div>
 
         {/* Action Buttons */}
         <div className="flex items-center gap-2">
-          {onReadDocument && (
-            <button
-              onClick={() => onReadDocument(aiData?.filename || caseData?.orders?.[0]?.filename || undefined)}
-              className="btn-ghost flex items-center gap-1.5 text-xs font-semibold cursor-pointer transition-all"
-              style={{
-                border: "1px solid var(--border)",
-                padding: "8px 16px",
-                borderRadius: "var(--radius-button)",
-                background: "var(--surface)",
-                color: "var(--text-primary)",
-              }}
-              title="Read Full Court Judgment / PDF"
-            >
-              <BookOpen size={14} style={{ color: "var(--primary)" }} />
-              <span>Read Full Document</span>
-            </button>
-          )}
+          {/* Full Brief View Toggle */}
+          <button
+            onClick={() => setActiveTab(activeTab === "all" ? "overview" : "all")}
+            className="btn btn-ghost flex items-center gap-1.5 text-xs font-semibold cursor-pointer transition-all"
+            style={{
+              border: "1px solid var(--hairline)",
+              padding: "7px 14px",
+              background: activeTab === "all" ? "var(--brass-soft)" : "transparent",
+              color: activeTab === "all" ? "var(--brass-bright)" : "var(--ink-dim)",
+            }}
+            title="Toggle Full Comprehensive Brief View"
+          >
+            <Layers size={14} style={{ color: "var(--brass)" }} />
+            <span>{activeTab === "all" ? "Section View" : "Full Brief View"}</span>
+          </button>
 
           {/* Copy Full Brief */}
           <button
             onClick={copyFullBrief}
-            className="btn-ghost flex items-center gap-2 text-xs font-semibold cursor-pointer transition-all"
+            className="btn btn-ghost flex items-center gap-2 text-xs font-semibold cursor-pointer transition-all"
             style={{
-              border: "1px solid var(--border)",
-              padding: "8px 18px",
-              borderRadius: "var(--radius-button)",
-              background: copied ? "rgba(22, 163, 74, 0.08)" : "var(--card)",
-              color: copied ? "var(--success)" : "var(--text-primary)",
-              borderColor: copied ? "rgba(22, 163, 74, 0.3)" : "var(--border)",
+              border: "1px solid var(--hairline)",
+              padding: "7px 16px",
+              background: copied ? "var(--brass-soft)" : "transparent",
+              color: copied ? "var(--seal-disposed)" : "var(--ink)",
             }}
             title="Copy Complete Case Summary"
           >
-          {copied ? (
-            <>
-              <Check size={14} className="text-green-600 animate-in fade-in" />
-              <span className="font-semibold text-green-600">Full Summary Copied!</span>
-            </>
-          ) : (
-            <>
-              <Copy size={14} />
-              <span>Copy Full Brief</span>
-            </>
-          )}
-        </button>
+            {copied ? (
+              <>
+                <Check size={14} style={{ color: "var(--seal-disposed)" }} />
+                <span className="font-medium" style={{ color: "var(--seal-disposed)" }}>Brief Copied!</span>
+              </>
+            ) : (
+              <>
+                <Copy size={14} style={{ color: "var(--ink-faint)" }} />
+                <span>Copy Full Brief</span>
+              </>
+            )}
+          </button>
         </div>
       </div>
 
       {/* Metadata Overview Banner */}
       <div
-        className="p-5 rounded-2xl border space-y-3"
-        style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+        className="p-5 rounded-lg border space-y-3"
+        style={{ background: "var(--surface)", borderColor: "var(--hairline)" }}
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
-          <h4 className="text-base font-bold tracking-tight" style={{ color: "var(--text-primary)" }}>
+          <h4 className="text-base font-medium" style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}>
             {caseTitle}
           </h4>
           <span
-            className="text-[11px] font-semibold px-2.5 py-0.5 rounded-full uppercase"
-            style={{ background: "var(--surface-container-high)", color: "var(--text-primary)", border: "1px solid var(--border)" }}
+            className="text-[11px] font-semibold px-2.5 py-0.5 rounded uppercase"
+            style={{
+              background: "var(--surface-container)",
+              color: "var(--ink-dim)",
+              border: "1px solid var(--hairline)",
+              fontFamily: "var(--font-mono)",
+            }}
           >
             {statusLabel}
           </span>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-3 text-xs pt-2 border-t" style={{ borderColor: "var(--hairline-soft)" }}>
           <div>
-            <span className="block font-medium uppercase tracking-wider text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <span className="block font-medium uppercase tracking-wider text-[10.5px]" style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>
               Court & Case No.
             </span>
-            <span className="font-semibold mt-0.5 block" style={{ color: "var(--text-primary)" }}>
+            <span className="font-medium mt-0.5 block" style={{ color: "var(--ink)" }}>
               {courtName} • {caseNo}
             </span>
           </div>
 
           <div>
-            <span className="block font-medium uppercase tracking-wider text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <span className="block font-medium uppercase tracking-wider text-[10.5px]" style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>
               CNR Number
             </span>
-            <span className="font-mono font-semibold mt-0.5 block" style={{ color: "var(--text-primary)" }}>
+            <span className="font-mono font-medium mt-0.5 block" style={{ color: "var(--ink)" }}>
               {cnr || "Unavailable"}
             </span>
           </div>
 
           <div>
-            <span className="block font-medium uppercase tracking-wider text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <span className="block font-medium uppercase tracking-wider text-[10.5px]" style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>
               Order / Hearing Date
             </span>
-            <span className="font-semibold mt-0.5 block" style={{ color: "var(--text-primary)" }}>
+            <span className="font-medium mt-0.5 block" style={{ color: "var(--ink)" }}>
               {orderDate}
             </span>
           </div>
 
           <div>
-            <span className="block font-medium uppercase tracking-wider text-[10px]" style={{ color: "var(--text-muted)" }}>
+            <span className="block font-medium uppercase tracking-wider text-[10.5px]" style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>
               Bench / Judges
             </span>
-            <span className="font-semibold mt-0.5 block truncate" style={{ color: "var(--text-primary)" }}>
+            <span className="font-medium mt-0.5 block truncate" style={{ color: "var(--ink)" }}>
               {judges.length > 0 ? judges.join(", ") : "Hon'ble Court Bench"}
             </span>
           </div>
@@ -272,41 +254,70 @@ export function AISummaryCard({
       </div>
 
       {/* Segmented Tab Switcher */}
-      <div className="flex flex-wrap items-center gap-1.5 p-1 rounded-2xl overflow-x-auto" style={{ background: "var(--surface-container)" }}>
-        {tabs.map((tab) => {
-          const isActive = activeTab === tab.id;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-medium transition-all cursor-pointer whitespace-nowrap"
-              style={{
-                background: isActive ? "var(--card)" : "transparent",
-                color: isActive ? "var(--text-primary)" : "var(--text-muted)",
-                boxShadow: isActive ? "var(--shadow-ambient)" : "none",
-                fontWeight: isActive ? 600 : 500,
-              }}
-            >
-              {tab.icon}
-              <span>{tab.label}</span>
-            </button>
-          );
-        })}
+      <div
+        className="p-1 rounded-lg border w-full"
+        style={{
+          background: "var(--surface)",
+          borderColor: "var(--hairline)",
+        }}
+      >
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-1 w-full">
+          {tabs.map((tab) => {
+            const isActive = activeTab === tab.id;
+            return (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => setActiveTab(tab.id)}
+                className="relative px-3 py-2 rounded-md text-xs font-medium transition-all cursor-pointer select-none flex items-center justify-center gap-1.5 outline-none text-center"
+                style={{
+                  color: isActive ? "var(--ink)" : "var(--ink-faint)",
+                }}
+              >
+                {isActive && (
+                  <motion.div
+                    layoutId="summary-active-pill"
+                    className="absolute inset-0 rounded-md z-0"
+                    transition={{
+                      type: "spring",
+                      stiffness: 450,
+                      damping: 32,
+                    }}
+                    style={{
+                      background: "var(--surface-raised)",
+                      border: "1px solid var(--hairline)",
+                    }}
+                  />
+                )}
+                <span
+                  className="relative z-10 flex items-center justify-center gap-1.5 transition-colors truncate"
+                  style={{
+                    color: isActive ? "var(--ink)" : "var(--ink-faint)",
+                    fontWeight: isActive ? 600 : 400,
+                  }}
+                >
+                  <span className="flex-shrink-0">{tab.icon}</span>
+                  <span className="truncate">{tab.label}</span>
+                </span>
+              </button>
+            );
+          })}
+        </div>
       </div>
 
       {/* TAB CONTENT: Executive Brief (High-Level Overview) */}
       {(activeTab === "overview" || activeTab === "all") && (
-        <div className="space-y-6">
+        <div className="space-y-5">
           {/* Executive Synthesis */}
           {summary && (
-            <div className="card-float p-6 space-y-3" style={{ background: "var(--card)" }}>
+            <div className="card-float p-6 space-y-3" style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}>
               <div className="flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full" style={{ background: "var(--primary)" }} />
-                <h4 className="text-xs uppercase font-bold tracking-wider" style={{ color: "var(--text-primary)" }}>
+                <span className="w-2 h-2 rounded-full" style={{ background: "var(--brass)" }} />
+                <h4 className="text-xs uppercase font-semibold tracking-wider" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
                   Executive Case Synopsis
                 </h4>
               </div>
-              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--text-secondary)" }}>
+              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--ink-dim)" }}>
                 {summary}
               </p>
             </div>
@@ -315,37 +326,52 @@ export function AISummaryCard({
           {/* Binding Ratio Callout */}
           {ratioDecidendi && (
             <div
-              className="p-5 rounded-2xl border space-y-2"
+              className="p-5 rounded-lg border space-y-2.5"
               style={{
                 background: "var(--surface)",
-                borderColor: "var(--border-strong)",
+                borderColor: "var(--hairline)",
               }}
             >
               <span
-                className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded inline-flex items-center gap-1"
-                style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+                className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded inline-flex items-center gap-1.5"
+                style={{
+                  background: "var(--brass-soft)",
+                  color: "var(--brass-bright)",
+                  border: "1px solid var(--hairline)",
+                  fontFamily: "var(--font-mono)",
+                }}
               >
-                <Scale size={11} /> Binding Legal Principle (Ratio Decidendi)
+                <Scale size={12} /> Binding Legal Principle (Ratio Decidendi)
               </span>
-              <blockquote className="text-sm font-medium leading-relaxed italic p-3 rounded-xl border-l-4" style={{ borderColor: "var(--primary)", background: "var(--card)", color: "var(--text-primary)" }}>
+              <blockquote
+                className="text-sm font-serif font-medium leading-relaxed italic p-3.5 rounded border-l-2"
+                style={{
+                  borderColor: "var(--brass)",
+                  background: "var(--surface-raised)",
+                  color: "var(--ink)",
+                }}
+              >
                 "{ratioDecidendi}"
               </blockquote>
             </div>
           )}
 
-          {/* Plain Language Client Takeaway */}
+          {/* Plain Language Client Takeaway - HIGH CONTRAST & READABLE IN DARK/LIGHT MODE */}
           {plainLanguage && (
             <div
-              className="p-5 rounded-2xl border space-y-2 relative overflow-hidden"
+              className="p-6 rounded-lg border space-y-3 relative overflow-hidden"
               style={{
-                background: "linear-gradient(135deg, rgba(247, 243, 242, 0.85) 0%, rgba(255, 255, 255, 0.95) 100%)",
-                borderColor: "var(--border)",
+                background: "var(--surface-raised)",
+                borderColor: "var(--hairline)",
               }}
             >
-              <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <Sparkles size={13} style={{ color: "var(--primary)" }} /> Non-Technical Takeaway (Plain Language)
+              <h4
+                className="text-xs uppercase font-semibold tracking-wider flex items-center gap-2"
+                style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}
+              >
+                <Sparkles size={14} style={{ color: "var(--brass)" }} /> Non-Technical Takeaway (Plain Language)
               </h4>
-              <p className="text-sm leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "var(--ink)" }}>
                 {plainLanguage}
               </p>
             </div>
@@ -353,59 +379,59 @@ export function AISummaryCard({
         </div>
       )}
 
-      {/* TAB CONTENT: 1. Procedural History Matrix Table */}
+      {/* TAB CONTENT: Procedural History Matrix Table */}
       {(activeTab === "procedural" || activeTab === "all") && (
         <div className="space-y-4">
-          <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <History size={14} style={{ color: "var(--primary)" }} /> 1. Procedural & Case History Matrix
+          <h4 className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+            <History size={14} style={{ color: "var(--brass)" }} /> Procedural & Case History Matrix
           </h4>
 
-          <div className="w-full overflow-x-auto card-float">
+          <div className="w-full overflow-x-auto card-float" style={{ borderRadius: "var(--radius-md)" }}>
             <table className="w-full text-left text-sm whitespace-normal">
-              <thead className="border-b text-xs font-semibold uppercase tracking-wider" style={{ borderColor: "var(--border)", background: "var(--surface)", color: "var(--text-muted)" }}>
+              <thead className="border-b text-xs font-semibold uppercase tracking-wider" style={{ borderColor: "var(--hairline)", background: "var(--surface-raised)", color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>
                 <tr>
                   <th className="p-3.5 w-1/4">Event / Parameter</th>
                   <th className="p-3.5 w-3/4">Details & Records</th>
                 </tr>
               </thead>
-              <tbody className="divide-y text-xs sm:text-sm" style={{ borderColor: "var(--border)" }}>
+              <tbody className="divide-y text-xs sm:text-sm" style={{ borderColor: "var(--hairline-soft)" }}>
                 <tr>
-                  <td className="p-3.5 font-semibold" style={{ color: "var(--text-primary)", background: "var(--surface)" }}>Petition / Action Filed</td>
-                  <td className="p-3.5" style={{ color: "var(--text-secondary)" }}>
+                  <td className="p-3.5 font-medium" style={{ color: "var(--ink)", background: "var(--surface)" }}>Petition / Action Filed</td>
+                  <td className="p-3.5" style={{ color: "var(--ink-dim)" }}>
                     {pets.length > 0 ? pets.join(", ") : "Petitioners"} filed petition under {statutesCited.length > 0 ? statutesCited[0] : "Article 226 of the Constitution"} challenging actions and decisions of the respondents.
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-3.5 font-semibold" style={{ color: "var(--text-primary)", background: "var(--surface)" }}>Respondents</td>
-                  <td className="p-3.5" style={{ color: "var(--text-secondary)" }}>
+                  <td className="p-3.5 font-medium" style={{ color: "var(--ink)", background: "var(--surface)" }}>Respondents</td>
+                  <td className="p-3.5" style={{ color: "var(--ink-dim)" }}>
                     {resps.length > 0 ? resps.join(", ") : "Respondent Authority"}
                   </td>
                 </tr>
                 {petCounsel.length > 0 && (
                   <tr>
-                    <td className="p-3.5 font-semibold" style={{ color: "var(--text-primary)", background: "var(--surface)" }}>Counsel for Petitioners</td>
-                    <td className="p-3.5 font-medium" style={{ color: "var(--text-primary)" }}>
+                    <td className="p-3.5 font-medium" style={{ color: "var(--ink)", background: "var(--surface)" }}>Counsel for Petitioners</td>
+                    <td className="p-3.5 font-medium" style={{ color: "var(--ink)" }}>
                       {petCounsel.join(", ")}
                     </td>
                   </tr>
                 )}
                 {respCounsel.length > 0 && (
                   <tr>
-                    <td className="p-3.5 font-semibold" style={{ color: "var(--text-primary)", background: "var(--surface)" }}>Counsel for Respondents</td>
-                    <td className="p-3.5 font-medium" style={{ color: "var(--text-primary)" }}>
+                    <td className="p-3.5 font-medium" style={{ color: "var(--ink)", background: "var(--surface)" }}>Counsel for Respondents</td>
+                    <td className="p-3.5 font-medium" style={{ color: "var(--ink)" }}>
                       {respCounsel.join(", ")}
                     </td>
                   </tr>
                 )}
                 <tr>
-                  <td className="p-3.5 font-semibold" style={{ color: "var(--text-primary)", background: "var(--surface)" }}>Hearing & Order</td>
-                  <td className="p-3.5" style={{ color: "var(--text-secondary)" }}>
+                  <td className="p-3.5 font-medium" style={{ color: "var(--ink)", background: "var(--surface)" }}>Hearing & Order</td>
+                  <td className="p-3.5" style={{ color: "var(--ink-dim)" }}>
                     {aiData?.order_nature || "Court Proceeding"} recorded on {orderDate}. {aiData?.outcome || "Case records and arguments heard by the Bench."}
                   </td>
                 </tr>
                 <tr>
-                  <td className="p-3.5 font-semibold" style={{ color: "var(--text-primary)", background: "var(--surface)" }}>Disposition</td>
-                  <td className="p-3.5 font-semibold" style={{ color: "var(--primary)" }}>
+                  <td className="p-3.5 font-medium" style={{ color: "var(--ink)", background: "var(--surface)" }}>Disposition</td>
+                  <td className="p-3.5 font-medium" style={{ color: "var(--brass)" }}>
                     {statusLabel}
                   </td>
                 </tr>
@@ -415,92 +441,94 @@ export function AISummaryCard({
         </div>
       )}
 
-      {/* TAB CONTENT: 2. Key Facts & Dispute Breakdown */}
+      {/* TAB CONTENT: Key Facts & Dispute Dynamics (PARTIES INVOLVED REMOVED AS REQUESTED) */}
       {(activeTab === "facts" || activeTab === "all") && (
         <div className="space-y-4">
-          <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <BookOpen size={14} style={{ color: "var(--primary)" }} /> 2. Key Facts & Dispute Dynamics
+          <h4 className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+            <BookOpen size={14} style={{ color: "var(--brass)" }} /> Key Facts & Dispute Dynamics
           </h4>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* Parties & Role */}
-            <div className="card-float p-5 space-y-2.5" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <Users size={13} style={{ color: "var(--primary)" }} /> Parties Involved
+          <div className="space-y-4">
+            {/* Nature of the Dispute (Spans full width now) */}
+            <div className="card-float p-6 space-y-2.5" style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}>
+              <h5 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+                <Scale size={13} style={{ color: "var(--brass)" }} /> Nature of Dispute
               </h5>
-              <div className="text-xs space-y-2 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                <p>
-                  <strong className="text-black font-semibold">Petitioners:</strong> {pets.join(", ") || "Petitioning entities seeking legal redress."}
-                </p>
-                <p>
-                  <strong className="text-black font-semibold">Respondents:</strong> {resps.join(", ") || "Respondent government/statutory authorities."}
-                </p>
-              </div>
-            </div>
-
-            {/* Nature of the Dispute */}
-            <div className="card-float p-5 space-y-2.5" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <Scale size={13} style={{ color: "var(--primary)" }} /> Nature of Dispute
-              </h5>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
+              <p className="text-sm leading-relaxed" style={{ color: "var(--ink-dim)" }}>
                 {summary || "The controversy pertains to regulatory compliance, administrative jurisdiction, and enforcement of statutory obligations."}
               </p>
             </div>
 
-            {/* Relief Sought / Arguments */}
-            <div className="card-float p-5 space-y-2.5" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <Gavel size={13} style={{ color: "var(--primary)" }} /> Relief Sought & Claims
-              </h5>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Petitioners sought judicial intervention and quashing/modification of contested orders or enforcement notices issued by the authorities.
-              </p>
-            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Relief Sought / Arguments */}
+              <div className="card-float p-6 space-y-2.5" style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}>
+                <h5 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+                  <Gavel size={13} style={{ color: "var(--brass)" }} /> Relief Sought & Claims
+                </h5>
+                <p className="text-sm leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+                  Petitioners sought judicial intervention and quashing/modification of contested orders or enforcement notices issued by the authorities.
+                </p>
+              </div>
 
-            {/* Legal Landscape */}
-            <div className="card-float p-5 space-y-2.5" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <ShieldAlert size={13} style={{ color: "var(--primary)" }} /> Statutory Landscape
-              </h5>
-              <div className="flex flex-wrap gap-1.5">
-                {statutesCited.length > 0 ? (
-                  statutesCited.map((st, i) => (
-                    <span key={i} className="text-[11px] font-mono px-2 py-0.5 rounded bg-[var(--surface-container)] border border-[var(--border)] font-medium">
-                      {st}
-                    </span>
-                  ))
-                ) : (
-                  <span className="text-xs" style={{ color: "var(--text-muted)" }}>Governed by constitutional and specialized statutory frameworks.</span>
-                )}
+              {/* Legal Landscape */}
+              <div className="card-float p-6 space-y-2.5" style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}>
+                <h5 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+                  <ShieldAlert size={13} style={{ color: "var(--brass)" }} /> Statutory Landscape
+                </h5>
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {statutesCited.length > 0 ? (
+                    statutesCited.map((st, i) => (
+                      <span
+                        key={i}
+                        className="text-[11.5px] font-mono px-2.5 py-1 rounded font-medium"
+                        style={{
+                          background: "var(--surface-raised)",
+                          border: "1px solid var(--hairline)",
+                          color: "var(--ink)",
+                        }}
+                      >
+                        {st}
+                      </span>
+                    ))
+                  ) : (
+                    <span className="text-xs" style={{ color: "var(--ink-faint)" }}>Governed by constitutional and specialized statutory frameworks.</span>
+                  )}
+                </div>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* TAB CONTENT: 3. Legal Issues */}
+      {/* TAB CONTENT: Legal Issues */}
       {(activeTab === "issues" || activeTab === "all") && (
         <div className="space-y-4">
-          <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <HelpCircle size={14} style={{ color: "var(--primary)" }} /> 3. Primary Legal Issues & Submissions
+          <h4 className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+            <HelpCircle size={14} style={{ color: "var(--brass)" }} /> Primary Legal Issues & Submissions
           </h4>
 
           {issues.length > 0 ? (
             <div className="grid grid-cols-1 gap-3">
               {issues.map((issue, i) => (
-                <div key={i} className="card-float p-4 flex items-start gap-3.5 text-sm" style={{ background: "var(--card)" }}>
-                  <span className="w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5 font-mono" style={{ background: "var(--surface-container)", color: "var(--primary)", border: "1px solid var(--border)" }}>
+                <div
+                  key={i}
+                  className="card-float p-5 flex items-start gap-3.5 text-sm"
+                  style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}
+                >
+                  <span
+                    className="w-6 h-6 rounded flex items-center justify-center text-[11px] font-bold flex-shrink-0 mt-0.5 font-mono"
+                    style={{ background: "var(--brass-soft)", color: "var(--brass-bright)", border: "1px solid var(--hairline)" }}
+                  >
                     {String(i + 1).padStart(2, "0")}
                   </span>
                   <div className="space-y-1">
-                    <p className="font-semibold" style={{ color: "var(--text-primary)" }}>{issue}</p>
+                    <p className="font-medium" style={{ color: "var(--ink)" }}>{issue}</p>
                   </div>
                 </div>
               ))}
             </div>
           ) : (
-            <p className="text-xs card-float p-4" style={{ color: "var(--text-muted)" }}>
+            <p className="text-xs card-float p-4" style={{ color: "var(--ink-faint)" }}>
               No explicit legal issues itemized in the immediate brief.
             </p>
           )}
@@ -508,11 +536,11 @@ export function AISummaryCard({
           {(petArguments.length > 0 || respArguments.length > 0) && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-2">
               {petArguments.length > 0 && (
-                <div className="card-float p-5 space-y-2">
-                  <h5 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-primary)" }}>
+                <div className="card-float p-6 space-y-2.5" style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}>
+                  <h5 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
                     Petitioners' Submissions
                   </h5>
-                  <ul className="list-disc list-inside text-xs space-y-1.5" style={{ color: "var(--text-secondary)" }}>
+                  <ul className="list-disc list-inside text-xs space-y-2" style={{ color: "var(--ink-dim)" }}>
                     {petArguments.map((arg, i) => (
                       <li key={i}>{arg}</li>
                     ))}
@@ -521,11 +549,11 @@ export function AISummaryCard({
               )}
 
               {respArguments.length > 0 && (
-                <div className="card-float p-5 space-y-2">
-                  <h5 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-primary)" }}>
+                <div className="card-float p-6 space-y-2.5" style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}>
+                  <h5 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
                     Respondents' Submissions
                   </h5>
-                  <ul className="list-disc list-inside text-xs space-y-1.5" style={{ color: "var(--text-secondary)" }}>
+                  <ul className="list-disc list-inside text-xs space-y-2" style={{ color: "var(--ink-dim)" }}>
                     {respArguments.map((arg, i) => (
                       <li key={i}>{arg}</li>
                     ))}
@@ -537,30 +565,41 @@ export function AISummaryCard({
         </div>
       )}
 
-      {/* TAB CONTENT: 4. Ratio Decidendi & Reasoning */}
+      {/* TAB CONTENT: Ratio Decidendi & Reasoning */}
       {(activeTab === "ratio" || activeTab === "all") && (
         <div className="space-y-5">
-          <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <Scale size={14} style={{ color: "var(--primary)" }} /> 4. Bench Findings, Ratio Decidendi & Orders
+          <h4 className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
+            <Scale size={14} style={{ color: "var(--brass)" }} /> Bench Findings, Ratio Decidendi & Orders
           </h4>
 
           {ratioDecidendi && (
-            <div className="p-6 rounded-2xl border space-y-3" style={{ background: "var(--card)", borderColor: "var(--border-strong)", boxShadow: "var(--shadow-card)" }}>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[var(--primary)] text-white inline-flex items-center gap-1">
-                <Scale size={11} /> Binding Legal Holding
+            <div className="p-6 rounded-lg border space-y-3" style={{ background: "var(--surface)", borderColor: "var(--hairline)" }}>
+              <span
+                className="text-[10.5px] font-bold uppercase tracking-wider px-2.5 py-1 rounded inline-flex items-center gap-1.5"
+                style={{
+                  background: "var(--brass-soft)",
+                  color: "var(--brass-bright)",
+                  border: "1px solid var(--hairline)",
+                  fontFamily: "var(--font-mono)",
+                }}
+              >
+                <Scale size={12} /> Binding Legal Holding
               </span>
-              <blockquote className="text-base font-serif font-medium leading-relaxed italic p-4 rounded-xl border-l-4" style={{ borderColor: "var(--primary)", background: "var(--surface-container)", color: "var(--text-primary)" }}>
+              <blockquote
+                className="text-base font-serif font-medium leading-relaxed italic p-4 rounded border-l-2"
+                style={{ borderColor: "var(--brass)", background: "var(--surface-raised)", color: "var(--ink)" }}
+              >
                 "{ratioDecidendi}"
               </blockquote>
             </div>
           )}
 
           {reasoning && (
-            <div className="card-float p-6 space-y-3" style={{ background: "var(--surface)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-primary)" }}>
+            <div className="card-float p-6 space-y-3" style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}>
+              <h5 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
                 Substantive Court Reasoning
               </h5>
-              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--text-secondary)" }}>
+              <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "var(--ink-dim)" }}>
                 {reasoning}
               </p>
             </div>
@@ -568,59 +607,28 @@ export function AISummaryCard({
 
           {directions.length > 0 && (
             <div className="space-y-2.5">
-              <h5 className="text-xs font-bold uppercase tracking-wider" style={{ color: "var(--text-primary)" }}>
+              <h5 className="text-xs font-semibold uppercase tracking-wider" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
                 Bench Directions / Operative Orders ({directions.length})
               </h5>
               <div className="grid grid-cols-1 gap-2">
                 {directions.map((dir, i) => (
-                  <div key={i} className="card-float p-4 flex items-start gap-2.5 text-sm" style={{ background: "var(--card)" }}>
-                    <div className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 mt-0.5" style={{ background: "rgba(22, 163, 74, 0.1)", color: "var(--success)" }}>
+                  <div
+                    key={i}
+                    className="card-float p-4 flex items-start gap-2.5 text-sm"
+                    style={{ background: "var(--surface)", borderRadius: "var(--radius-md)" }}
+                  >
+                    <div
+                      className="w-4 h-4 rounded flex items-center justify-center flex-shrink-0 mt-0.5"
+                      style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
+                    >
                       <ChevronRight size={13} />
                     </div>
-                    <span style={{ color: "var(--text-primary)" }}>{dir}</span>
+                    <span style={{ color: "var(--ink)" }}>{dir}</span>
                   </div>
                 ))}
               </div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* TAB CONTENT: 5. Next Steps */}
-      {(activeTab === "next_steps" || activeTab === "all") && (
-        <div className="space-y-4">
-          <h4 className="text-xs uppercase font-bold tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-            <Compass size={14} style={{ color: "var(--primary)" }} /> 5. Next Steps & Practical Implications
-          </h4>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-            <div className="card-float p-5 space-y-2" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <ArrowRight size={13} style={{ color: "var(--primary)" }} /> Procedural Action
-              </h5>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Parties must await delivery of final judgment or next listed hearing date before the High Court.
-              </p>
-            </div>
-
-            <div className="card-float p-5 space-y-2" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <History size={13} style={{ color: "var(--primary)" }} /> Monitor Docket
-              </h5>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Subsequent listings and orders will be communicated via the court registry; parties should track CNR updates.
-              </p>
-            </div>
-
-            <div className="card-float p-5 space-y-2" style={{ background: "var(--card)" }}>
-              <h5 className="text-xs font-bold uppercase tracking-wider flex items-center gap-1.5" style={{ color: "var(--text-primary)" }}>
-                <ShieldAlert size={13} style={{ color: "var(--primary)" }} /> Maintain Status-Quo
-              </h5>
-              <p className="text-xs leading-relaxed" style={{ color: "var(--text-secondary)" }}>
-                Unless stay or interim directions were modified, existing operational licenses and statutory compliance stand pending final order.
-              </p>
-            </div>
-          </div>
         </div>
       )}
     </div>

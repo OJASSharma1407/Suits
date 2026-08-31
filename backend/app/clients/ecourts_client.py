@@ -17,8 +17,8 @@ from app.core.exceptions import ECourtsAPIError, RateLimitError
 
 logger = structlog.get_logger()
 
-# Fast retry configuration: Max 2 attempts, fast 1s backoff, total time < 4s
-RETRY_DELAYS = [1]
+# Fast fail: eCourts either responds instantly or is down. No retries.
+RETRY_DELAYS: list[int] = []
 RETRYABLE_STATUS_CODES = {429, 500}
 NON_RETRYABLE_STATUS_CODES = {400, 401, 404}
 
@@ -32,16 +32,20 @@ class ECourtsClient:
         self._client: httpx.AsyncClient | None = None
 
     async def _get_client(self) -> httpx.AsyncClient:
+        base_url = settings.ecourts_base_url.rstrip("/")
+        api_key = settings.ecourts_api_key.strip() if settings.ecourts_api_key else ""
         if self._client is None or self._client.is_closed:
+            headers: dict[str, str] = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+            }
+            if api_key:
+                headers["Authorization"] = f"Bearer {api_key}"
             self._client = httpx.AsyncClient(
-                base_url=self.base_url,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                    "Accept": "application/json",
-                },
-                # Fast timeout: 3 seconds maximum per request
-                timeout=httpx.Timeout(3.0),
+                base_url=base_url,
+                headers=headers,
+                # Fast timeout: 2 seconds maximum per request
+                timeout=httpx.Timeout(2.0),
             )
         return self._client
 

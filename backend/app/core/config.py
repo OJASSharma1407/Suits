@@ -25,13 +25,19 @@ class Settings(BaseSettings):
 
     # eCourts Partner API
     ecourts_api_key: str = Field(default="")
-    ecourts_base_url: str = Field(default="https://api.ecourts.gov.in/partner")
+    ecourts_base_url: str = Field(default="https://webapi.ecourtsindia.com")
 
     # Indian Kanoon API
     kanoon_api_token: str = Field(default="")
 
-    # OpenRouter API
+    # Gemini AI API
+    gemini_api_key: str = Field(default="")
+    gemini_model: str = Field(default="gemini-3.6-flash")
+
+    # OpenRouter API (Used for Interactive AI Chatbot)
     openrouter_api_key: str = Field(default="")
+    openrouter_model: str = Field(default="nvidia/nemotron-3-ultra-550b-a55b:free")
+    openrouter_max_tokens: int = Field(default=4096)
 
     # Application
     environment: str = Field(default="development")
@@ -39,7 +45,7 @@ class Settings(BaseSettings):
     cors_origins: str = Field(default="http://localhost:5173")
 
     # Rate Limiting
-    rate_limit_per_minute: int = Field(default=60)
+    rate_limit_per_minute: int = Field(default=300)
 
     # Cache TTLs (seconds)
     cache_ttl_search: int = Field(default=900)       # 15 minutes

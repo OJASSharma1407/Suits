@@ -1,16 +1,13 @@
-"""AI service - manages AI chat, prompt building, and conversation memory.
-
-Implements the documented AI workflow:
-User Question → Conversation Context → Case Metadata →
-Order Markdown → Order AI → Prompt Builder → OpenRouter → Validated Response
-"""
+"""AI service - manages AI chat, prompt building, and conversation memory using Indian Kanoon records."""
 
 import json
 import uuid
 from collections.abc import AsyncGenerator
 
 from sqlalchemy.ext.asyncio import AsyncSession
+import structlog
 
+from app.clients.gemini_client import gemini_client
 from app.clients.openrouter_client import openrouter_client
 from app.models.message import Message, MessageRole
 from app.repositories.conversation_repository import ConversationRepository
@@ -20,9 +17,12 @@ from app.services.cache_service import cache_service
 from app.prompts.system import MASTER_SYSTEM_PROMPT
 from app.prompts.templates import build_case_context
 
+logger = structlog.get_logger()
+
 
 class AIService:
     def __init__(self, db: AsyncSession) -> None:
+        self.db = db
         self.conversation_repo = ConversationRepository(db)
         self.cache_repo = CacheRepository(db)
 
@@ -53,15 +53,28 @@ class AIService:
                 case_context = build_case_context(case_data)
 
         order_context = None
-        if order_filename:
-            cached_ai = await self.cache_repo.get_cached_ai(cnr, order_filename)
-            if cached_ai:
-                ai_data = json.loads(cached_ai.ai_json)
-                order_context = json.dumps(ai_data, indent=2, default=str)
+        target_doc = order_filename or cnr
+        if target_doc:
+            cached_ai = await self.cache_repo.get_cached_ai(cnr, target_doc)
+            if cached_ai and cached_ai.ai_json:
+                try:
+                    ai_data = json.loads(cached_ai.ai_json)
+                    if ai_data.get("extractionConfidence", 0.0) > 0.0:
+                        order_context = json.dumps(ai_data, indent=2, default=str)
+                except Exception:
+                    pass
             if not order_context:
-                cached_md = await self.cache_repo.get_cached_order(cnr, order_filename)
-                if cached_md and cached_md.markdown:
+                cached_md = await self.cache_repo.get_cached_order(cnr, target_doc)
+                if cached_md and cached_md.markdown and not cached_md.markdown.startswith("*"):
                     order_context = cached_md.markdown
+
+            # Proactively fetch markdown from Indian Kanoon if we don't have any order context yet
+            if not order_context:
+                from app.services.order_service import OrderService
+                order_service = OrderService(self.db)
+                md_response = await order_service.get_markdown(cnr, target_doc)
+                if md_response and md_response.markdown and not md_response.markdown.startswith("*"):
+                    order_context = md_response.markdown
 
         return cnr, order_context, history, case_context
 
@@ -83,13 +96,47 @@ class AIService:
         )
         await self.conversation_repo.add_message(user_msg)
 
-        ai_response = await openrouter_client.generate_with_context(
-            system_prompt=MASTER_SYSTEM_PROMPT,
-            conversation_history=history,
-            user_message=user_message,
-            case_context=case_context or "No case context available.",
-            order_context=order_context,
-        )
+        # RAG Precedent Search via Indian Kanoon API
+        sources = [f"Indian Kanoon Record: {cnr}"]
+        try:
+            from app.clients.kanoon_client import kanoon_client
+            kanoon_results = await kanoon_client.search_docs(query=user_message.strip(), pagenum=1)
+            docs = kanoon_results.get("docs", []) if isinstance(kanoon_results, dict) else []
+            if docs:
+                precedent_items = []
+                for d in docs[:3]:
+                    t_id = d.get("tid")
+                    t_title = d.get("title", "")
+                    import re
+                    t_title = re.sub(r'<[^>]+>', '', str(t_title))
+                    t_court = d.get("docsource", "Indian Kanoon")
+                    precedent_items.append(f"- **{t_title}** ({t_court}) [Kanoon TID: {t_id}]")
+                    sources.append(f"Indian Kanoon: {t_title} (ID: {t_id})")
+                if precedent_items:
+                    case_context = (case_context or "") + "\n\n### Relevant Indian Kanoon Legal Precedents & Citations:\n" + "\n".join(precedent_items)
+        except Exception:
+            pass
+
+        # Generate response via OpenRouter Nemotron 3 Ultra (with Gemini fallback)
+        try:
+            ai_response = await openrouter_client.generate_with_context(
+                system_prompt=MASTER_SYSTEM_PROMPT,
+                conversation_history=history,
+                user_message=user_message,
+                case_context=case_context or "No case context available.",
+                order_context=order_context,
+            )
+            if not ai_response or not ai_response.strip():
+                raise RuntimeError("Empty response from OpenRouter")
+        except Exception as or_err:
+            logger.warning("openrouter_generate_failed_using_gemini", error=str(or_err))
+            ai_response = await gemini_client.generate_with_context(
+                system_prompt=MASTER_SYSTEM_PROMPT,
+                conversation_history=history,
+                user_message=user_message,
+                case_context=case_context or "No case context available.",
+                order_context=order_context,
+            )
 
         assistant_msg = Message(
             conversation_id=conversation_id,
@@ -107,7 +154,7 @@ class AIService:
         return ChatResponse(
             answer=ai_response,
             suggested_questions=suggested,
-            sources=[f"Indian Kanoon Document: {cnr}"],
+            sources=sources,
             conversation_id=conversation_id,
         )
 
@@ -117,13 +164,7 @@ class AIService:
         user_message: str,
         order_filename: str | None = None,
     ) -> AsyncGenerator[str, None]:
-        """Stream AI response tokens as Server-Sent Events.
-
-        Yields SSE-formatted strings:
-          - ``data: {"token": "<text>"}\\n\\n``  for each token chunk
-          - ``data: {"done": true, "suggested_questions": [...]}\\n\\n``  at the end
-          - ``data: {"error": "<msg>"}\\n\\n``  on failure
-        """
+        """Stream AI response tokens as Server-Sent Events."""
         try:
             cnr, order_context, history, case_context = await self._load_context(
                 conversation_id, order_filename
@@ -137,19 +178,35 @@ class AIService:
             )
             await self.conversation_repo.add_message(user_msg)
 
-            # Stream tokens and accumulate the full response
+            # Stream tokens via OpenRouter (gpt-oss-120b) with Gemini fallback
             full_response: list[str] = []
-            async for token in openrouter_client.generate_with_context_stream(
-                system_prompt=MASTER_SYSTEM_PROMPT,
-                conversation_history=history,
-                user_message=user_message,
-                case_context=case_context or "No case context available.",
-                order_context=order_context,
-            ):
-                full_response.append(token)
-                # Escape newlines inside the JSON string value
-                safe = token.replace("\\", "\\\\").replace('"', '\\"').replace("\n", "\\n")
-                yield f'data: {{"token": "{safe}"}}\n\n'
+            try:
+                async for token in openrouter_client.generate_with_context_stream(
+                    system_prompt=MASTER_SYSTEM_PROMPT,
+                    conversation_history=history,
+                    user_message=user_message,
+                    case_context=case_context or "No case context available.",
+                    order_context=order_context,
+                ):
+                    if token:
+                        full_response.append(token)
+                        chunk_json = json.dumps({"token": token})
+                        yield f"data: {chunk_json}\n\n"
+                if not full_response:
+                    raise RuntimeError("OpenRouter produced empty stream")
+            except Exception as stream_err:
+                logger.warning("openrouter_stream_failed_using_gemini", error=str(stream_err))
+                async for token in gemini_client.generate_with_context_stream(
+                    system_prompt=MASTER_SYSTEM_PROMPT,
+                    conversation_history=history,
+                    user_message=user_message,
+                    case_context=case_context or "No case context available.",
+                    order_context=order_context,
+                ):
+                    if token:
+                        full_response.append(token)
+                        chunk_json = json.dumps({"token": token})
+                        yield f"data: {chunk_json}\n\n"
 
             # Save completed assistant message
             ai_response = "".join(full_response)
@@ -160,12 +217,13 @@ class AIService:
             )
             await self.conversation_repo.add_message(assistant_msg)
 
-            # Generate suggested questions (non-streaming, small call)
-            suggested = await openrouter_client.generate_suggested_questions(
-                case_context=case_context or "",
-                last_ai_response=ai_response,
-                n=4,
-            )
+            # Fast contextual suggested questions
+            suggested = [
+                "What is the ratio decidendi established in this case?",
+                "List all precedents and statutes cited.",
+                "Explain the court's substantive reasoning on the merits.",
+                "What specific directions or relief were ordered by the Court?",
+            ]
 
             done_payload = json.dumps({"done": True, "suggested_questions": suggested})
             yield f"data: {done_payload}\n\n"

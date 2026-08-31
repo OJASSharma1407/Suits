@@ -20,15 +20,26 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         self._requests: dict[str, list[float]] = defaultdict(list)
 
     async def dispatch(self, request: Request, call_next):
+        # Always bypass rate limiting for CORS preflight (OPTIONS) and health check
+        if request.method == "OPTIONS" or request.url.path == "/api/health":
+            return await call_next(request)
+
+        # In development mode, provide generous headroom (e.g. 600 req/min) for single-user dev
+        effective_limit = (
+            max(self.max_requests, 600)
+            if settings.environment == "development"
+            else self.max_requests
+        )
+
         client_ip = request.client.host if request.client else "unknown"
         now = time.monotonic()
 
-        # Clean old entries
+        # Clean old entries outside the window
         self._requests[client_ip] = [
             t for t in self._requests[client_ip] if now - t < self.window
         ]
 
-        if len(self._requests[client_ip]) >= self.max_requests:
+        if len(self._requests[client_ip]) >= effective_limit:
             return JSONResponse(
                 status_code=429,
                 content={"success": False, "message": "Too many requests. Please try again later."},
