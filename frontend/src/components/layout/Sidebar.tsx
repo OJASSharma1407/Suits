@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Sun, Moon } from "lucide-react";
+import { motion } from "motion/react";
 import { useAuthStore } from "@/store/auth-store";
 import { useThemeStore } from "@/store/theme-store";
 
@@ -18,6 +19,14 @@ function BookmarkIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
       <path d="M6 3h12v18l-6-4-6 4z" />
+    </svg>
+  );
+}
+function FilesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <path d="M12 11v6M9 14h6" strokeWidth="1.5" />
     </svg>
   );
 }
@@ -47,6 +56,7 @@ function ScalesIcon() {
 const navItems = [
   { path: "/dashboard",  label: "Workspace",  Icon: WorkspaceIcon },
   { path: "/bookmarks",  label: "Bookmarks",  Icon: BookmarkIcon },
+  { path: "/files",      label: "Files",      Icon: FilesIcon },
   { path: "/analytics",  label: "Analytics",  Icon: AnalyticsIcon },
   { path: "/history",    label: "History",    Icon: HistoryIcon },
 ];
@@ -81,8 +91,22 @@ export default function Sidebar() {
                 className={`nav-item${isActive ? " active" : ""}`}
                 title={label}
               >
-                <Icon />
-                <span className="nav-label">{label}</span>
+                {isActive && (
+                  <motion.div
+                    layoutId="sidebar-active-pill"
+                    className="nav-item-active-pill"
+                    transition={{
+                      type: "spring",
+                      stiffness: 380,
+                      damping: 28,
+                      mass: 0.7,
+                    }}
+                  />
+                )}
+                <span className="nav-item-inner">
+                  <Icon />
+                  <span className="nav-label">{label}</span>
+                </span>
               </Link>
             );
           })}

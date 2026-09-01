@@ -11,11 +11,12 @@ from app.core.config import settings
 from app.core.exceptions import SuitsBaseException
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics
+from app.api import auth, search, cases, orders, chat, bookmarks, files, history, analytics
 from app.clients.ecourts_client import ecourts_client
 from app.services.cache_service import cache_service
-from app.database.session import engine
+from app.database.session import engine, init_db
 from app.database.base import Base
+from sqlalchemy import text
 
 # Import all models to ensure they are registered with Base.metadata
 import app.models  # noqa: F401
@@ -41,12 +42,11 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle."""
     logger.info("suits_starting", environment=settings.environment)
 
-    # Automatically create database tables if they do not exist
+    # Automatically create database tables and migrate SQLite schema
+    await init_db()
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Clean any stale/failed cache entries so they can be re-fetched cleanly
-        from sqlalchemy import text
         await conn.execute(
+            
             text("""
                 DELETE FROM cached_orders
                 WHERE markdown LIKE '*PDF extraction failed%'
@@ -130,6 +130,7 @@ app.include_router(cases.router, prefix="/api")
 app.include_router(orders.router, prefix="/api")
 app.include_router(chat.router, prefix="/api")
 app.include_router(bookmarks.router, prefix="/api")
+app.include_router(files.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 

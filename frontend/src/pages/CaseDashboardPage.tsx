@@ -18,7 +18,7 @@ import { caseService } from "@/services/cases";
 import { bookmarkService } from "@/services/bookmarks";
 import { chatService } from "@/services/chat";
 import { historyService } from "@/services/history";
-import type { CaseDetails, OrderAI } from "@/types/case";
+import type { CaseDetails, OrderAI, OrderItem } from "@/types/case";
 import type { ChatMessage } from "@/types/chat";
 import type { CitationNode } from "@/types/citation";
 import { Sparkles, MessageSquare, X, RotateCcw, Maximize2 } from "lucide-react";
@@ -485,78 +485,88 @@ export default function CaseDashboardPage() {
           initialMode={readerMode}
           orders={readerOrders}
           allowModeToggle={readerAllowToggle}
+          isChatOpen={isChatOpen}
+          onToggleChat={() => setIsChatOpen(!isChatOpen)}
+          chatMessages={messages}
+          onSendMessage={handleSendMessage}
+          chatLoading={chatLoading}
+          streamingContent={streamingContent}
+          suggestedQuestions={suggestedQuestions}
+          onClearChat={handleClearChat}
+          onExpandChat={handleExpandChat}
         />
       )}
 
-      {/* Floating AI Chat (rendered into document.body at z-[1000] above the fullscreen PDF reader) */}
-      {createPortal(
-        <div className="fixed bottom-6 right-6 z-[1000] flex flex-col items-end pointer-events-auto">
-          {isChatOpen && (
-            <div 
-              className="mb-4 w-[480px] h-[650px] max-h-[80vh] flex flex-col rounded-2xl overflow-hidden animate-slide-up shadow-2xl border overscroll-contain"
-              style={{
-                borderColor: "var(--border)",
-                background: "var(--card)",
-                overscrollBehavior: "contain",
-              }}
-            >
-              <div className="p-3 px-4 border-b flex items-center justify-between" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
-                <div className="flex items-center gap-2.5">
-                  <div
-                    className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
-                    style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
-                  >
-                    <Sparkles size={15} />
+      {/* Page Floating AI Chat (rendered when reader is NOT open) */}
+      {!isReaderOpen &&
+        createPortal(
+          <div className="fixed bottom-6 right-6 z-[1000] flex flex-col items-end pointer-events-auto">
+            {isChatOpen && (
+              <div 
+                className="mb-3 w-[400px] sm:w-[430px] h-[580px] max-h-[78vh] flex flex-col rounded-2xl overflow-hidden animate-slide-up shadow-2xl border overscroll-contain"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--card)",
+                  overscrollBehavior: "contain",
+                }}
+              >
+                <div className="p-3 px-4 border-b flex items-center justify-between" style={{ background: "var(--surface)", borderColor: "var(--border)" }}>
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
+                    >
+                      <Sparkles size={15} />
+                    </div>
+                    <h3 className="text-sm font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
+                      Assistant
+                    </h3>
                   </div>
-                  <h3 className="text-sm font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
-                    Assistant
-                  </h3>
+                  <div className="flex items-center gap-1.5">
+                    <button 
+                      type="button"
+                      onClick={handleClearChat}
+                      title="Clear conversation and start new chat"
+                      className="px-2.5 py-1 rounded-lg hover:bg-[var(--surface-container)] text-xs flex items-center gap-1.5 transition-colors cursor-pointer border"
+                      style={{ borderColor: "var(--border)", color: "var(--ink-dim)" }}
+                    >
+                      <RotateCcw size={12} />
+                      <span className="text-[11px] font-medium">New Chat</span>
+                    </button>
+                    <button 
+                      type="button"
+                      onClick={handleExpandChat}
+                      title="Expand to Full Chat Window"
+                      className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] transition-colors cursor-pointer"
+                      style={{ color: "var(--ink-dim)" }}
+                    >
+                      <Maximize2 size={15} />
+                    </button>
+                  </div>
                 </div>
-                <div className="flex items-center gap-1.5">
-                  <button 
-                    type="button"
-                    onClick={handleClearChat}
-                    title="Clear conversation and start new chat"
-                    className="px-2.5 py-1 rounded-lg hover:bg-[var(--surface-container)] text-xs flex items-center gap-1.5 transition-colors cursor-pointer border"
-                    style={{ borderColor: "var(--border)", color: "var(--ink-dim)" }}
-                  >
-                    <RotateCcw size={12} />
-                    <span className="text-[11px] font-medium">New Chat</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleExpandChat}
-                    title="Expand to Full Chat Window"
-                    className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] transition-colors cursor-pointer"
-                    style={{ color: "var(--ink-dim)" }}
-                  >
-                    <Maximize2 size={15} />
-                  </button>
+                <div className="flex-1 overflow-hidden">
+                  <ChatPanel
+                    messages={messages}
+                    onSendMessage={handleSendMessage}
+                    isLoading={chatLoading}
+                    streamingMessage={streamingContent}
+                    suggestedQuestions={suggestedQuestions}
+                    onClearChat={handleClearChat}
+                  />
                 </div>
               </div>
-              <div className="flex-1 overflow-hidden">
-                <ChatPanel
-                  messages={messages}
-                  onSendMessage={handleSendMessage}
-                  isLoading={chatLoading}
-                  streamingMessage={streamingContent}
-                  suggestedQuestions={suggestedQuestions}
-                  onClearChat={handleClearChat}
-                />
-              </div>
-            </div>
-          )}
-          
-          <button
-            onClick={() => setIsChatOpen(!isChatOpen)}
-            className={`h-14 w-14 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer`}
-            style={{ background: isChatOpen ? "var(--surface-container-high)" : "var(--primary)", color: isChatOpen ? "var(--text-primary)" : "var(--on-primary)" }}
-          >
-            {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
-          </button>
-        </div>,
-        document.body
-      )}
+            )}
+            
+            <button
+              onClick={() => setIsChatOpen(!isChatOpen)}
+              className={`h-14 w-14 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer`}
+              style={{ background: isChatOpen ? "var(--surface-container-high)" : "var(--primary)", color: isChatOpen ? "var(--text-primary)" : "var(--on-primary)" }}
+            >
+              {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
+            </button>
+          </div>,
+          document.body
+        )}
     </div>
   );
 }
