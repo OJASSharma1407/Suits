@@ -18,7 +18,7 @@ import { caseService } from "@/services/cases";
 import { bookmarkService } from "@/services/bookmarks";
 import { chatService } from "@/services/chat";
 import { historyService } from "@/services/history";
-import type { CaseDetails, OrderAI } from "@/types/case";
+import type { CaseDetails, OrderAI, OrderItem } from "@/types/case";
 import type { ChatMessage } from "@/types/chat";
 import type { CitationNode } from "@/types/citation";
 import { Sparkles, MessageSquare, X, RotateCcw, Maximize2 } from "lucide-react";

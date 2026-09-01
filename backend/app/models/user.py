@@ -3,7 +3,8 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import String, DateTime, Enum as SAEnum
+from typing import Optional
+from sqlalchemy import String, DateTime, Boolean, Enum as SAEnum
 from sqlalchemy.types import Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import enum
@@ -30,7 +31,11 @@ class User(Base):
     )
     full_name: Mapped[str] = mapped_column(String(255), nullable=False)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
+    password_hash: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    is_verified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    auth_provider: Mapped[str] = mapped_column(String(50), default="local", nullable=False)
+    google_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
+    avatar_url: Mapped[Optional[str]] = mapped_column(String(512), nullable=True)
     role: Mapped[UserRole] = mapped_column(
         SAEnum(UserRole), default=UserRole.USER, nullable=False
     )

@@ -39,10 +39,18 @@ class Settings(BaseSettings):
     openrouter_model: str = Field(default="nvidia/nemotron-3-ultra-550b-a55b:free")
     openrouter_max_tokens: int = Field(default=4096)
 
+    # Google OAuth
+    google_client_id: str = Field(default="")
+
+    # Email & Verification (Resend / SMTP)
+    resend_api_key: str = Field(default="")
+    email_from: str = "Suits Legal <onboarding@resend.dev>"
+    otp_expiry_minutes: int = Field(default=10)
+
     # Application
     environment: str = Field(default="development")
     log_level: str = Field(default="INFO")
-    cors_origins: str = Field(default="http://localhost:5173")
+    cors_origins: str = Field(default="http://localhost:5173,http://127.0.0.1:5173")
 
     # Rate Limiting
     rate_limit_per_minute: int = Field(default=300)
