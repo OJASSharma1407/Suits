@@ -21,6 +21,14 @@ function BookmarkIcon() {
     </svg>
   );
 }
+function FilesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <path d="M12 11v6M9 14h6" strokeWidth="1.5" />
+    </svg>
+  );
+}
 function HistoryIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -47,6 +55,7 @@ function ScalesIcon() {
 const navItems = [
   { path: "/dashboard",  label: "Workspace",  Icon: WorkspaceIcon },
   { path: "/bookmarks",  label: "Bookmarks",  Icon: BookmarkIcon },
+  { path: "/files",      label: "Files",      Icon: FilesIcon },
   { path: "/analytics",  label: "Analytics",  Icon: AnalyticsIcon },
   { path: "/history",    label: "History",    Icon: HistoryIcon },
 ];

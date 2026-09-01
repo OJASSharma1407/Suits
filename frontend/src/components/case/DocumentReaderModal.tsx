@@ -14,12 +14,21 @@ import {
   Loader2,
   Scale,
   ChevronDown,
+  Sparkles,
+  MessageSquare,
+  RotateCcw,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { caseService } from "@/services/cases";
+import { fileService } from "@/services/files";
 import { toast } from "sonner";
-import { CustomPDFViewer } from "./CustomPDFViewer";
+import { CustomPDFViewer, type CustomPDFViewerRef, type SidebarMode } from "./CustomPDFViewer";
+import { ReaderResearchPanel } from "./reader/ReaderResearchPanel";
+import { ResearchBriefModal } from "../files/ResearchBriefModal";
+import { ChatPanel } from "@/components/chat/ChatPanel";
 import type { OrderItem } from "@/types/case";
+import type { PDFHighlight } from "@/types/file";
+import type { ChatMessage } from "@/types/chat";
 
 interface DocumentReaderModalProps {
   isOpen: boolean;
@@ -32,6 +41,16 @@ interface DocumentReaderModalProps {
   initialMode?: "pdf" | "text";
   orders?: OrderItem[];
   allowModeToggle?: boolean;
+  // Optional Chat integration
+  isChatOpen?: boolean;
+  onToggleChat?: () => void;
+  chatMessages?: ChatMessage[];
+  onSendMessage?: (text: string) => void;
+  chatLoading?: boolean;
+  streamingContent?: string;
+  suggestedQuestions?: string[];
+  onClearChat?: () => void;
+  onExpandChat?: () => void;
 }
 
 type ViewMode = "pdf" | "text";
@@ -53,6 +72,15 @@ export function DocumentReaderModal({
   initialMode = "pdf",
   orders = [],
   allowModeToggle = true,
+  isChatOpen = false,
+  onToggleChat,
+  chatMessages = [],
+  onSendMessage,
+  chatLoading = false,
+  streamingContent = "",
+  suggestedQuestions = [],
+  onClearChat,
+  onExpandChat,
 }: DocumentReaderModalProps) {
   const [currentFilename, setCurrentFilename] = useState<string>(initialFilename);
   const [currentOrderDate, setCurrentOrderDate] = useState<string>(initialOrderDate);
@@ -73,7 +101,19 @@ export function DocumentReaderModal({
   const [copied, setCopied] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
 
+  // Unified Left Sidebar Mode: 'thumbnails' | 'research' | 'none'
+  const [sidebarMode, setSidebarMode] = useState<SidebarMode>("none");
+
+  // Research Vault State
+  const [isBriefModalOpen, setIsBriefModalOpen] = useState<boolean>(false);
+  const [notes, setNotes] = useState<string>("");
+  const [highlights, setHighlights] = useState<PDFHighlight[]>([]);
+  const [tags, setTags] = useState<string[]>([]);
+  const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [isSaving, setIsSaving] = useState<boolean>(false);
+
   const modalRef = useRef<HTMLDivElement>(null);
+  const pdfViewerRef = useRef<CustomPDFViewerRef>(null);
 
   // Reset when opening or when initial props change
   useEffect(() => {
@@ -82,6 +122,27 @@ export function DocumentReaderModal({
     setCurrentOrderDate(initialOrderDate);
     setMode(initialMode);
   }, [isOpen, cnr, initialFilename, initialOrderDate, initialMode]);
+
+  // Load saved research notes & highlights for this order
+  useEffect(() => {
+    if (!isOpen || !cnr || !currentFilename) return;
+    fileService
+      .getByCase(cnr, currentFilename)
+      .then((saved) => {
+        if (saved) {
+          setNotes(saved.notes || "");
+          setHighlights(saved.highlights || []);
+          setTags(saved.tags || []);
+          setIsSaved(true);
+        } else {
+          setNotes("");
+          setHighlights([]);
+          setTags([]);
+          setIsSaved(false);
+        }
+      })
+      .catch(() => {});
+  }, [isOpen, cnr, currentFilename]);
 
   // Load content whenever currentFilename or active mode changes
   useEffect(() => {
@@ -180,27 +241,91 @@ export function DocumentReaderModal({
   const toggleFullscreen = () => {
     if (!modalRef.current) return;
     if (!document.fullscreenElement) {
-      modalRef.current.requestFullscreen?.().catch(() => {});
+      modalRef.current.requestFullscreen().catch(() => {});
       setIsFullscreen(true);
     } else {
-      document.exitFullscreen?.().catch(() => {});
+      document.exitFullscreen().catch(() => {});
       setIsFullscreen(false);
     }
+  };
+
+  const handleSaveToFiles = async () => {
+    setIsSaving(true);
+    try {
+      await fileService.save({
+        cnr,
+        filename: currentFilename,
+        case_title: caseTitle,
+        court_name: courtName,
+        order_date: currentOrderDate,
+        notes,
+        highlights,
+        tags,
+      });
+      setIsSaved(true);
+      toast.success("Order, notes & highlights saved to Files Vault.");
+    } catch {
+      toast.error("Failed to save to Files Vault.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleAddHighlight = (newHighlight: PDFHighlight) => {
+    setHighlights((prev) => [...prev, newHighlight]);
+  };
+
+  const handleDeleteHighlight = (id: string) => {
+    setHighlights((prev) => prev.filter((h) => h.id !== id));
+    toast.info("Highlight removed.");
+  };
+
+  const handleAddToResearchNotes = (quoteText: string) => {
+    setNotes((prev) => (prev ? `${prev}\n\n${quoteText}` : quoteText));
+    setSidebarMode("research");
+  };
+
+  const handleJumpToPage = (pageNum: number) => {
+    if (mode !== "pdf") {
+      setMode("pdf");
+    }
+    setTimeout(() => {
+      pdfViewerRef.current?.scrollToPage(pageNum);
+    }, 150);
   };
 
   if (!isOpen) return null;
 
   const validOrders = orders.filter((o) => o.filename && !o.is_stub);
 
+  const researchPanelNode = (
+    <ReaderResearchPanel
+      isOpen={sidebarMode === "research"}
+      onClose={() => setSidebarMode("none")}
+      caseTitle={caseTitle}
+      courtName={courtName}
+      orderDate={currentOrderDate}
+      cnr={cnr}
+      notes={notes}
+      onNotesChange={setNotes}
+      highlights={highlights}
+      onDeleteHighlight={handleDeleteHighlight}
+      onJumpToHighlight={handleJumpToPage}
+      tags={tags}
+      onTagsChange={setTags}
+      isSaved={isSaved}
+      isSaving={isSaving}
+      onSaveToFiles={handleSaveToFiles}
+      onOpenBriefModal={() => setIsBriefModalOpen(true)}
+    />
+  );
+
   return createPortal(
     <div className="fixed inset-0 z-[999] flex items-center justify-center p-2 sm:p-3 md:p-4 animate-fade-in">
-      {/* Full-Screen Uniform Dark Blur Backdrop covering 100% of viewport */}
-      <div
-        className="fixed inset-0 bg-black/80 backdrop-blur-2xl transition-all"
-        onClick={onClose}
-      />
+      {/* Full-Screen Backdrop */}
+      <div className="fixed inset-0 bg-black/80 backdrop-blur-2xl transition-all" onClick={onClose} />
 
-      {/* Full-Screen Reader Container with Sleek Rounded Corners */}
+      {/* Full-Screen Reader Container */}
       <div
         ref={modalRef}
         className="relative z-10 w-full h-full flex flex-col rounded-2xl md:rounded-3xl overflow-hidden animate-spring-in shadow-2xl"
@@ -210,7 +335,7 @@ export function DocumentReaderModal({
         }}
       >
         {/* ========================================================
-            SLEEK MINIMALIST HEADER (No Glossy Clutter)
+            SLEEK MINIMALIST HEADER
            ======================================================== */}
         <header
           className="flex flex-wrap items-center justify-between gap-3 px-4 py-2.5 border-b flex-shrink-0"
@@ -250,7 +375,7 @@ export function DocumentReaderModal({
                   CNR: {cnr}
                 </span>
               </div>
-              
+
               {/* Sub-header with Court Name or Multi-Order Switcher */}
               <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
                 <span>{courtName}</span>
@@ -290,38 +415,53 @@ export function DocumentReaderModal({
             >
               <button
                 onClick={() => setMode("pdf")}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all"
                 style={{
                   background: mode === "pdf" ? "var(--card)" : "transparent",
                   color: mode === "pdf" ? "var(--text-primary)" : "var(--text-muted)",
                   boxShadow: mode === "pdf" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
                 }}
               >
-                <FileText size={12} />
+                <FileText size={13} />
                 <span>Court PDF</span>
               </button>
 
               <button
                 onClick={() => setMode("text")}
-                className="flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all"
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all"
                 style={{
                   background: mode === "text" ? "var(--card)" : "transparent",
                   color: mode === "text" ? "var(--text-primary)" : "var(--text-muted)",
                   boxShadow: mode === "text" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
                 }}
               >
-                <BookOpen size={12} />
+                <BookOpen size={13} />
                 <span>Clean Text</span>
               </button>
             </div>
           )}
 
-          {/* Right: Clean View Typography Actions & Close */}
+          {/* Right: Typography Controls, Fullscreen & Close */}
           <div className="flex items-center gap-1.5">
             {/* Clean Text Typography Controls */}
             {mode === "text" && (
               <>
-                {/* Font Family Toggle */}
+                <button
+                  onClick={() => setSidebarMode((prev) => (prev === "research" ? "none" : "research"))}
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold cursor-pointer transition-all border ${
+                    sidebarMode === "research" ? "shadow-sm" : ""
+                  }`}
+                  style={{
+                    background: sidebarMode === "research" ? "var(--brass)" : "var(--surface-container)",
+                    borderColor: sidebarMode === "research" ? "var(--brass-bright)" : "var(--border)",
+                    color: sidebarMode === "research" ? "var(--on-primary)" : "var(--ink)",
+                  }}
+                  title={sidebarMode === "research" ? "Close Research" : "Open Research"}
+                >
+                  <Sparkles size={12} />
+                  <span>Research</span>
+                </button>
+
                 <button
                   onClick={() => setFontFamily((prev) => (prev === "serif" ? "sans" : "serif"))}
                   className="btn-ghost flex items-center gap-1 text-xs px-2 py-1 rounded-lg border cursor-pointer"
@@ -334,7 +474,6 @@ export function DocumentReaderModal({
                   </span>
                 </button>
 
-                {/* Font Size Controls */}
                 <div
                   className="flex items-center rounded-lg border p-0.5"
                   style={{ borderColor: "var(--border)", background: "var(--surface-container)" }}
@@ -348,10 +487,7 @@ export function DocumentReaderModal({
                   >
                     A-
                   </button>
-                  <span
-                    className="text-[10px] font-mono px-1 font-medium"
-                    style={{ color: "var(--text-muted)" }}
-                  >
+                  <span className="text-[10px] font-mono px-1 font-medium" style={{ color: "var(--text-muted)" }}>
                     {fontSize}px
                   </span>
                   <button
@@ -365,7 +501,6 @@ export function DocumentReaderModal({
                   </button>
                 </div>
 
-                {/* Column Width Toggle */}
                 <button
                   onClick={() => setIsWideLayout((prev) => !prev)}
                   className="btn-ghost p-1 rounded-lg border hidden sm:flex cursor-pointer"
@@ -375,7 +510,6 @@ export function DocumentReaderModal({
                   <AlignLeft size={13} />
                 </button>
 
-                {/* Copy Text */}
                 <button
                   onClick={handleCopyText}
                   className="btn-ghost flex items-center gap-1 text-xs px-2 py-1 rounded-lg border cursor-pointer"
@@ -422,10 +556,10 @@ export function DocumentReaderModal({
         </header>
 
         {/* ========================================================
-            MAIN VIEWPORT
+            MAIN WORKSPACE VIEWPORT (Zero-shift centered layout)
            ======================================================== */}
-        <div className="flex-1 overflow-hidden relative" style={{ background: "var(--bg)" }}>
-          {/* MODE 1: CUSTOM IN-APP PDF VIEWER (PDF.js Canvas Engine) */}
+        <div className="flex-1 w-full h-full overflow-hidden relative flex" style={{ background: "var(--bg)" }}>
+          {/* MODE 1: CUSTOM IN-APP PDF VIEWER (PDF.js Canvas Engine, default 155% zoom) */}
           {mode === "pdf" && (
             <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden">
               {pdfLoading && !pdfData ? (
@@ -451,183 +585,215 @@ export function DocumentReaderModal({
                       {pdfError}
                     </p>
                   </div>
-                  <div className="flex items-center justify-center gap-2 pt-2">
-                    <button
-                      onClick={() => setMode("text")}
-                      className="btn-primary text-xs"
-                      style={{ padding: "8px 18px" }}
-                    >
-                      <BookOpen size={13} /> Switch to Clean Text View
-                    </button>
-                  </div>
+                  <button
+                    onClick={() => setMode("text")}
+                    className="btn btn-primary text-xs px-4 py-2 rounded-xl"
+                  >
+                    Switch to Clean Text Mode
+                  </button>
                 </div>
               ) : pdfData ? (
-                <CustomPDFViewer pdfData={pdfData} initialScale={1.2} />
+                <CustomPDFViewer
+                  ref={pdfViewerRef}
+                  pdfData={pdfData}
+                  initialScale={1.55} // Default 155% Zoom as requested
+                  highlights={highlights}
+                  onAddHighlight={handleAddHighlight}
+                  onDeleteHighlight={handleDeleteHighlight}
+                  onAddToResearchNotes={handleAddToResearchNotes}
+                  sidebarMode={sidebarMode}
+                  onSidebarModeChange={setSidebarMode}
+                  researchPanel={researchPanelNode}
+                />
               ) : null}
             </div>
           )}
 
-          {/* MODE 2: CLEAN TYPOGRAPHY VIEW */}
+          {/* MODE 2: CLEAN TEXT DIGITAL TRANSCRIPT */}
           {mode === "text" && (
-            <div className="w-full h-full overflow-y-auto px-4 py-8 sm:px-8 md:px-12">
-              {textLoading && !textContent ? (
-                <div className="max-w-3xl mx-auto space-y-6 pt-10">
-                  <div className="skeleton h-8 w-3/4" />
-                  <div className="skeleton h-4 w-full" />
-                  <div className="skeleton h-4 w-5/6" />
-                  <div className="skeleton h-4 w-4/5" />
-                  <div className="skeleton h-32 w-full" />
-                </div>
-              ) : textError ? (
-                <div className="text-center max-w-md mx-auto py-16 space-y-4">
-                  <div
-                    className="w-12 h-12 rounded-2xl flex items-center justify-center mx-auto"
-                    style={{ background: "rgba(220, 38, 38, 0.1)", color: "var(--danger)" }}
-                  >
-                    <AlertCircle size={24} />
+            <div className="w-full h-full flex overflow-hidden relative">
+              {/* Clean text article centered */}
+              <div className="flex-1 h-full overflow-y-auto p-6 sm:p-12 md:p-16 flex justify-center selection:bg-[var(--brass-soft)]">
+                {textLoading ? (
+                  <div className="flex flex-col items-center justify-center h-full gap-3">
+                    <Loader2 size={32} className="animate-spin" style={{ color: "var(--primary)" }} />
+                    <p className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
+                      Formatting digital judgment…
+                    </p>
                   </div>
-                  <h4 className="text-base font-semibold" style={{ color: "var(--text-primary)" }}>
-                    Judgment Text Unavailable
-                  </h4>
-                  <p className="text-xs" style={{ color: "var(--text-muted)" }}>
-                    {textError}
-                  </p>
-                  <button
-                    onClick={() => setMode("pdf")}
-                    className="btn-secondary text-xs mt-2"
-                    style={{ padding: "8px 18px" }}
-                  >
-                    <FileText size={13} /> Try Court PDF View
-                  </button>
-                </div>
-              ) : textContent ? (
-                <article
-                  className={`mx-auto transition-all ${
-                    isWideLayout ? "max-w-5xl" : "max-w-3xl"
-                  } ${fontFamily === "serif" ? "font-serif" : "font-sans"}`}
-                  style={{
-                    fontSize: `${fontSize}px`,
-                    lineHeight: fontSize >= 18 ? "1.8" : "1.75",
-                    color: "var(--text-primary)",
-                  }}
-                >
-                  {/* Institutional Judgment Header Banner */}
-                  <div
-                    className="p-6 sm:p-8 rounded-2xl border mb-8 not-prose"
+                ) : textError ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center max-w-md space-y-3">
+                    <AlertCircle size={28} className="text-amber-500" />
+                    <h4 className="text-sm font-semibold" style={{ color: "var(--text-primary)" }}>
+                      Transcript Unavailable
+                    </h4>
+                    <p className="text-xs" style={{ color: "var(--text-muted)" }}>
+                      {textError}
+                    </p>
+                  </div>
+                ) : (
+                  <article
+                    className={`w-full transition-all ${
+                      isWideLayout ? "max-w-4xl" : "max-w-3xl"
+                    } py-4 leading-relaxed`}
                     style={{
-                      background: "var(--surface)",
-                      borderColor: "var(--border)",
+                      fontFamily: fontFamily === "serif" ? "Georgia, Cambria, 'Times New Roman', serif" : "system-ui, -apple-system, sans-serif",
+                      fontSize: `${fontSize}px`,
+                      lineHeight: 1.95,
+                      letterSpacing: "0.012em",
+                      color: "var(--text-primary)",
                     }}
                   >
-                    <div className="flex items-center gap-2 mb-2">
-                      <span
-                        className="text-[10px] font-semibold uppercase tracking-widest px-2 py-0.5 rounded-full"
-                        style={{
-                          background: "var(--surface-container)",
-                          color: "var(--text-muted)",
-                          border: "1px solid var(--border)",
-                        }}
-                      >
-                        Official Judgment Record
-                      </span>
-                      <span className="text-xs" style={{ color: "var(--text-muted)" }}>
-                        • {currentOrderDate}
-                      </span>
-                    </div>
-
-                    <h1
-                      className="text-xl sm:text-2xl font-bold tracking-tight mb-2"
-                      style={{ color: "var(--text-primary)", letterSpacing: "-0.01em" }}
-                    >
-                      {caseTitle}
-                    </h1>
-
-                    <div className="flex flex-wrap items-center gap-3 text-xs" style={{ color: "var(--text-secondary)" }}>
-                      <span><strong>Court:</strong> {courtName}</span>
-                      <span>•</span>
-                      <span><strong>Document ID:</strong> {currentFilename}</span>
-                      <span>•</span>
-                      <span><strong>CNR:</strong> {cnr}</span>
-                    </div>
-                  </div>
-
-                  {/* Judgment Content Body */}
-                  <div className="space-y-5 leading-relaxed break-words whitespace-pre-wrap">
                     <ReactMarkdown
                       components={{
                         h1: ({ children }) => (
-                          <h2 className="text-2xl font-bold mt-8 mb-4 tracking-tight border-b pb-2" style={{ borderColor: "var(--border)" }}>
+                          <h1
+                            className="text-xl sm:text-2xl font-bold font-display border-b pb-3 mb-6 mt-4"
+                            style={{ borderColor: "var(--border)", color: "var(--ink)" }}
+                          >
+                            {children}
+                          </h1>
+                        ),
+                        h2: ({ children }) => (
+                          <h2
+                            className="text-base sm:text-lg font-bold font-display mt-8 mb-4"
+                            style={{ color: "var(--ink)" }}
+                          >
                             {children}
                           </h2>
                         ),
-                        h2: ({ children }) => (
-                          <h3 className="text-xl font-semibold mt-6 mb-3 tracking-tight">
-                            {children}
-                          </h3>
-                        ),
-                        h3: ({ children }) => (
-                          <h4 className="text-lg font-semibold mt-4 mb-2">
-                            {children}
-                          </h4>
-                        ),
                         p: ({ children }) => (
-                          <p className="mb-4 text-justify" style={{ color: "var(--text-primary)" }}>
+                          <p className="mb-6 text-justify leading-relaxed whitespace-pre-line opacity-95">
                             {children}
                           </p>
                         ),
+                        pre: ({ children }) => (
+                          <pre
+                            className="p-4 my-6 rounded-xl border overflow-x-auto text-xs font-mono leading-relaxed"
+                            style={{ background: "var(--surface-dim)", borderColor: "var(--border)" }}
+                          >
+                            {children}
+                          </pre>
+                        ),
                         blockquote: ({ children }) => (
                           <blockquote
-                            className="my-5 pl-4 border-l-4 italic py-1 rounded-r-lg"
-                            style={{
-                              borderColor: "var(--primary)",
-                              background: "var(--surface-container)",
-                              color: "var(--text-secondary)",
-                            }}
+                            className="border-l-4 pl-4 my-6 italic text-sm"
+                            style={{ borderColor: "var(--brass)", background: "var(--surface-container)" }}
                           >
                             {children}
                           </blockquote>
                         ),
-                        table: ({ children }) => (
-                          <div className="overflow-x-auto my-6 rounded-xl border" style={{ borderColor: "var(--border)" }}>
-                            <table className="min-w-full text-xs" style={{ borderColor: "var(--border)" }}>
-                              {children}
-                            </table>
-                          </div>
-                        ),
-                        th: ({ children }) => (
-                          <th className="px-3.5 py-2.5 text-left font-semibold border-b" style={{ background: "var(--surface-container)", borderColor: "var(--border)" }}>
-                            {children}
-                          </th>
-                        ),
-                        td: ({ children }) => (
-                          <td className="px-3.5 py-2.5 border-b" style={{ borderColor: "var(--border)" }}>
-                            {children}
-                          </td>
-                        ),
-                        code: ({ children }) => (
-                          <code className="font-mono text-xs px-1.5 py-0.5 rounded" style={{ background: "var(--surface-container)", color: "var(--text-primary)" }}>
-                            {children}
-                          </code>
-                        ),
                       }}
                     >
-                      {textContent}
+                      {textContent || ""}
                     </ReactMarkdown>
-                  </div>
+                  </article>
+                )}
+              </div>
 
-                  {/* End of Judgment Indicator */}
-                  <div className="pt-12 pb-8 flex items-center justify-center gap-3 not-prose">
-                    <div className="h-px flex-1" style={{ background: "var(--border)" }} />
-                    <span className="text-xs uppercase tracking-widest font-mono" style={{ color: "var(--text-muted)" }}>
-                      End of Document
-                    </span>
-                    <div className="h-px flex-1" style={{ background: "var(--border)" }} />
+              {/* Absolute Left Drawer in Clean text mode */}
+              {sidebarMode === "research" && (
+                <div className="absolute top-0 left-0 bottom-0 z-30 shadow-2xl animate-slide-left">
+                  {researchPanelNode}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Floating AI Chat Assistant Card (Restored previous card design + large spacious size) */}
+          {onToggleChat && (
+            <div className="absolute bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto select-none">
+              {isChatOpen && (
+                <div
+                  className="mb-3 w-[410px] sm:w-[430px] h-[580px] max-h-[78vh] flex flex-col rounded-2xl overflow-hidden animate-slide-up shadow-2xl border overscroll-contain select-text"
+                  style={{
+                    borderColor: "var(--border)",
+                    background: "var(--card)",
+                    overscrollBehavior: "contain",
+                    boxShadow: "0 20px 40px -15px rgba(0, 0, 0, 0.4)",
+                  }}
+                >
+                  <div
+                    className="p-3 px-4 border-b flex items-center justify-between flex-shrink-0"
+                    style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <div
+                        className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
+                        style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
+                      >
+                        <Sparkles size={15} />
+                      </div>
+                      <h3 className="text-sm font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
+                        Assistant
+                      </h3>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      {onClearChat && (
+                        <button
+                          type="button"
+                          onClick={onClearChat}
+                          title="Clear conversation and start new chat"
+                          className="px-2.5 py-1 rounded-lg hover:bg-[var(--surface-container)] text-xs flex items-center gap-1.5 transition-colors cursor-pointer border"
+                          style={{ borderColor: "var(--border)", color: "var(--ink-dim)" }}
+                        >
+                          <RotateCcw size={12} />
+                          <span className="text-[11px] font-medium">New Chat</span>
+                        </button>
+                      )}
+                      {onExpandChat && (
+                        <button
+                          type="button"
+                          onClick={onExpandChat}
+                          title="Expand to Full Chat Window"
+                          className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] transition-colors cursor-pointer"
+                          style={{ color: "var(--ink-dim)" }}
+                        >
+                          <Maximize2 size={15} />
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </article>
-              ) : null}
+                  <div className="flex-1 overflow-hidden">
+                    <ChatPanel
+                      messages={chatMessages}
+                      onSendMessage={onSendMessage || (() => {})}
+                      isLoading={chatLoading}
+                      streamingMessage={streamingContent}
+                      suggestedQuestions={suggestedQuestions}
+                      onClearChat={onClearChat}
+                    />
+                  </div>
+                </div>
+              )}
+
+              <button
+                onClick={onToggleChat}
+                className="h-14 w-14 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+                style={{
+                  background: isChatOpen ? "var(--surface-container-high)" : "var(--primary)",
+                  color: isChatOpen ? "var(--text-primary)" : "var(--on-primary)",
+                }}
+                title={isChatOpen ? "Minimize Assistant" : "Ask AI Assistant"}
+              >
+                {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
+              </button>
             </div>
           )}
         </div>
+
+        {/* Case Research Brief Printable Modal */}
+        <ResearchBriefModal
+          isOpen={isBriefModalOpen}
+          onClose={() => setIsBriefModalOpen(false)}
+          caseTitle={caseTitle}
+          courtName={courtName}
+          orderDate={currentOrderDate}
+          cnr={cnr}
+          notes={notes}
+          highlights={highlights}
+          tags={tags}
+        />
       </div>
     </div>,
     document.body

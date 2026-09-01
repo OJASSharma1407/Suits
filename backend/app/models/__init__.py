@@ -9,6 +9,7 @@ from app.models.case_view_history import CaseViewHistory
 from app.models.cached_case import CachedCase
 from app.models.cached_order import CachedOrder
 from app.models.cached_ai_analysis import CachedAIAnalysis
+from app.models.saved_file import SavedFile
 from app.models.api_usage_log import APIUsageLog
 from app.models.refresh_log import RefreshLog
 
@@ -17,6 +18,7 @@ __all__ = [
     "Conversation",
     "Message",
     "Bookmark",
+    "SavedFile",
     "SearchHistory",
     "CaseViewHistory",
     "CachedCase",
