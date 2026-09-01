@@ -7,6 +7,7 @@ import AppLayout from "@/components/layout/AppLayout";
 const LandingPage = lazy(() => import("@/pages/LandingPage"));
 const LoginPage = lazy(() => import("@/pages/LoginPage"));
 const RegisterPage = lazy(() => import("@/pages/RegisterPage"));
+const VerifyOtpPage = lazy(() => import("@/pages/VerifyOtpPage"));
 const DashboardPage = lazy(() => import("@/pages/DashboardPage"));
 const SearchPage = lazy(() => import("@/pages/SearchPage"));
 const CaseDashboardPage = lazy(() => import("@/pages/CaseDashboardPage"));
@@ -49,6 +50,14 @@ const router = createBrowserRouter([
     element: (
       <Suspense fallback={<PageLoader />}>
         <RegisterPage />
+      </Suspense>
+    ),
+  },
+  {
+    path: "/verify-otp",
+    element: (
+      <Suspense fallback={<PageLoader />}>
+        <VerifyOtpPage />
       </Suspense>
     ),
   },

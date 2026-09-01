@@ -1,6 +1,15 @@
 import api from "@/lib/axios";
 import type { APIResponse } from "@/types/common";
-import type { User, TokenResponse, LoginRequest, RegisterRequest } from "@/types/auth";
+import type {
+  User,
+  TokenResponse,
+  LoginRequest,
+  RegisterRequest,
+  VerifyOtpRequest,
+  ResendOtpRequest,
+  GoogleAuthRequest,
+  AuthSuccessPayload,
+} from "@/types/auth";
 
 export const authService = {
   login: async (data: LoginRequest) => {
@@ -10,6 +19,21 @@ export const authService = {
 
   register: async (data: RegisterRequest) => {
     const res = await api.post<APIResponse<User>>("/auth/register", data);
+    return res.data;
+  },
+
+  verifyOtp: async (data: VerifyOtpRequest) => {
+    const res = await api.post<APIResponse<AuthSuccessPayload>>("/auth/verify-otp", data);
+    return res.data.data;
+  },
+
+  resendOtp: async (data: ResendOtpRequest) => {
+    const res = await api.post<APIResponse<null>>("/auth/resend-otp", data);
+    return res.data;
+  },
+
+  googleLogin: async (data: GoogleAuthRequest) => {
+    const res = await api.post<APIResponse<AuthSuccessPayload>>("/auth/google", data);
     return res.data.data;
   },
 
@@ -25,7 +49,7 @@ export const authService = {
     return res.data.data;
   },
 
-  updateProfile: async (data: { full_name: string }) => {
+  updateProfile: async (data: { full_name?: string; avatar_url?: string }) => {
     const res = await api.patch<APIResponse<User>>("/auth/profile", data);
     return res.data.data;
   },

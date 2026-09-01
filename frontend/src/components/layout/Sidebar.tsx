@@ -1,5 +1,6 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Sun, Moon } from "lucide-react";
+import { motion } from "motion/react";
 import { useAuthStore } from "@/store/auth-store";
 import { useThemeStore } from "@/store/theme-store";
 
@@ -90,8 +91,22 @@ export default function Sidebar() {
                 className={`nav-item${isActive ? " active" : ""}`}
                 title={label}
               >
-                <Icon />
-                <span className="nav-label">{label}</span>
+                {isActive && (
+                  <motion.div
+                    layoutId="sidebar-active-pill"
+                    className="nav-item-active-pill"
+                    transition={{
+                      type: "spring",
+                      stiffness: 380,
+                      damping: 28,
+                      mass: 0.7,
+                    }}
+                  />
+                )}
+                <span className="nav-item-inner">
+                  <Icon />
+                  <span className="nav-label">{label}</span>
+                </span>
               </Link>
             );
           })}

@@ -56,6 +56,32 @@ async_session_factory = async_sessionmaker(
 )
 
 
+async def init_db() -> None:
+    """Initialize database tables and run lightweight SQLite column migrations."""
+    from app.database.base import Base
+    import app.models  # noqa: F401
+    from sqlalchemy import text
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+        
+        if _is_sqlite:
+            try:
+                res = await conn.execute(text("PRAGMA table_info(users)"))
+                existing_cols = [row[1] for row in res.fetchall()]
+                if existing_cols:
+                    if "is_verified" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN is_verified BOOLEAN DEFAULT 1 NOT NULL"))
+                    if "auth_provider" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN auth_provider VARCHAR(50) DEFAULT 'local' NOT NULL"))
+                    if "google_id" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR(255)"))
+                    if "avatar_url" not in existing_cols:
+                        await conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512)"))
+            except Exception:
+                pass
+
+
 async def get_db() -> AsyncGenerator[AsyncSession, None]:
     """Dependency that provides an async database session."""
     async with async_session_factory() as session:
@@ -67,3 +93,4 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             raise
         finally:
             await session.close()
+
