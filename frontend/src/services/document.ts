@@ -62,6 +62,96 @@ export const documentService = {
     return `${baseUrl}/documents/${documentId}/download`;
   },
 
+  /** Get structured legal AI analysis for an uploaded document. */
+  getAiAnalysis: async (documentId: string): Promise<OrderAI> => {
+    const res = await api.get<APIResponse<OrderAI>>(`/documents/${documentId}/ai`);
+    return res.data.data!;
+  },
+
+  /** Fetch array buffer for the uploaded PDF. */
+  getArrayBuffer: async (documentId: string): Promise<ArrayBuffer> => {
+    const res = await api.get(`/documents/${documentId}/arraybuffer`, {
+      responseType: "arraybuffer",
+    });
+    return res.data as ArrayBuffer;
+  },
+
+  /** Save research notes, highlights, and tags for an uploaded document. */
+  saveResearch: async (
+    documentId: string,
+    data: { notes?: string; highlights?: any[]; tags_list?: string[] }
+  ): Promise<UserDocument> => {
+    const res = await api.put<APIResponse<UserDocument>>(
+      `/documents/${documentId}/research`,
+      data
+    );
+    return res.data.data!;
+  },
+
+  /** Stream AI chat about this document using SSE. */
+  streamChat: async (
+    documentId: string,
+    message: string,
+    history: { role: string; message: string }[] = [],
+    onChunk: (chunk: string) => void,
+    onComplete: (full: string) => void,
+    signal?: AbortSignal
+  ): Promise<void> => {
+    const baseUrl = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+    const token = localStorage.getItem("access_token");
+
+    const response = await fetch(`${baseUrl}/documents/${documentId}/chat`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ message, history }),
+      signal,
+    });
+
+    if (!response.ok || !response.body) {
+      throw new Error("Failed to stream AI response");
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = "";
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value, { stream: true });
+        const lines = text.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.token) {
+                fullText += data.token;
+                onChunk(data.token);
+              }
+              if (data.done) {
+                onComplete(fullText);
+                return;
+              }
+            } catch {
+              // Ignore partial JSON
+            }
+          }
+        }
+      }
+      onComplete(fullText);
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        throw err;
+      }
+    }
+  },
+
   /** Delete a document and all its chunks. */
   delete: async (documentId: string): Promise<void> => {
     await api.delete(`/documents/${documentId}`);

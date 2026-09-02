@@ -1,11 +1,27 @@
 import React, { useState, useCallback, useEffect, useRef } from "react";
 import {
-  Upload, FileText, Trash2, RefreshCw, Download, Search,
-  AlertCircle, CheckCircle2, Clock, Loader2, X, FileImage,
-  File, BookOpen, Scale, Gavel, ScrollText, FileCheck,
+  Upload,
+  FileText,
+  Trash2,
+  Search,
+  AlertCircle,
+  CheckCircle2,
+  Clock,
+  Loader2,
+  X,
+  FileImage,
+  File,
+  BookOpen,
+  Scale,
+  Gavel,
+  ScrollText,
+  FileCheck,
+  Sparkles,
+  ArrowRight,
 } from "lucide-react";
 import { toast } from "sonner";
 import { documentService } from "@/services/document";
+import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
 import type { UserDocument, DocumentTag, DocumentFilters, DocumentStats } from "@/types/document";
 import { DOCUMENT_TAG_LABELS, DOCUMENT_STATUS_LABELS } from "@/types/document";
 
@@ -215,164 +231,6 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
   );
 }
 
-// ─────────────────────────────────────────── Document Preview Modal ──
-interface PreviewModalProps {
-  doc: UserDocument;
-  onClose: () => void;
-  onDelete: (id: string) => void;
-  onReprocess: (id: string) => void;
-}
-function PreviewModal({ doc, onClose, onDelete, onReprocess }: PreviewModalProps) {
-  const [deleting, setDeleting] = useState(false);
-  const [reprocessing, setReprocessing] = useState(false);
-
-  const handleDelete = async () => {
-    if (!confirm(`Delete "${doc.original_filename}"? This cannot be undone.`)) return;
-    setDeleting(true);
-    try {
-      await documentService.delete(doc.id);
-      toast.success("Document deleted.");
-      onDelete(doc.id);
-      onClose();
-    } catch {
-      toast.error("Failed to delete document.");
-      setDeleting(false);
-    }
-  };
-
-  const handleReprocess = async () => {
-    setReprocessing(true);
-    try {
-      await documentService.reprocess(doc.id);
-      toast.success("Reprocessing started.");
-      onReprocess(doc.id);
-      onClose();
-    } catch (err: any) {
-      toast.error(err.response?.data?.detail || "Failed to start reprocessing.");
-      setReprocessing(false);
-    }
-  };
-
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4"
-      style={{ background: "rgba(0,0,0,0.6)", backdropFilter: "blur(6px)" }}
-    >
-      <div
-        className="w-full sm:max-w-2xl rounded-t-3xl sm:rounded-2xl flex flex-col animate-spring-in"
-        style={{
-          background: "var(--surface)",
-          border: "1px solid var(--hairline)",
-          boxShadow: "var(--shadow-float)",
-          maxHeight: "85vh",
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-start gap-3 p-5 border-b" style={{ borderColor: "var(--hairline-soft)" }}>
-          <div className="mt-0.5 flex-shrink-0" style={{ color: "var(--brass)" }}>
-            {getMimeIcon(doc.mime_type)}
-          </div>
-          <div className="flex-1 min-w-0">
-            <h3 className="font-semibold text-sm truncate" style={{ color: "var(--ink)" }}>{doc.original_filename}</h3>
-            <div className="flex items-center gap-2 mt-1 flex-wrap">
-              <StatusBadge status={doc.status} />
-              <span className="text-[11px]" style={{ color: "var(--ink-faint)" }}>
-                {formatBytes(doc.file_size)} · {doc.page_count > 0 ? `${doc.page_count} pages` : "—"} · {doc.chunk_count} chunks
-              </span>
-              <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium"
-                style={{ color: TAG_COLORS[doc.tag], background: `${TAG_COLORS[doc.tag]}18` }}
-              >
-                {TAG_ICONS[doc.tag]}
-                {DOCUMENT_TAG_LABELS[doc.tag]}
-              </span>
-            </div>
-          </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--surface-raised)] cursor-pointer flex-shrink-0" style={{ color: "var(--ink-faint)" }}>
-            <X size={18} />
-          </button>
-        </div>
-
-        {/* Summary */}
-        {doc.summary && (
-          <div className="px-5 py-3" style={{ borderBottom: "1px solid var(--hairline-soft)" }}>
-            <p className="text-xs leading-relaxed" style={{ color: "var(--ink-dim)" }}>{doc.summary}</p>
-          </div>
-        )}
-
-        {/* Extracted Text */}
-        <div className="flex-1 overflow-y-auto px-5 py-4">
-          {doc.status === "indexed" && doc.extracted_text ? (
-            <pre
-              className="text-[12.5px] leading-relaxed whitespace-pre-wrap font-mono"
-              style={{ color: "var(--ink-dim)" }}
-            >
-              {doc.extracted_text.slice(0, 8000)}
-              {doc.extracted_text.length > 8000 && "\n\n[… content truncated for preview]"}
-            </pre>
-          ) : doc.status === "failed" ? (
-            <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
-              <AlertCircle size={28} style={{ color: "var(--danger)" }} />
-              <p className="text-sm font-medium" style={{ color: "var(--danger)" }}>Processing Failed</p>
-              {doc.error_message && (
-                <p className="text-xs max-w-sm" style={{ color: "var(--ink-faint)" }}>{doc.error_message}</p>
-              )}
-            </div>
-          ) : (
-            <div className="flex flex-col items-center justify-center py-8 gap-2 text-center">
-              <Loader2 size={24} className="animate-spin" style={{ color: "var(--brass)" }} />
-              <p className="text-sm" style={{ color: "var(--ink-faint)" }}>
-                {doc.status === "processing" ? "Extracting text & generating embeddings…" : "Waiting for processing…"}
-              </p>
-            </div>
-          )}
-        </div>
-
-        {/* Action bar */}
-        <div className="flex items-center gap-2 px-5 py-4 border-t" style={{ borderColor: "var(--hairline-soft)" }}>
-          <a
-            href={documentService.getDownloadUrl(doc.id)}
-            download={doc.original_filename}
-            className="btn btn-ghost flex items-center gap-2 text-sm"
-            style={{ padding: "8px 14px" }}
-          >
-            <Download size={14} /> Download
-          </a>
-
-          {doc.status === "failed" && (
-            <button
-              onClick={handleReprocess}
-              disabled={reprocessing}
-              className="btn btn-ghost flex items-center gap-2 text-sm"
-              style={{ padding: "8px 14px", color: "var(--brass)" }}
-            >
-              {reprocessing ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-              Retry
-            </button>
-          )}
-
-          <div className="flex-1" />
-          <button
-            onClick={handleDelete}
-            disabled={deleting}
-            className="btn flex items-center gap-2 text-sm cursor-pointer"
-            style={{
-              padding: "8px 14px",
-              background: "rgba(239,68,68,0.08)",
-              color: "var(--danger)",
-              border: "1px solid rgba(239,68,68,0.2)",
-              borderRadius: "var(--radius)",
-            }}
-          >
-            {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-            Delete
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
 // ─────────────────────────────────────────────────── Main Page ──
 export default function FilesPage() {
   const [documents, setDocuments] = useState<UserDocument[]>([]);
@@ -380,6 +238,7 @@ export default function FilesPage() {
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<UserDocument | null>(null);
+  const [readerInitialMode, setReaderInitialMode] = useState<"pdf" | "text" | "ai">("pdf");
   const [filters, setFilters] = useState<DocumentFilters>({});
   const [searchInput, setSearchInput] = useState("");
   const [filterTag, setFilterTag] = useState<string>("");
@@ -432,16 +291,25 @@ export default function FilesPage() {
     setStats((prev) => prev ? { ...prev, total_documents: prev.total_documents + 1, total_storage_bytes: prev.total_storage_bytes + doc.file_size } : prev);
   };
 
-  const handleDocumentDeleted = (id: string) => {
-    setDocuments((prev) => prev.filter((d) => d.id !== id));
+  const handleOpenReader = (doc: UserDocument, mode: "pdf" | "text" | "ai" = "pdf") => {
+    setSelectedDoc(doc);
+    setReaderInitialMode(mode);
   };
 
-  const handleDocumentReprocessed = () => {
-    loadData();
+  const handleDelete = async (docId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to delete this document?")) return;
+    try {
+      await documentService.delete(docId);
+      setDocuments((prev) => prev.filter((d) => d.id !== docId));
+      toast.success("Document deleted.");
+    } catch {
+      toast.error("Failed to delete document.");
+    }
   };
 
   return (
-    <div className="dashboard-layout" style={{ maxWidth: "1100px", margin: "0 auto", padding: "28px 24px 60px" }}>
+    <div className="dashboard-layout" style={{ maxWidth: "1150px", margin: "0 auto", padding: "28px 24px 60px" }}>
       {/* Page Header */}
       <div className="flex items-start justify-between mb-7 gap-4 flex-wrap">
         <div>
@@ -449,15 +317,15 @@ export default function FilesPage() {
             className="text-2xl font-semibold"
             style={{ color: "var(--ink)", fontFamily: "var(--font-display)", margin: 0, lineHeight: 1.2 }}
           >
-            Evidence & Documents
+            Evidence & Document Vault
           </h1>
           <p className="text-sm mt-1" style={{ color: "var(--ink-faint)" }}>
-            Upload private case files. SUITS indexes them for AI-assisted legal analysis.
+            Upload private legal documents. SUITS automatically performs OCR, structured legal analysis, and full-text research indexing.
           </p>
         </div>
         <button
           onClick={() => setShowUpload(true)}
-          className="btn btn-primary flex items-center gap-2"
+          className="btn btn-primary flex items-center gap-2 shadow-sm"
           style={{ padding: "9px 20px" }}
         >
           <Upload size={15} />
@@ -470,12 +338,12 @@ export default function FilesPage() {
         <div className="grid grid-cols-3 gap-4 mb-7">
           {[
             { label: "Total Documents", value: stats.total_documents },
-            { label: "Indexed (RAG Ready)", value: stats.indexed_documents },
-            { label: "Storage Used", value: formatBytes(stats.total_storage_bytes) },
+            { label: "AI Analyzed & Ready", value: stats.indexed_documents },
+            { label: "Vault Storage", value: formatBytes(stats.total_storage_bytes) },
           ].map((s) => (
             <div
               key={s.label}
-              className="rounded-xl p-4"
+              className="rounded-xl p-4 card-float"
               style={{ background: "var(--surface)", border: "1px solid var(--hairline)" }}
             >
               <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}>
@@ -498,7 +366,7 @@ export default function FilesPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-faint)" }} />
           <input
             type="text"
-            placeholder="Search by filename or summary…"
+            placeholder="Search documents by name, summary, parties, or section…"
             value={searchInput}
             onChange={(e) => setSearchInput(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && applyFilters()}
@@ -524,7 +392,7 @@ export default function FilesPage() {
           style={{ background: "var(--surface-raised)", borderColor: "var(--hairline)", color: "var(--ink)", borderRadius: "var(--radius)" }}
         >
           <option value="">All Statuses</option>
-          <option value="indexed">Indexed</option>
+          <option value="indexed">Ready / Analyzed</option>
           <option value="processing">Processing</option>
           <option value="pending">Pending</option>
           <option value="failed">Failed</option>
@@ -537,7 +405,7 @@ export default function FilesPage() {
         )}
       </div>
 
-      {/* Document Grid */}
+      {/* Document List */}
       {loading ? (
         <div className="flex items-center justify-center py-20">
           <Loader2 size={28} className="animate-spin" style={{ color: "var(--brass)" }} />
@@ -545,71 +413,112 @@ export default function FilesPage() {
       ) : documents.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-20 gap-3 text-center">
           <Upload size={36} style={{ color: "var(--ink-faint)", opacity: 0.5 }} />
-          <p className="text-base font-medium" style={{ color: "var(--ink-dim)" }}>No documents yet</p>
-          <p className="text-sm" style={{ color: "var(--ink-faint)" }}>
-            Upload case files to enable AI-powered evidence analysis.
+          <p className="text-base font-medium" style={{ color: "var(--ink-dim)" }}>No documents in vault</p>
+          <p className="text-sm max-w-sm" style={{ color: "var(--ink-faint)" }}>
+            Upload legal files to unlock OCR, interactive PDF highlighting, AI structured analysis, and in-document chat.
           </p>
           <button onClick={() => setShowUpload(true)} className="btn btn-primary mt-2 flex items-center gap-2">
             <Upload size={14} /> Upload First Document
           </button>
         </div>
       ) : (
-        <div className="space-y-2">
+        <div className="space-y-3">
           {documents.map((doc) => (
-            <button
+            <div
               key={doc.id}
-              onClick={() => setSelectedDoc(doc)}
-              className="w-full text-left rounded-xl px-4 py-3.5 flex items-center gap-4 transition-all duration-150 cursor-pointer group"
+              onClick={() => handleOpenReader(doc, "pdf")}
+              className="w-full text-left rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all duration-150 cursor-pointer group card-float"
               style={{
                 background: "var(--surface)",
                 border: "1px solid var(--hairline)",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "var(--surface-raised)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "var(--surface)")}
             >
-              {/* Icon */}
-              <div
-                className="flex-shrink-0 w-9 h-9 rounded-lg flex items-center justify-center"
-                style={{ background: `${TAG_COLORS[doc.tag]}18`, color: TAG_COLORS[doc.tag] }}
-              >
-                {getMimeIcon(doc.mime_type)}
-              </div>
-
-              {/* Main info */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-sm font-medium truncate" style={{ color: "var(--ink)" }}>
-                    {doc.original_filename}
-                  </span>
-                  <span
-                    className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0"
-                    style={{ color: TAG_COLORS[doc.tag], background: `${TAG_COLORS[doc.tag]}18` }}
-                  >
-                    {TAG_ICONS[doc.tag]}
-                    {DOCUMENT_TAG_LABELS[doc.tag]}
-                  </span>
-                  {doc.cnr && (
-                    <span className="text-[11px] px-1.5 py-0.5 rounded" style={{ color: "var(--brass)", background: "var(--brass-soft)", fontFamily: "var(--font-mono)" }}>
-                      {doc.cnr}
-                    </span>
-                  )}
+              {/* Left Column: Icon & Title */}
+              <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                <div
+                  className="flex-shrink-0 w-10 h-10 rounded-xl flex items-center justify-center mt-0.5"
+                  style={{ background: `${TAG_COLORS[doc.tag]}18`, color: TAG_COLORS[doc.tag], border: "1px solid var(--hairline)" }}
+                >
+                  {getMimeIcon(doc.mime_type)}
                 </div>
-                {doc.summary && (
-                  <p className="text-xs mt-0.5 line-clamp-1" style={{ color: "var(--ink-faint)" }}>{doc.summary}</p>
-                )}
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-semibold truncate" style={{ color: "var(--ink)" }}>
+                      {doc.original_filename}
+                    </span>
+                    <span
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium flex-shrink-0"
+                      style={{ color: TAG_COLORS[doc.tag], background: `${TAG_COLORS[doc.tag]}18` }}
+                    >
+                      {TAG_ICONS[doc.tag]}
+                      {DOCUMENT_TAG_LABELS[doc.tag]}
+                    </span>
+                    {doc.cnr && (
+                      <span className="text-[11px] px-1.5 py-0.5 rounded font-mono" style={{ color: "var(--brass)", background: "var(--brass-soft)" }}>
+                        CNR: {doc.cnr}
+                      </span>
+                    )}
+                    <StatusBadge status={doc.status} />
+                  </div>
+
+                  {doc.summary && (
+                    <p className="text-xs mt-1 line-clamp-2 leading-relaxed" style={{ color: "var(--ink-dim)" }}>
+                      {doc.summary}
+                    </p>
+                  )}
+
+                  {/* Legal Quick Tags if Extracted */}
+                  <div className="flex items-center gap-3 mt-2 text-[11px] flex-wrap" style={{ color: "var(--ink-faint)" }}>
+                    <span>{formatBytes(doc.file_size)}</span>
+                    {doc.page_count > 0 && <span>• {doc.page_count} pages</span>}
+                    {doc.highlights && doc.highlights.length > 0 && (
+                      <span className="text-amber-500 font-medium">• {doc.highlights.length} highlights</span>
+                    )}
+                    {doc.notes && <span className="text-emerald-500 font-medium">• Notes saved</span>}
+                  </div>
+                </div>
               </div>
 
-              {/* Meta */}
-              <div className="flex items-center gap-4 flex-shrink-0">
-                <span className="text-xs hidden sm:block" style={{ color: "var(--ink-faint)" }}>
-                  {formatBytes(doc.file_size)}
-                </span>
-                <span className="text-xs hidden md:block" style={{ color: "var(--ink-faint)" }}>
-                  {doc.chunk_count} chunks
-                </span>
-                <StatusBadge status={doc.status} />
+              {/* Right Column: Actions */}
+              <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenReader(doc, "ai");
+                  }}
+                  className="btn btn-ghost flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border"
+                  style={{ borderColor: "var(--hairline)", color: "var(--brass-bright)" }}
+                  title="Open AI Legal Breakdown"
+                >
+                  <Sparkles size={13} />
+                  <span>AI Insights</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenReader(doc, "pdf");
+                  }}
+                  className="btn btn-primary flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg"
+                  title="Open in Document Reader"
+                >
+                  <span>Open</span>
+                  <ArrowRight size={13} />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={(e) => handleDelete(doc.id, e)}
+                  className="p-2 rounded-lg hover:bg-[var(--surface-raised)] cursor-pointer text-muted opacity-60 hover:opacity-100 transition-opacity"
+                  title="Delete Document"
+                >
+                  <Trash2 size={14} style={{ color: "var(--danger)" }} />
+                </button>
               </div>
-            </button>
+            </div>
           ))}
         </div>
       )}
@@ -618,12 +527,17 @@ export default function FilesPage() {
       {showUpload && (
         <UploadModal onClose={() => setShowUpload(false)} onSuccess={handleDocumentUploaded} />
       )}
+
       {selectedDoc && (
-        <PreviewModal
-          doc={selectedDoc}
-          onClose={() => setSelectedDoc(null)}
-          onDelete={handleDocumentDeleted}
-          onReprocess={handleDocumentReprocessed}
+        <DocumentReaderModal
+          isOpen={!!selectedDoc}
+          onClose={() => {
+            setSelectedDoc(null);
+            loadData();
+          }}
+          userDoc={selectedDoc}
+          userDocumentId={selectedDoc.id}
+          initialMode={readerInitialMode}
         />
       )}
     </div>

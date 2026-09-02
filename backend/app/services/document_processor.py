@@ -203,7 +203,7 @@ class DocumentProcessor:
         return [c for c in chunks if len(c.strip()) > 30]
 
     # ------------------------------------------------------------------ #
-    #  AI Summary                                                        #
+    #  AI Summary & Structured Legal Analysis                            #
     # ------------------------------------------------------------------ #
 
     async def generate_summary(self, text: str, filename: str) -> str:
@@ -230,16 +230,54 @@ class DocumentProcessor:
             logger.warning("summary_generation_failed", error=str(exc))
             return f"Legal document: {filename}"
 
+    async def generate_structured_ai_analysis(self, text: str, filename: str, cnr: Optional[str] = None) -> dict:
+        """Extract rich structured legal data from the uploaded document."""
+        from app.services.order_service import _ORDER_AI_SYSTEM_PROMPT, _ORDER_AI_EXTRACTION_PROMPT
+        from app.clients.gemini_client import gemini_client
+        from app.clients.openrouter_client import openrouter_client
+
+        if not text or not text.strip():
+            return {}
+
+        extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.replace("{order_text}", text[:30000])
+
+        try:
+            logger.info("DOCUMENT_AI_EXTRACTION_START", filename=filename, text_length=len(text))
+            raw = await gemini_client.generate_json(
+                system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+                user_prompt=extraction_prompt,
+            )
+            if not raw or not raw.get("executiveSummary") or raw.get("extractionConfidence", 0.0) == 0.0:
+                logger.info("DOCUMENT_AI_FALLING_BACK_TO_OPENROUTER", filename=filename)
+                raw = await openrouter_client.generate_json(
+                    system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+                    user_prompt=extraction_prompt,
+                )
+            if isinstance(raw, dict):
+                logger.info("DOCUMENT_AI_EXTRACTION_SUCCESS", filename=filename, keys=list(raw.keys()))
+                if cnr and "cnr" not in raw:
+                    raw["cnr"] = cnr
+                raw["filename"] = filename
+                return raw
+        except Exception as exc:
+            logger.error("structured_ai_analysis_failed", filename=filename, error=str(exc))
+
+        return {
+            "caseNumber": cnr or filename,
+            "courtName": "User Document Record",
+            "executiveSummary": f"Document {filename} uploaded for legal analysis.",
+            "plainLanguageSummary": f"Uploaded document: {filename}",
+            "extractionConfidence": 0.5,
+            "filename": filename,
+            "cnr": cnr or "",
+        }
+
     # ------------------------------------------------------------------ #
     #  Full Pipeline                                                      #
     # ------------------------------------------------------------------ #
 
     async def process_document(self, document_id: uuid.UUID) -> None:
-        """Run the full OCR → chunk → embed → save pipeline for a document.
-
-        Fetches the UserDocument by ID, reads the saved file from disk,
-        processes it, and updates the database record.
-        """
+        """Run the full OCR → AI analysis → chunk → embed pipeline for a document."""
         from sqlalchemy import select
 
         result = await self.db.execute(
@@ -269,24 +307,32 @@ class DocumentProcessor:
             doc.extracted_text = extracted_text
             doc.page_count = page_count
 
-            # Generate document summary
+            # Generate quick summary
             doc.summary = await self.generate_summary(extracted_text, doc.original_filename)
+
+            # Generate deep structured legal AI analysis
+            doc.ai_analysis = await self.generate_structured_ai_analysis(
+                extracted_text, doc.original_filename, doc.cnr
+            )
 
             # Chunk the text
             chunks = self.chunk_text(extracted_text)
             doc.chunk_count = len(chunks)
 
-            # Generate embeddings and save chunks
-            for idx, chunk_text in enumerate(chunks):
-                embedding_vec = await embedding_service.embed_text(chunk_text)
-                chunk = DocumentChunk(
-                    document_id=doc.id,
-                    chunk_index=idx,
-                    chunk_text=chunk_text,
-                    token_count=len(chunk_text.split()),
-                    embedding=embedding_vec,
-                )
-                self.db.add(chunk)
+            # Try generating embeddings if available (non-blocking)
+            try:
+                for idx, chunk_text in enumerate(chunks):
+                    embedding_vec = await embedding_service.embed_text(chunk_text)
+                    chunk = DocumentChunk(
+                        document_id=doc.id,
+                        chunk_index=idx,
+                        chunk_text=chunk_text,
+                        token_count=len(chunk_text.split()),
+                        embedding=embedding_vec,
+                    )
+                    self.db.add(chunk)
+            except Exception as emb_exc:
+                logger.warning("embedding_generation_skipped", error=str(emb_exc))
 
             # Mark as indexed
             doc.status = DocumentStatus.INDEXED

@@ -45,40 +45,76 @@ export function AISummaryCard({
   const [activeTab, setActiveTab] = useState<TabType>("overview");
   const [copied, setCopied] = useState(false);
 
-  // Merge direct props with aiData and caseData
-  const summary = aiData?.executive_summary || propSummary;
-  const plainLanguage = aiData?.plain_language_summary || aiData?.litigant_friendly_explanation || propPlainLanguage;
-  const issues = (aiData?.primary_issues && aiData.primary_issues.length > 0) ? aiData.primary_issues : (propIssues || []);
-  const reasoning = aiData?.court_reasoning || propReasoning;
-  const ratioDecidendi = aiData?.ratio_decidendi || propRatioDecidendi;
-  const directions = (aiData?.court_directions && aiData.court_directions.length > 0) ? aiData.court_directions : (propDirections || []);
-  const statutesCited = (aiData?.statutes_cited && aiData.statutes_cited.length > 0) ? aiData.statutes_cited : (propStatutesCited || caseData?.acts_and_sections || []);
-  const caseLaws = aiData?.case_laws_referenced || [];
-  const petArguments = aiData?.petitioner_arguments || [];
-  const respArguments = aiData?.respondent_arguments || [];
+  // Merge direct props with aiData and caseData (support both snake_case and camelCase)
+  const rawAi = (aiData || {}) as any;
+  const summary = rawAi.executive_summary || rawAi.executiveSummary || propSummary;
+  const plainLanguage =
+    rawAi.plain_language_summary ||
+    rawAi.plainLanguageSummary ||
+    rawAi.litigant_friendly_explanation ||
+    rawAi.litigantFriendlyExplanation ||
+    propPlainLanguage;
+  const issues =
+    rawAi.primary_issues && rawAi.primary_issues.length > 0
+      ? rawAi.primary_issues
+      : rawAi.primaryIssues && rawAi.primaryIssues.length > 0
+      ? rawAi.primaryIssues
+      : propIssues || [];
+  const reasoning = rawAi.court_reasoning || rawAi.courtReasoning || propReasoning;
+  const ratioDecidendi = rawAi.ratio_decidendi || rawAi.ratioDecidendi || propRatioDecidendi;
+  const directions =
+    rawAi.court_directions && rawAi.court_directions.length > 0
+      ? rawAi.court_directions
+      : rawAi.courtDirections && rawAi.courtDirections.length > 0
+      ? rawAi.courtDirections
+      : propDirections || [];
+  const statutesCited =
+    rawAi.statutes_cited && rawAi.statutes_cited.length > 0
+      ? rawAi.statutes_cited
+      : rawAi.statutesCited && rawAi.statutesCited.length > 0
+      ? rawAi.statutesCited
+      : propStatutesCited || caseData?.acts_and_sections || [];
+  const caseLaws = rawAi.case_laws_referenced || rawAi.caseLawsReferenced || [];
+  const petArguments = rawAi.petitioner_arguments || rawAi.petitionerArguments || [];
+  const respArguments = rawAi.respondent_arguments || rawAi.respondentArguments || [];
 
   // Case metadata helpers
-  const caseTitle = caseData?.case_title || aiData?.case_number || "Court Case Summary";
-  const courtName = caseData?.court?.court_name || aiData?.court_name || "Court Record";
-  const caseNo = caseData?.case_number || caseData?.filing_number || aiData?.case_number || "N/A";
-  const cnr = caseData?.cnr || aiData?.cnr || "";
-  const orderDate = aiData?.order_date || caseData?.decision_date || caseData?.next_hearing_date || "Current Record";
-  const statusLabel = aiData?.disposition_status || caseData?.case_status_label || caseData?.case_status || "Pending Adjudication";
-  const judges = (aiData?.judge_names && aiData.judge_names.length > 0) ? aiData.judge_names : (caseData?.judges || []);
+  const caseTitle = caseData?.case_title || rawAi.case_number || rawAi.caseNumber || rawAi.filename || "Court Document Summary";
+  const courtName = caseData?.court?.court_name || rawAi.court_name || rawAi.courtName || "Legal Record";
+  const caseNo = caseData?.case_number || caseData?.filing_number || rawAi.case_number || rawAi.caseNumber || "N/A";
+  const cnr = caseData?.cnr || rawAi.cnr || "";
+  const orderDate = rawAi.order_date || rawAi.orderDate || caseData?.decision_date || caseData?.next_hearing_date || "Current Record";
+  const statusLabel = rawAi.disposition_status || rawAi.dispositionStatus || caseData?.case_status_label || caseData?.case_status || "Pending Adjudication";
+  const judges =
+    rawAi.judge_names && rawAi.judge_names.length > 0
+      ? rawAi.judge_names
+      : rawAi.judgeNames && rawAi.judgeNames.length > 0
+      ? rawAi.judgeNames
+      : caseData?.judges || [];
 
-  const petCounsel = (aiData?.counsel_petitioner && aiData.counsel_petitioner.length > 0)
-    ? aiData.counsel_petitioner
-    : (caseData?.parties?.petitioner_advocates || []);
-  const respCounsel = (aiData?.counsel_respondent && aiData.counsel_respondent.length > 0)
-    ? aiData.counsel_respondent
-    : (caseData?.parties?.respondent_advocates || []);
+  const petCounsel =
+    rawAi.counsel_petitioner && rawAi.counsel_petitioner.length > 0
+      ? rawAi.counsel_petitioner
+      : rawAi.counselPetitioner && rawAi.counselPetitioner.length > 0
+      ? rawAi.counselPetitioner
+      : caseData?.parties?.petitioner_advocates || [];
+  const respCounsel =
+    rawAi.counsel_respondent && rawAi.counsel_respondent.length > 0
+      ? rawAi.counsel_respondent
+      : rawAi.counselRespondent && rawAi.counselRespondent.length > 0
+      ? rawAi.counselRespondent
+      : caseData?.parties?.respondent_advocates || [];
 
-  const pets = (caseData?.parties?.petitioners && caseData.parties.petitioners.length > 0)
-    ? caseData.parties.petitioners
-    : (aiData?.petitioners?.map((p) => (typeof p === "string" ? p : p.name)) || []);
-  const resps = (caseData?.parties?.respondents && caseData.parties.respondents.length > 0)
-    ? caseData.parties.respondents
-    : (aiData?.respondents?.map((r) => (typeof r === "string" ? r : r.name)) || []);
+  const rawPets = rawAi.petitioners || [];
+  const rawResps = rawAi.respondents || [];
+  const pets =
+    caseData?.parties?.petitioners && caseData.parties.petitioners.length > 0
+      ? caseData.parties.petitioners
+      : rawPets.map((p: any) => (typeof p === "string" ? p : p?.name || JSON.stringify(p)));
+  const resps =
+    caseData?.parties?.respondents && caseData.parties.respondents.length > 0
+      ? caseData.parties.respondents
+      : rawResps.map((r: any) => (typeof r === "string" ? r : r?.name || JSON.stringify(r)));
 
   const copyFullBrief = () => {
     const text = [

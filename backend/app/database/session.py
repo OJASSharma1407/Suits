@@ -25,7 +25,7 @@ if _is_sqlite:
         echo=settings.environment == "development",
         connect_args={
             "check_same_thread": False,
-            "timeout": 5,          # aiosqlite/sqlite3 busy wait (seconds)
+            "timeout": 30,          # aiosqlite/sqlite3 busy wait (seconds)
         },
         poolclass=StaticPool,
     )
@@ -35,7 +35,7 @@ if _is_sqlite:
         """Run once per physical connection to configure SQLite optimally."""
         cursor = dbapi_conn.cursor()
         cursor.execute("PRAGMA journal_mode=WAL")
-        cursor.execute("PRAGMA busy_timeout=5000")
+        cursor.execute("PRAGMA busy_timeout=30000")
         cursor.execute("PRAGMA foreign_keys=ON")
         cursor.close()
 
@@ -78,6 +78,23 @@ async def init_db() -> None:
                         await conn.execute(text("ALTER TABLE users ADD COLUMN google_id VARCHAR(255)"))
                     if "avatar_url" not in existing_cols:
                         await conn.execute(text("ALTER TABLE users ADD COLUMN avatar_url VARCHAR(512)"))
+            except Exception:
+                pass
+
+            try:
+                res_doc = await conn.execute(text("PRAGMA table_info(user_documents)"))
+                doc_cols = [row[1] for row in res_doc.fetchall()]
+                if doc_cols:
+                    if "ai_analysis" not in doc_cols:
+                        await conn.execute(text("ALTER TABLE user_documents ADD COLUMN ai_analysis JSON"))
+                    if "notes" not in doc_cols:
+                        await conn.execute(text("ALTER TABLE user_documents ADD COLUMN notes TEXT DEFAULT ''"))
+                    if "highlights" not in doc_cols:
+                        await conn.execute(text("ALTER TABLE user_documents ADD COLUMN highlights JSON DEFAULT '[]'"))
+                    if "tags_list" not in doc_cols:
+                        await conn.execute(text("ALTER TABLE user_documents ADD COLUMN tags_list JSON DEFAULT '[]'"))
+                    if "page_count" not in doc_cols:
+                        await conn.execute(text("ALTER TABLE user_documents ADD COLUMN page_count INTEGER DEFAULT 0 NOT NULL"))
             except Exception:
                 pass
 

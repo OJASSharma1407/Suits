@@ -5,7 +5,7 @@ import enum
 from datetime import datetime, timezone
 from typing import Optional
 
-from sqlalchemy import String, DateTime, ForeignKey, Text, Integer, Enum as SAEnum, Boolean, Float
+from sqlalchemy import String, DateTime, ForeignKey, Text, Integer, Enum as SAEnum, Boolean, Float, JSON
 from sqlalchemy.types import Uuid
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -61,10 +61,16 @@ class UserDocument(Base):
     )
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # Extracted content
+    # Extracted content & AI Legal Analysis
     extracted_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     summary: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    ai_analysis: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
     chunk_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+    # Research Vault: Notes, Highlights, Custom tags
+    notes: Mapped[Optional[str]] = mapped_column(Text, nullable=True, default="")
+    highlights: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=list)
+    tags_list: Mapped[Optional[list]] = mapped_column(JSON, nullable=True, default=list)
 
     # Timestamps
     created_at: Mapped[datetime] = mapped_column(
@@ -77,4 +83,5 @@ class UserDocument(Base):
     )
 
     # Relationships
+    user = relationship("User", back_populates="documents")
     chunks = relationship("DocumentChunk", back_populates="document", cascade="all, delete-orphan")

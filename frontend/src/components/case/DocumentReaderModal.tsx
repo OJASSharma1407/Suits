@@ -21,26 +21,33 @@ import {
 import ReactMarkdown from "react-markdown";
 import { caseService } from "@/services/cases";
 import { fileService } from "@/services/files";
+import { documentService } from "@/services/document";
 import { toast } from "sonner";
 import { CustomPDFViewer, type CustomPDFViewerRef, type SidebarMode } from "./CustomPDFViewer";
 import { ReaderResearchPanel } from "./reader/ReaderResearchPanel";
+import { AISummaryCard } from "./AISummaryCard";
 import { ResearchBriefModal } from "../files/ResearchBriefModal";
 import { ChatPanel } from "@/components/chat/ChatPanel";
-import type { OrderItem } from "@/types/case";
+import type { OrderItem, OrderAI } from "@/types/case";
 import type { PDFHighlight } from "@/types/file";
 import type { ChatMessage } from "@/types/chat";
+import type { UserDocument } from "@/types/document";
 
 interface DocumentReaderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  cnr: string;
-  filename: string;
+  cnr?: string;
+  filename?: string;
   caseTitle?: string;
   courtName?: string;
   orderDate?: string;
-  initialMode?: "pdf" | "text";
+  initialMode?: "pdf" | "text" | "ai";
   orders?: OrderItem[];
   allowModeToggle?: boolean;
+  // User Document support
+  userDocumentId?: string;
+  userDoc?: UserDocument | null;
+  aiData?: OrderAI | null;
   // Optional Chat integration
   isChatOpen?: boolean;
   onToggleChat?: () => void;
@@ -53,7 +60,7 @@ interface DocumentReaderModalProps {
   onExpandChat?: () => void;
 }
 
-type ViewMode = "pdf" | "text";
+type ViewMode = "pdf" | "text" | "ai";
 type FontFamily = "sans" | "serif";
 type FontSize = 14 | 16 | 18 | 20;
 
@@ -64,25 +71,34 @@ const textCache = new Map<string, string>();
 export function DocumentReaderModal({
   isOpen,
   onClose,
-  cnr,
-  filename: initialFilename,
-  caseTitle = "Court Document",
-  courtName = "Court Record",
+  cnr = "",
+  filename: initialFilename = "",
+  caseTitle: initialCaseTitle = "Court Document",
+  courtName: initialCourtName = "Court Record",
   orderDate: initialOrderDate = "Record Copy",
   initialMode = "pdf",
   orders = [],
   allowModeToggle = true,
-  isChatOpen = false,
-  onToggleChat,
-  chatMessages = [],
-  onSendMessage,
-  chatLoading = false,
-  streamingContent = "",
+  userDocumentId,
+  userDoc,
+  aiData: initialAiData,
+  isChatOpen: propIsChatOpen,
+  onToggleChat: propOnToggleChat,
+  chatMessages: propChatMessages,
+  onSendMessage: propOnSendMessage,
+  chatLoading: propChatLoading,
+  streamingContent: propStreamingContent,
   suggestedQuestions = [],
-  onClearChat,
+  onClearChat: propOnClearChat,
   onExpandChat,
 }: DocumentReaderModalProps) {
-  const [currentFilename, setCurrentFilename] = useState<string>(initialFilename);
+  const effectiveId = userDocumentId || userDoc?.id;
+  const effectiveCnr = userDoc?.cnr || cnr || "";
+  const effectiveFilename = userDoc?.original_filename || initialFilename || "document.pdf";
+  const effectiveCaseTitle = userDoc?.original_filename || initialCaseTitle;
+  const effectiveCourtName = userDoc ? `Document Type: ${userDoc.tag.toUpperCase()}` : initialCourtName;
+
+  const [currentFilename, setCurrentFilename] = useState<string>(effectiveFilename);
   const [currentOrderDate, setCurrentOrderDate] = useState<string>(initialOrderDate);
   const [mode, setMode] = useState<ViewMode>(initialMode);
 
@@ -90,9 +106,12 @@ export function DocumentReaderModal({
   const [pdfLoading, setPdfLoading] = useState<boolean>(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
 
-  const [textContent, setTextContent] = useState<string | null>(null);
+  const [textContent, setTextContent] = useState<string | null>(userDoc?.extracted_text || null);
   const [textLoading, setTextLoading] = useState<boolean>(false);
   const [textError, setTextError] = useState<string | null>(null);
+
+  const [structuredAI, setStructuredAI] = useState<OrderAI | null>(initialAiData || userDoc?.ai_analysis || null);
+  const [aiLoading, setAiLoading] = useState<boolean>(false);
 
   // Typography state (Clean Text Mode)
   const [fontFamily, setFontFamily] = useState<FontFamily>("serif");
@@ -106,28 +125,50 @@ export function DocumentReaderModal({
 
   // Research Vault State
   const [isBriefModalOpen, setIsBriefModalOpen] = useState<boolean>(false);
-  const [notes, setNotes] = useState<string>("");
-  const [highlights, setHighlights] = useState<PDFHighlight[]>([]);
-  const [tags, setTags] = useState<string[]>([]);
-  const [isSaved, setIsSaved] = useState<boolean>(false);
+  const [notes, setNotes] = useState<string>(userDoc?.notes || "");
+  const [highlights, setHighlights] = useState<PDFHighlight[]>(userDoc?.highlights || []);
+  const [tags, setTags] = useState<string[]>(userDoc?.tags_list || []);
+  const [isSaved, setIsSaved] = useState<boolean>(!!userDoc);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+
+  // Local Chat State (used if no external onSendMessage is provided, e.g. on FilesPage)
+  const [internalChatOpen, setInternalChatOpen] = useState<boolean>(false);
+  const [internalMessages, setInternalMessages] = useState<ChatMessage[]>([]);
+  const [internalLoading, setInternalLoading] = useState<boolean>(false);
+  const [internalStreaming, setInternalStreaming] = useState<string>("");
+  const abortControllerRef = useRef<AbortController | null>(null);
+
+  const isChatOpen = propOnToggleChat ? propIsChatOpen : internalChatOpen;
+  const onToggleChat = propOnToggleChat || (() => setInternalChatOpen((prev) => !prev));
+  const chatMessages = propOnSendMessage ? propChatMessages || [] : internalMessages;
+  const chatLoading = propOnSendMessage ? propChatLoading || false : internalLoading;
+  const streamingContent = propOnSendMessage ? propStreamingContent || "" : internalStreaming;
 
   const modalRef = useRef<HTMLDivElement>(null);
   const pdfViewerRef = useRef<CustomPDFViewerRef>(null);
 
   // Reset when opening or when initial props change
   useEffect(() => {
-    if (!isOpen || !cnr || !initialFilename) return;
-    setCurrentFilename(initialFilename);
+    if (!isOpen) return;
+    setCurrentFilename(effectiveFilename);
     setCurrentOrderDate(initialOrderDate);
     setMode(initialMode);
-  }, [isOpen, cnr, initialFilename, initialOrderDate, initialMode]);
+    if (userDoc) {
+      if (userDoc.extracted_text) setTextContent(userDoc.extracted_text);
+      if (userDoc.ai_analysis) setStructuredAI(userDoc.ai_analysis);
+      if (userDoc.notes) setNotes(userDoc.notes);
+      if (userDoc.highlights) setHighlights(userDoc.highlights);
+      if (userDoc.tags_list) setTags(userDoc.tags_list);
+      setIsSaved(true);
+    }
+  }, [isOpen, effectiveFilename, initialOrderDate, initialMode, userDoc]);
 
-  // Load saved research notes & highlights for this order
+  // Load saved research notes & highlights for public case order
   useEffect(() => {
-    if (!isOpen || !cnr || !currentFilename) return;
+    if (!isOpen || effectiveId) return;
+    if (!effectiveCnr || !currentFilename) return;
     fileService
-      .getByCase(cnr, currentFilename)
+      .getByCase(effectiveCnr, currentFilename)
       .then((saved) => {
         if (saved) {
           setNotes(saved.notes || "");
@@ -142,19 +183,21 @@ export function DocumentReaderModal({
         }
       })
       .catch(() => {});
-  }, [isOpen, cnr, currentFilename]);
+  }, [isOpen, effectiveCnr, currentFilename, effectiveId]);
 
   // Load content whenever currentFilename or active mode changes
   useEffect(() => {
-    if (!isOpen || !cnr || !currentFilename) return;
+    if (!isOpen) return;
     if (mode === "pdf") {
       loadPDF(currentFilename);
-    } else {
+    } else if (mode === "text") {
       loadMarkdown(currentFilename);
+    } else if (mode === "ai") {
+      loadAI(currentFilename);
     }
-  }, [isOpen, cnr, currentFilename, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, currentFilename, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Keyboard shortcut listener (Esc to close, Alt+1/2 to switch mode)
+  // Keyboard shortcut listener (Esc to close, Alt+1/2/3 to switch mode)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
@@ -166,6 +209,9 @@ export function DocumentReaderModal({
       } else if (allowModeToggle && e.key === "2" && (e.altKey || e.metaKey)) {
         e.preventDefault();
         setMode("text");
+      } else if (allowModeToggle && e.key === "3" && (e.altKey || e.metaKey)) {
+        e.preventDefault();
+        setMode("ai");
       }
     };
 
@@ -174,7 +220,7 @@ export function DocumentReaderModal({
   }, [isOpen, onClose, allowModeToggle]);
 
   const loadPDF = async (fname: string) => {
-    const cacheKey = `${cnr}_${fname}`;
+    const cacheKey = effectiveId ? `doc_${effectiveId}` : `${effectiveCnr}_${fname}`;
     if (pdfBufferCache.has(cacheKey)) {
       const cached = pdfBufferCache.get(cacheKey)!;
       setPdfData(cached.slice(0));
@@ -185,20 +231,26 @@ export function DocumentReaderModal({
     setPdfLoading(true);
     setPdfError(null);
     try {
-      const buffer = await caseService.getOrderPDFArrayBuffer(cnr, fname);
+      let buffer: ArrayBuffer;
+      if (effectiveId) {
+        buffer = await documentService.getArrayBuffer(effectiveId);
+      } else {
+        buffer = await caseService.getOrderPDFArrayBuffer(effectiveCnr, fname);
+      }
       pdfBufferCache.set(cacheKey, buffer.slice(0));
       setPdfData(buffer.slice(0));
     } catch {
-      setPdfError("Original Court PDF is unavailable for this record.");
+      setPdfError("Original document PDF is unavailable for this record.");
       setMode("text");
-      toast.info("Scanned PDF not available. Showing clean digital transcript.");
+      toast.info("Showing clean digital transcript.");
     } finally {
       setPdfLoading(false);
     }
   };
 
   const loadMarkdown = async (fname: string) => {
-    const cacheKey = `${cnr}_${fname}`;
+    if (textContent) return;
+    const cacheKey = effectiveId ? `doc_md_${effectiveId}` : `${effectiveCnr}_${fname}`;
     if (textCache.has(cacheKey)) {
       setTextContent(textCache.get(cacheKey)!);
       setTextLoading(false);
@@ -208,17 +260,56 @@ export function DocumentReaderModal({
     setTextLoading(true);
     setTextError(null);
     try {
-      const data = await caseService.getOrderMarkdown(cnr, fname);
-      if (data && data.markdown) {
-        textCache.set(cacheKey, data.markdown);
-        setTextContent(data.markdown);
+      if (effectiveId) {
+        const doc = await documentService.getById(effectiveId);
+        const md = doc.extracted_text || doc.summary || "No extracted text available.";
+        textCache.set(cacheKey, md);
+        setTextContent(md);
       } else {
-        setTextError("Document transcript is unavailable for this order.");
+        const data = await caseService.getOrderMarkdown(effectiveCnr, fname);
+        if (data && data.markdown) {
+          textCache.set(cacheKey, data.markdown);
+          setTextContent(data.markdown);
+        } else {
+          setTextError("Document transcript is unavailable.");
+        }
       }
     } catch {
-      setTextError("Failed to fetch judgment text.");
+      setTextError("Failed to fetch document text.");
     } finally {
       setTextLoading(false);
+    }
+  };
+
+  const loadAI = async (fname: string) => {
+    const raw = structuredAI as any;
+    const hasValidSummary =
+      raw &&
+      (raw.executive_summary ||
+        raw.executiveSummary ||
+        raw.summary ||
+        raw.plain_language_summary ||
+        raw.plainLanguageSummary);
+
+    if (hasValidSummary && !effectiveId) return;
+
+    setAiLoading(true);
+    try {
+      if (effectiveId) {
+        const ai = await documentService.getAiAnalysis(effectiveId);
+        if (ai) {
+          setStructuredAI(ai);
+        }
+      } else {
+        const ai = await caseService.getOrderAI(effectiveCnr, fname);
+        if (ai) {
+          setStructuredAI(ai);
+        }
+      }
+    } catch {
+      toast.error("Failed to load AI structured analysis.");
+    } finally {
+      setAiLoading(false);
     }
   };
 
@@ -234,7 +325,7 @@ export function DocumentReaderModal({
     if (!textContent) return;
     navigator.clipboard.writeText(textContent);
     setCopied(true);
-    toast.success("Judgment text copied to clipboard.");
+    toast.success("Document text copied to clipboard.");
     setTimeout(() => setCopied(false), 2000);
   };
 
@@ -252,23 +343,86 @@ export function DocumentReaderModal({
   const handleSaveToFiles = async () => {
     setIsSaving(true);
     try {
-      await fileService.save({
-        cnr,
-        filename: currentFilename,
-        case_title: caseTitle,
-        court_name: courtName,
-        order_date: currentOrderDate,
-        notes,
-        highlights,
-        tags,
-      });
+      if (effectiveId) {
+        await documentService.saveResearch(effectiveId, {
+          notes,
+          highlights,
+          tags_list: tags,
+        });
+      } else {
+        await fileService.save({
+          cnr: effectiveCnr,
+          filename: currentFilename,
+          case_title: effectiveCaseTitle,
+          court_name: effectiveCourtName,
+          order_date: currentOrderDate,
+          notes,
+          highlights,
+          tags,
+        });
+      }
       setIsSaved(true);
-      toast.success("Order, notes & highlights saved to Files Vault.");
+      toast.success("Research saved to Vault.");
     } catch {
-      toast.error("Failed to save to Files Vault.");
+      toast.error("Failed to save research.");
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleInternalSendMessage = async (text: string) => {
+    if (!text.trim()) return;
+    const userMsg: ChatMessage = {
+      id: `msg_${Date.now()}`,
+      role: "user",
+      message: text,
+      timestamp: new Date().toISOString(),
+    };
+    setInternalMessages((prev) => [...prev, userMsg]);
+    setInternalLoading(true);
+    setInternalStreaming("");
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
+    const historyForApi = internalMessages.map((m) => ({
+      role: m.role,
+      message: m.message,
+    }));
+
+    try {
+      if (effectiveId) {
+        await documentService.streamChat(
+          effectiveId,
+          text,
+          historyForApi,
+          (chunk) => setInternalStreaming((prev) => prev + chunk),
+          (full) => {
+            const aiMsg: ChatMessage = {
+              id: `msg_ai_${Date.now()}`,
+              role: "assistant",
+              message: full,
+              timestamp: new Date().toISOString(),
+            };
+            setInternalMessages((prev) => [...prev, aiMsg]);
+            setInternalStreaming("");
+            setInternalLoading(false);
+          },
+          abortController.signal
+        );
+      }
+    } catch (err: any) {
+      if (err.name !== "AbortError") {
+        toast.error("AI chat response failed.");
+      }
+      setInternalLoading(false);
+    }
+  };
+
+  const handleInternalClearChat = () => {
+    abortControllerRef.current?.abort();
+    setInternalStreaming("");
+    setInternalMessages([]);
   };
 
   const handleAddHighlight = (newHighlight: PDFHighlight) => {
@@ -302,10 +456,10 @@ export function DocumentReaderModal({
     <ReaderResearchPanel
       isOpen={sidebarMode === "research"}
       onClose={() => setSidebarMode("none")}
-      caseTitle={caseTitle}
-      courtName={courtName}
+      caseTitle={effectiveCaseTitle}
+      courtName={effectiveCourtName}
       orderDate={currentOrderDate}
-      cnr={cnr}
+      cnr={effectiveCnr}
       notes={notes}
       onNotesChange={setNotes}
       highlights={highlights}
@@ -360,25 +514,27 @@ export function DocumentReaderModal({
                 <h3
                   className="text-xs font-semibold truncate max-w-[200px] sm:max-w-sm md:max-w-md"
                   style={{ color: "var(--text-primary)" }}
-                  title={caseTitle}
+                  title={effectiveCaseTitle}
                 >
-                  {caseTitle}
+                  {effectiveCaseTitle}
                 </h3>
-                <span
-                  className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono"
-                  style={{
-                    background: "var(--surface-container)",
-                    color: "var(--text-muted)",
-                    border: "1px solid var(--border)",
-                  }}
-                >
-                  CNR: {cnr}
-                </span>
+                {effectiveCnr && (
+                  <span
+                    className="hidden md:inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-mono"
+                    style={{
+                      background: "var(--surface-container)",
+                      color: "var(--text-muted)",
+                      border: "1px solid var(--border)",
+                    }}
+                  >
+                    CNR: {effectiveCnr}
+                  </span>
+                )}
               </div>
 
               {/* Sub-header with Court Name or Multi-Order Switcher */}
               <div className="flex items-center gap-1.5 text-[11px]" style={{ color: "var(--text-muted)" }}>
-                <span>{courtName}</span>
+                <span>{effectiveCourtName}</span>
                 <span>•</span>
                 {validOrders.length > 1 ? (
                   /* Multi-Order Dropdown Switcher */
@@ -398,7 +554,7 @@ export function DocumentReaderModal({
                     <ChevronDown size={11} className="pointer-events-none -ml-3" style={{ color: "var(--text-muted)" }} />
                   </div>
                 ) : (
-                  <span>Order Date: {currentOrderDate}</span>
+                  <span>Record: {currentOrderDate}</span>
                 )}
               </div>
             </div>
@@ -423,7 +579,7 @@ export function DocumentReaderModal({
                 }}
               >
                 <FileText size={13} />
-                <span>Court PDF</span>
+                <span>{effectiveId ? "Document PDF" : "Court PDF"}</span>
               </button>
 
               <button
@@ -437,6 +593,19 @@ export function DocumentReaderModal({
               >
                 <BookOpen size={13} />
                 <span>Clean Text</span>
+              </button>
+
+              <button
+                onClick={() => setMode("ai")}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-semibold cursor-pointer transition-all"
+                style={{
+                  background: mode === "ai" ? "var(--card)" : "transparent",
+                  color: mode === "ai" ? "var(--brass-bright)" : "var(--text-muted)",
+                  boxShadow: mode === "ai" ? "0 1px 2px rgba(0,0,0,0.06)" : "none",
+                }}
+              >
+                <Sparkles size={13} />
+                <span>AI Analysis</span>
               </button>
             </div>
           )}
@@ -474,28 +643,24 @@ export function DocumentReaderModal({
                   </span>
                 </button>
 
+                {/* Font Size controls */}
                 <div
-                  className="flex items-center rounded-lg border p-0.5"
-                  style={{ borderColor: "var(--border)", background: "var(--surface-container)" }}
+                  className="hidden sm:flex items-center rounded-lg border overflow-hidden"
+                  style={{ borderColor: "var(--border)" }}
                 >
                   <button
                     onClick={() => setFontSize((prev) => (prev > 14 ? ((prev - 2) as FontSize) : 14))}
-                    disabled={fontSize <= 14}
-                    className="p-1 rounded hover:bg-[var(--surface)] disabled:opacity-40 cursor-pointer text-[11px] font-bold px-1"
+                    className="px-2 py-1 text-xs hover:bg-[var(--surface-container)] cursor-pointer"
                     style={{ color: "var(--text-secondary)" }}
-                    title="Decrease font size"
+                    title="Decrease Font Size"
                   >
                     A-
                   </button>
-                  <span className="text-[10px] font-mono px-1 font-medium" style={{ color: "var(--text-muted)" }}>
-                    {fontSize}px
-                  </span>
                   <button
                     onClick={() => setFontSize((prev) => (prev < 20 ? ((prev + 2) as FontSize) : 20))}
-                    disabled={fontSize >= 20}
-                    className="p-1 rounded hover:bg-[var(--surface)] disabled:opacity-40 cursor-pointer text-[11px] font-bold px-1"
-                    style={{ color: "var(--text-secondary)" }}
-                    title="Increase font size"
+                    className="px-2 py-1 text-xs hover:bg-[var(--surface-container)] border-l cursor-pointer"
+                    style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
+                    title="Increase Font Size"
                   >
                     A+
                   </button>
@@ -514,7 +679,7 @@ export function DocumentReaderModal({
                   onClick={handleCopyText}
                   className="btn-ghost flex items-center gap-1 text-xs px-2 py-1 rounded-lg border cursor-pointer"
                   style={{ borderColor: "var(--border)", color: "var(--text-secondary)" }}
-                  title="Copy full judgment text"
+                  title="Copy full document text"
                 >
                   {copied ? (
                     <>
@@ -566,7 +731,7 @@ export function DocumentReaderModal({
                 <div className="flex flex-col items-center gap-3">
                   <Loader2 size={32} className="animate-spin" style={{ color: "var(--primary)" }} />
                   <p className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
-                    Streaming official court record…
+                    Loading document PDF…
                   </p>
                 </div>
               ) : pdfError ? (
@@ -618,7 +783,7 @@ export function DocumentReaderModal({
                   <div className="flex flex-col items-center justify-center h-full gap-3">
                     <Loader2 size={32} className="animate-spin" style={{ color: "var(--primary)" }} />
                     <p className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
-                      Formatting digital judgment…
+                      Formatting digital text…
                     </p>
                   </div>
                 ) : textError ? (
@@ -700,96 +865,124 @@ export function DocumentReaderModal({
             </div>
           )}
 
-          {/* Floating AI Chat Assistant Card (Restored previous card design + large spacious size) */}
-          {onToggleChat && (
-            <div className="absolute bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto select-none">
-              {isChatOpen && (
-                <div
-                  className="mb-3 w-[410px] sm:w-[430px] h-[580px] max-h-[78vh] flex flex-col rounded-2xl overflow-hidden animate-slide-up shadow-2xl border overscroll-contain select-text"
-                  style={{
-                    borderColor: "var(--border)",
-                    background: "var(--card)",
-                    overscrollBehavior: "contain",
-                    boxShadow: "0 20px 40px -15px rgba(0, 0, 0, 0.4)",
-                  }}
-                >
-                  <div
-                    className="p-3 px-4 border-b flex items-center justify-between flex-shrink-0"
-                    style={{ background: "var(--surface)", borderColor: "var(--border)" }}
-                  >
-                    <div className="flex items-center gap-2.5">
-                      <div
-                        className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
-                        style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
-                      >
-                        <Sparkles size={15} />
-                      </div>
-                      <h3 className="text-sm font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
-                        Assistant
-                      </h3>
-                    </div>
-                    <div className="flex items-center gap-1.5">
-                      {onClearChat && (
-                        <button
-                          type="button"
-                          onClick={onClearChat}
-                          title="Clear conversation and start new chat"
-                          className="px-2.5 py-1 rounded-lg hover:bg-[var(--surface-container)] text-xs flex items-center gap-1.5 transition-colors cursor-pointer border"
-                          style={{ borderColor: "var(--border)", color: "var(--ink-dim)" }}
-                        >
-                          <RotateCcw size={12} />
-                          <span className="text-[11px] font-medium">New Chat</span>
-                        </button>
-                      )}
-                      {onExpandChat && (
-                        <button
-                          type="button"
-                          onClick={onExpandChat}
-                          title="Expand to Full Chat Window"
-                          className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] transition-colors cursor-pointer"
-                          style={{ color: "var(--ink-dim)" }}
-                        >
-                          <Maximize2 size={15} />
-                        </button>
-                      )}
-                    </div>
+          {/* MODE 3: STRUCTURED AI LEGAL ANALYSIS */}
+          {mode === "ai" && (
+            <div className="w-full h-full flex overflow-y-auto p-4 sm:p-8 justify-center">
+              <div className="w-full max-w-5xl">
+                {aiLoading ? (
+                  <div className="flex flex-col items-center justify-center py-24 gap-3">
+                    <Loader2 size={36} className="animate-spin" style={{ color: "var(--brass)" }} />
+                    <p className="text-sm font-medium" style={{ color: "var(--ink-faint)" }}>
+                      Synthesizing structured legal breakdown…
+                    </p>
                   </div>
-                  <div className="flex-1 overflow-hidden">
-                    <ChatPanel
-                      messages={chatMessages}
-                      onSendMessage={onSendMessage || (() => {})}
-                      isLoading={chatLoading}
-                      streamingMessage={streamingContent}
-                      suggestedQuestions={suggestedQuestions}
-                      onClearChat={onClearChat}
-                    />
-                  </div>
-                </div>
-              )}
-
-              <button
-                onClick={onToggleChat}
-                className="h-14 w-14 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
-                style={{
-                  background: isChatOpen ? "var(--surface-container-high)" : "var(--primary)",
-                  color: isChatOpen ? "var(--text-primary)" : "var(--on-primary)",
-                }}
-                title={isChatOpen ? "Minimize Assistant" : "Ask AI Assistant"}
-              >
-                {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
-              </button>
+                ) : (
+                  <AISummaryCard
+                    aiData={structuredAI}
+                    summary={structuredAI?.executive_summary}
+                    plainLanguage={structuredAI?.plain_language_summary}
+                    issues={structuredAI?.primary_issues}
+                    reasoning={structuredAI?.court_reasoning}
+                    ratioDecidendi={structuredAI?.ratio_decidendi}
+                    directions={structuredAI?.court_directions}
+                    statutesCited={structuredAI?.statutes_cited}
+                    onReadDocument={() => setMode("pdf")}
+                  />
+                )}
+              </div>
             </div>
           )}
+
+          {/* Floating AI Chat Assistant Card */}
+          <div className="absolute bottom-6 right-6 z-50 flex flex-col items-end pointer-events-auto select-none">
+            {isChatOpen && (
+              <div
+                className="mb-3 w-[410px] sm:w-[430px] h-[580px] max-h-[78vh] flex flex-col rounded-2xl overflow-hidden animate-slide-up shadow-2xl border overscroll-contain select-text"
+                style={{
+                  borderColor: "var(--border)",
+                  background: "var(--card)",
+                  overscrollBehavior: "contain",
+                  boxShadow: "0 20px 40px -15px rgba(0, 0, 0, 0.4)",
+                }}
+              >
+                <div
+                  className="p-3 px-4 border-b flex items-center justify-between flex-shrink-0"
+                  style={{ background: "var(--surface)", borderColor: "var(--border)" }}
+                >
+                  <div className="flex items-center gap-2.5">
+                    <div
+                      className="w-7 h-7 rounded-xl flex items-center justify-center flex-shrink-0"
+                      style={{ background: "var(--brass-soft)", color: "var(--brass-bright)" }}
+                    >
+                      <Sparkles size={15} />
+                    </div>
+                    <h3 className="text-sm font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
+                      {effectiveId ? "Document AI Assistant" : "Case Assistant"}
+                    </h3>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={propOnClearChat || handleInternalClearChat}
+                      title="Clear conversation and start new chat"
+                      className="px-2.5 py-1 rounded-lg hover:bg-[var(--surface-container)] text-xs flex items-center gap-1.5 transition-colors cursor-pointer border"
+                      style={{ borderColor: "var(--border)", color: "var(--ink-dim)" }}
+                    >
+                      <RotateCcw size={12} />
+                      <span className="text-[11px] font-medium">New Chat</span>
+                    </button>
+                    {onExpandChat && (
+                      <button
+                        type="button"
+                        onClick={onExpandChat}
+                        title="Expand to Full Chat Window"
+                        className="p-1.5 rounded-lg hover:bg-[var(--surface-container)] transition-colors cursor-pointer"
+                        style={{ color: "var(--ink-dim)" }}
+                      >
+                        <Maximize2 size={15} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <ChatPanel
+                    messages={chatMessages}
+                    onSendMessage={propOnSendMessage || handleInternalSendMessage}
+                    isLoading={chatLoading}
+                    streamingMessage={streamingContent}
+                    suggestedQuestions={suggestedQuestions.length > 0 ? suggestedQuestions : [
+                      "Summarize the key clauses of this document.",
+                      "What are the main liabilities or risks?",
+                      "List all named parties and dates mentioned.",
+                    ]}
+                    onClearChat={propOnClearChat || handleInternalClearChat}
+                  />
+                </div>
+              </div>
+            )}
+
+            <button
+              onClick={onToggleChat}
+              className="h-14 w-14 rounded-full shadow-2xl flex items-center justify-center transition-transform hover:scale-105 active:scale-95 cursor-pointer"
+              style={{
+                background: isChatOpen ? "var(--surface-container-high)" : "var(--primary)",
+                color: isChatOpen ? "var(--text-primary)" : "var(--on-primary)",
+              }}
+              title={isChatOpen ? "Minimize Assistant" : "Ask Document AI"}
+            >
+              {isChatOpen ? <X size={24} /> : <MessageSquare size={24} />}
+            </button>
+          </div>
         </div>
 
         {/* Case Research Brief Printable Modal */}
         <ResearchBriefModal
           isOpen={isBriefModalOpen}
           onClose={() => setIsBriefModalOpen(false)}
-          caseTitle={caseTitle}
-          courtName={courtName}
+          caseTitle={effectiveCaseTitle}
+          courtName={effectiveCourtName}
           orderDate={currentOrderDate}
-          cnr={cnr}
+          cnr={effectiveCnr}
           notes={notes}
           highlights={highlights}
           tags={tags}

@@ -40,7 +40,7 @@ class EmbeddingService:
         try:
             text = text[:8000]  # Cap at safe token limit
             response = await self._client.aio.models.embed_content(  # type: ignore[union-attr]
-                model="models/text-embedding-004",
+                model="gemini-embedding-001",
                 contents=text,
             )
             values = response.embeddings[0].values

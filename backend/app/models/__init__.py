@@ -12,6 +12,9 @@ from app.models.cached_ai_analysis import CachedAIAnalysis
 from app.models.api_usage_log import APIUsageLog
 from app.models.refresh_log import RefreshLog
 from app.models.email_verification import EmailVerification
+from app.models.saved_file import SavedFile
+from app.models.user_document import UserDocument
+from app.models.document_chunk import DocumentChunk
 
 __all__ = [
     "User",
@@ -26,4 +29,7 @@ __all__ = [
     "CachedAIAnalysis",
     "APIUsageLog",
     "RefreshLog",
+    "SavedFile",
+    "UserDocument",
+    "DocumentChunk",
 ]

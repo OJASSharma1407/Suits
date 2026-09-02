@@ -472,7 +472,7 @@ export default function CaseDashboardPage() {
         </div>
       </div>
 
-      {/* In-Built Document Reader Modal */}
+      {/* In-Built Document Reader Modal with Research Panel & Chat */}
       {readerFilename && (
         <DocumentReaderModal
           isOpen={isReaderOpen}
@@ -485,11 +485,20 @@ export default function CaseDashboardPage() {
           initialMode={readerMode}
           orders={readerOrders}
           allowModeToggle={readerAllowToggle}
+          isChatOpen={isChatOpen}
+          onToggleChat={() => setIsChatOpen(!isChatOpen)}
+          chatMessages={messages}
+          onSendMessage={handleSendMessage}
+          chatLoading={chatLoading}
+          streamingContent={streamingContent}
+          suggestedQuestions={suggestedQuestions}
+          onClearChat={handleClearChat}
+          onExpandChat={handleExpandChat}
         />
       )}
 
-      {/* Floating AI Chat (rendered into document.body at z-[1000] above the fullscreen PDF reader) */}
-      {createPortal(
+      {/* Floating AI Chat (rendered when reader is closed) */}
+      {!isReaderOpen && createPortal(
         <div className="fixed bottom-6 right-6 z-[1000] flex flex-col items-end pointer-events-auto">
           {isChatOpen && (
             <div 

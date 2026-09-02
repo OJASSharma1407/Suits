@@ -401,7 +401,7 @@ export function ReaderResearchPanel({
         )}
       </div>
 
-      {/* Drawer Action Footer (Matching photo exactly: Gold "Save to Files Vault" + Ghost "Export") */}
+      {/* Drawer Action Footer: Gold "Save to Research Vault" + Ghost "Export" */}
       <div
         className="p-3 border-t flex flex-col gap-2 select-none flex-shrink-0"
         style={{
@@ -410,7 +410,7 @@ export function ReaderResearchPanel({
         }}
       >
         <div className="flex items-center gap-2">
-          {/* Save to Files Vault Button */}
+          {/* Save to Research Vault Button */}
           <button
             onClick={onSaveToFiles}
             disabled={isSaving}
@@ -429,12 +429,12 @@ export function ReaderResearchPanel({
             ) : isSaved ? (
               <>
                 <BookmarkCheck size={13} />
-                <span>Saved to Files Vault</span>
+                <span>Saved to Research Vault</span>
               </>
             ) : (
               <>
                 <Bookmark size={13} />
-                <span>Save to Files Vault</span>
+                <span>Save to Research Vault</span>
               </>
             )}
           </button>

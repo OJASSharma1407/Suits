@@ -22,6 +22,24 @@ function BookmarkIcon() {
     </svg>
   );
 }
+function FilesIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+      <path d="M12 11v6M9 14h6" strokeWidth="1.5" />
+    </svg>
+  );
+}
+function ResearchIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <circle cx="11.5" cy="14.5" r="2.5" />
+      <path d="m13.5 16.5 2.5 2.5" />
+    </svg>
+  );
+}
 function HistoryIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -48,6 +66,8 @@ function ScalesIcon() {
 const navItems = [
   { path: "/dashboard",  label: "Workspace",  Icon: WorkspaceIcon },
   { path: "/bookmarks",  label: "Bookmarks",  Icon: BookmarkIcon },
+  { path: "/files",      label: "Files",      Icon: FilesIcon },
+  { path: "/research",   label: "Research",   Icon: ResearchIcon },
   { path: "/analytics",  label: "Analytics",  Icon: AnalyticsIcon },
   { path: "/history",    label: "History",    Icon: HistoryIcon },
 ];

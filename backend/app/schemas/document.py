@@ -32,6 +32,10 @@ class DocumentListItem(BaseModel):
     cnr: Optional[str] = None
     status: DocumentStatus
     summary: Optional[str] = None
+    ai_analysis: Optional[dict] = None
+    notes: Optional[str] = None
+    highlights: Optional[list] = None
+    tags_list: Optional[list] = None
     chunk_count: int
     page_count: int
     created_at: datetime
@@ -41,7 +45,7 @@ class DocumentListItem(BaseModel):
 
 
 class DocumentDetailResponse(BaseModel):
-    """Full document detail including extracted text and chunks."""
+    """Full document detail including extracted text and structured AI analysis."""
     id: uuid.UUID
     original_filename: str
     file_size: int
@@ -52,12 +56,29 @@ class DocumentDetailResponse(BaseModel):
     error_message: Optional[str] = None
     summary: Optional[str] = None
     extracted_text: Optional[str] = None
+    ai_analysis: Optional[dict] = None
+    notes: Optional[str] = None
+    highlights: Optional[list] = None
+    tags_list: Optional[list] = None
     chunk_count: int
     page_count: int
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class DocumentResearchUpdateRequest(BaseModel):
+    """Update research notes, highlights, and tags for a user document."""
+    notes: Optional[str] = None
+    highlights: Optional[list] = None
+    tags_list: Optional[list] = None
+
+
+class DocumentChatRequest(BaseModel):
+    """Chat message query regarding a specific user document."""
+    message: str
+    history: Optional[list[dict]] = None
 
 
 class DocumentStatsResponse(BaseModel):

@@ -56,3 +56,5 @@ class User(Base):
     bookmarks = relationship("Bookmark", back_populates="user", cascade="all, delete-orphan")
     search_history = relationship("SearchHistory", back_populates="user", cascade="all, delete-orphan")
     case_view_history = relationship("CaseViewHistory", back_populates="user", cascade="all, delete-orphan")
+    saved_files = relationship("SavedFile", back_populates="user", cascade="all, delete-orphan")
+    documents = relationship("UserDocument", back_populates="user", cascade="all, delete-orphan")
