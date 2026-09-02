@@ -11,11 +11,12 @@ from app.core.config import settings
 from app.core.exceptions import SuitsBaseException
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics
+from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics, files, documents
 from app.clients.ecourts_client import ecourts_client
 from app.services.cache_service import cache_service
-from app.database.session import engine
+from app.database.session import engine, init_db
 from app.database.base import Base
+from sqlalchemy import text
 
 # Import all models to ensure they are registered with Base.metadata
 import app.models  # noqa: F401
@@ -41,29 +42,30 @@ async def lifespan(app: FastAPI):
     """Application startup and shutdown lifecycle."""
     logger.info("suits_starting", environment=settings.environment)
 
-    # Automatically create database tables if they do not exist
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-        # Clean any stale/failed cache entries so they can be re-fetched cleanly
-        from sqlalchemy import text
-        await conn.execute(
-            text("""
-                DELETE FROM cached_orders
-                WHERE markdown LIKE '*PDF extraction failed%'
-                OR markdown LIKE '*This court order%'
-                OR markdown LIKE '%could not be retrieved%'
-            """)
-        )
-        await conn.execute(
-            text("""
-                DELETE FROM cached_ai_analysis
-                WHERE ai_json LIKE '%"extractionConfidence": 0.0%'
-                AND (
-                    ai_json LIKE '%could not be analyzed%'
-                    OR ai_json LIKE '%unavailable%'
-                )
-            """)
-        )
+    # Automatically create database tables and migrate SQLite schema
+    await init_db()
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(
+                text("""
+                    DELETE FROM cached_orders
+                    WHERE markdown LIKE '*PDF extraction failed%'
+                    OR markdown LIKE '*This court order%'
+                    OR markdown LIKE '%could not be retrieved%'
+                """)
+            )
+            await conn.execute(
+                text("""
+                    DELETE FROM cached_ai_analysis
+                    WHERE ai_json LIKE '%"extractionConfidence": 0.0%'
+                    AND (
+                        ai_json LIKE '%could not be analyzed%'
+                        OR ai_json LIKE '%unavailable%'
+                    )
+                """)
+            )
+    except Exception as exc:
+        logger.warning("startup_cache_cleanup_skipped", error=str(exc))
 
     yield
 
@@ -132,6 +134,8 @@ app.include_router(chat.router, prefix="/api")
 app.include_router(bookmarks.router, prefix="/api")
 app.include_router(history.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
+app.include_router(files.router, prefix="/api")
+app.include_router(documents.router, prefix="/api")
 
 
 @app.get("/api/health")

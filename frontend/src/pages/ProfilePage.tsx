@@ -1,11 +1,13 @@
 import React, { useState } from "react";
-import { User, Mail, Shield, Save, KeyRound, Loader2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { User, Mail, Shield, Save, KeyRound, Loader2, LogOut } from "lucide-react";
 import { useAuthStore } from "@/store/auth-store";
 import { authService } from "@/services/auth";
 import { toast } from "sonner";
 
 export default function ProfilePage() {
-  const { user, setUser } = useAuthStore();
+  const navigate = useNavigate();
+  const { user, setUser, logout } = useAuthStore();
   const [fullName, setFullName] = useState(user?.full_name || "");
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -42,6 +44,12 @@ export default function ProfilePage() {
     } finally {
       setPwdLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    toast.success("Logged out successfully.");
+    navigate("/login");
   };
 
   return (
@@ -201,7 +209,7 @@ export default function ProfilePage() {
               />
             </div>
 
-            <div className="pt-1">
+            <div className="pt-1 flex items-center justify-between gap-4">
               <button
                 type="submit"
                 disabled={pwdLoading || !currentPassword || !newPassword}
@@ -210,6 +218,31 @@ export default function ProfilePage() {
               >
                 {pwdLoading ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
                 <span>Update Password</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleLogout}
+                className="btn flex items-center gap-2 cursor-pointer transition-all duration-150"
+                style={{
+                  padding: "9px 20px",
+                  background: "rgba(239, 68, 68, 0.08)",
+                  color: "var(--danger)",
+                  border: "1px solid rgba(239, 68, 68, 0.25)",
+                  borderRadius: "var(--radius)",
+                  fontWeight: 500,
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(239, 68, 68, 0.16)";
+                  e.currentTarget.style.borderColor = "var(--danger)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(239, 68, 68, 0.08)";
+                  e.currentTarget.style.borderColor = "rgba(239, 68, 68, 0.25)";
+                }}
+              >
+                <LogOut size={16} />
+                <span>Log Out</span>
               </button>
             </div>
           </form>

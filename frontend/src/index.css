@@ -257,23 +257,23 @@ input, button, select, textarea {
   background: var(--bg);
 }
 
-/* Groups logo + nav together at the top */
+/* Groups logo + nav together and allows nav to expand */
 .sidebar-top {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .sidebar {
   width: var(--sidebar-width);
   flex-shrink: 0;
   background: var(--sidebar-solid-bg);
   border-right: none;
-  /* Tighter horizontal padding so pills stretch wider */
-  padding: 24px 10px;
+  padding: 20px 10px;
   display: flex;
   flex-direction: column;
-  /* Equal space between wordmark / nav / profile */
-  justify-content: space-between;
+  gap: 12px;
   height: 100vh;
   overflow: hidden;
   position: relative;
@@ -330,12 +330,13 @@ input, button, select, textarea {
   white-space: nowrap;
 }
 
-/* Glass nav container card */
+/* Glass nav container card - expands to fill panel height */
 .sidebar-nav {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  flex: 0 0 auto;
+  gap: 6px;
+  flex: 1 1 auto;
+  min-height: 0;
   background: var(--lg-panel-bg);
   backdrop-filter: blur(var(--lg-blur-sm));
   -webkit-backdrop-filter: blur(var(--lg-blur-sm));
@@ -345,12 +346,17 @@ input, button, select, textarea {
   padding: 8px;
   position: relative;
   transition: border-color 300ms ease, box-shadow 300ms ease;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+.sidebar-nav::-webkit-scrollbar {
+  display: none;
 }
 
 .nav-item {
   display: flex;
   align-items: center;
-  gap: 14px;
+  position: relative;
   padding: 12px 18px;
   border-radius: 20px;
   font-size: 15.5px;
@@ -359,56 +365,49 @@ input, button, select, textarea {
   cursor: pointer;
   border: 1px solid transparent;
   text-decoration: none;
-  position: relative;
-  overflow: hidden;
-  transition: all 260ms cubic-bezier(0.25, 1, 0.5, 1);
   white-space: nowrap;
+  transition: color 200ms ease;
+  user-select: none;
+}
+
+.nav-item-active-pill {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px;
+  background: var(--lg-active-bg);
+  border: 1px solid var(--lg-border);
+  box-shadow: var(--lg-highlight-active);
+  z-index: 1;
+  pointer-events: none;
+}
+
+.nav-item-inner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  position: relative;
+  z-index: 2;
+  width: 100%;
 }
 .nav-item svg {
   width: 18px;
   height: 18px;
   opacity: 0.85;
   flex-shrink: 0;
+  transition: color 200ms ease, opacity 200ms ease;
 }
-.nav-item::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: radial-gradient(circle at 30% 0%, rgba(255, 255, 255, 0.12), transparent 70%);
-  opacity: 0;
-  transition: opacity 300ms ease;
-  pointer-events: none;
-}
-.nav-item:hover {
+.nav-item:hover:not(.active) {
   color: var(--ink);
   background: var(--lg-pill-bg);
   border-color: var(--lg-border-subtle);
-  transform: translateY(-1px);
   text-decoration: none;
 }
 .nav-item:hover svg {
   opacity: 1;
 }
-.nav-item:hover::after {
-  opacity: 1;
-}
-.nav-item:active {
-  transform: scale(0.98);
-}
 .nav-item.active {
   color: var(--ink);
-  background: var(--lg-active-bg);
-  border-color: var(--lg-border);
-  box-shadow: var(--lg-highlight-active);
   font-weight: 550;
-}
-.nav-item.active svg {
-  opacity: 1;
-  color: var(--brass);
-}
-.nav-item.active::after {
-  opacity: 0.6;
 }
 .nav-item.active svg {
   opacity: 1;
