@@ -142,6 +142,10 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
     const [scale, setScale] = useState<number>(initialScale);
     const [loading, setLoading] = useState<boolean>(true);
     const [error, setError] = useState<string | null>(null);
+    // Increments whenever any page finishes rendering, forcing the loading
+    // overlay to re-evaluate (renderedPages is a ref, not state, so without
+    // this the white spinner overlay would never disappear on its own)
+    const [renderVersion, setRenderVersion] = useState<number>(0);
 
     // Standard page aspect ratio (width / height)
     const [pageAspect, setPageAspect] = useState<number>(0.707);
@@ -153,6 +157,8 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
     const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
     const renderedPages = useRef<Set<number>>(new Set());
     const renderingPages = useRef<Set<number>>(new Set());
+    // Tracks live intersection ratio per page so we always pick the most-visible page
+    const intersectionRatios = useRef<Map<number, number>>(new Map());
 
     // Selection & Floating Highlighter State
     const [selectionPopup, setSelectionPopup] = useState<{
@@ -280,7 +286,7 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
               span.style.top = `${tx[5] - fontHeight}px`;
               span.style.fontSize = `${fontHeight}px`;
               span.style.fontFamily = item.fontName || "sans-serif";
-              span.style.color = "transparent";
+              span.style.color = "rgba(0, 0, 0, 0.004)"; // near-invisible but not transparent — keeps cursor visible
               span.style.lineHeight = "1";
               span.style.whiteSpace = "pre";
               span.style.cursor = "text";
@@ -290,6 +296,10 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
           }
 
           renderedPages.current.add(pageNumber);
+          // Trigger a re-render so the loading placeholder is removed.
+          // renderedPages is a ref, not state — without this setState the
+          // white overlay would stay visible even after the canvas is painted.
+          setRenderVersion((v) => v + 1);
         } catch (err: any) {
           if (err?.name !== "RenderingCancelledException") {
             console.warn(`Error rendering page ${pageNumber}:`, err);
@@ -306,30 +316,77 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
       if (!pdfDoc || numPages === 0 || !containerRef.current) return;
 
       renderedPages.current.clear();
+      renderingPages.current.clear();
+      intersectionRatios.current.clear();
 
       const observer = new IntersectionObserver(
         (entries) => {
+          // Update the ratio map for every changed entry (both entering and leaving)
           entries.forEach((entry) => {
             const pageNum = Number(entry.target.getAttribute("data-page-number"));
             if (entry.isIntersecting) {
+              intersectionRatios.current.set(pageNum, entry.intersectionRatio);
+              // Trigger canvas render for pages that just came into view
               if (!renderedPages.current.has(pageNum)) {
                 renderPageCanvas(pageNum);
               }
-              if (entry.intersectionRatio > 0.45) {
-                setCurrentPage(pageNum);
-              }
+            } else {
+              intersectionRatios.current.delete(pageNum);
             }
           });
+
+          // Pick the single page with the highest visible ratio to avoid
+          // the "last entry wins" race that caused the wrong page counter
+          let bestPage = 0;
+          let bestRatio = 0;
+          intersectionRatios.current.forEach((ratio, pageNum) => {
+            if (ratio > bestRatio) {
+              bestRatio = ratio;
+              bestPage = pageNum;
+            }
+          });
+          if (bestPage > 0) {
+            setCurrentPage(bestPage);
+          }
         },
         {
           root: containerRef.current,
           rootMargin: "400px 0px",
-          threshold: [0.1, 0.5],
+          // Fine-grained thresholds give the ratio map better accuracy
+          threshold: [0, 0.1, 0.25, 0.5, 0.75, 1.0],
         }
       );
 
       pageContainerRefs.current.forEach((el) => {
         if (el) observer.observe(el);
+      });
+
+      // IntersectionObserver fires asynchronously and does NOT call back
+      // immediately for elements already in the viewport on mount.
+      // This bootstrap pass manually renders already-visible pages so the
+      // spinner never gets stuck on the initial open.
+      requestAnimationFrame(() => {
+        if (!containerRef.current) return;
+        const containerRect = containerRef.current.getBoundingClientRect();
+        // Expand the check by 400px to match rootMargin
+        const expandedTop = containerRect.top - 400;
+        const expandedBottom = containerRect.bottom + 400;
+
+        pageContainerRefs.current.forEach((el, pageNum) => {
+          if (!el) return;
+          const elRect = el.getBoundingClientRect();
+          const isInExpandedView =
+            elRect.bottom > expandedTop && elRect.top < expandedBottom;
+          if (isInExpandedView && !renderedPages.current.has(pageNum)) {
+            renderPageCanvas(pageNum);
+          }
+        });
+
+        // Always ensure page 1 is rendered first, even before the container
+        // rect math resolves (handles edge cases with late-mounted containers)
+        if (!renderedPages.current.has(1)) {
+          renderPageCanvas(1);
+        }
       });
 
       return () => observer.disconnect();
@@ -760,7 +817,7 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
                           if (el) textLayerRefs.current.set(pageNum, el);
                           else textLayerRefs.current.delete(pageNum);
                         }}
-                        className="absolute inset-0 overflow-hidden select-text pointer-events-auto leading-none text-transparent"
+                        className="pdf-text-layer absolute inset-0 overflow-hidden select-text pointer-events-auto leading-none"
                         style={{
                           width: `${basePageWidth}px`,
                           height: `${basePageHeight}px`,
@@ -792,7 +849,7 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
                       ))}
 
                       {/* Subtle placeholder while canvas renders */}
-                      {!renderedPages.current.has(pageNum) && (
+                      {!renderedPages.current.has(pageNum) && renderVersion >= 0 && (
                         <div className="absolute inset-0 flex flex-col items-center justify-center bg-white gap-2">
                           <Loader2 size={22} className="animate-spin opacity-30 text-neutral-600" />
                           <span className="text-[10px] font-mono text-neutral-400">Loading Page {pageNum}…</span>

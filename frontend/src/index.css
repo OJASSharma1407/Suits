@@ -322,12 +322,13 @@ input, button, select, textarea {
   flex-shrink: 0;
 }
 .wordmark .mark {
-  font-family: var(--font-display);
-  font-size: 26px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-family: var(--font-sans);
+  font-size: 18px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
   color: var(--ink);
   white-space: nowrap;
+  text-transform: uppercase;
 }
 
 /* Glass nav container card - expands to fill panel height */
@@ -1099,3 +1100,17 @@ input, button, select, textarea {
 
 .no-scrollbar { scrollbar-width: none; }
 .no-scrollbar::-webkit-scrollbar { display: none; }
+
+/* ── PDF Text Layer: Override native browser selection highlight ─────────────
+   The text layer spans are color:transparent (invisible) but the browser still
+   paints its default blue/gray ::selection box behind them. In light mode this
+   creates a large misaligned gray block that looks broken. We replace it with a
+   subtle amber tint that blends with the white PDF paper background. */
+.pdf-text-layer span::selection {
+  background: rgba(245, 158, 11, 0.25);
+  color: rgba(0, 0, 0, 0.004);
+}
+.pdf-text-layer span::-moz-selection {
+  background: rgba(245, 158, 11, 0.25);
+  color: rgba(0, 0, 0, 0.004);
+}

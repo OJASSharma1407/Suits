@@ -86,7 +86,7 @@ export default function Sidebar() {
       <div className="sidebar-top">
         <div className="wordmark">
           <ScalesIcon />
-          <span className="mark">Suits</span>
+          <span className="mark">SUITS.</span>
         </div>
 
         {/* Nav */}

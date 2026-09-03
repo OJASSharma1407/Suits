@@ -39,16 +39,26 @@ export default function Navbar() {
 
         <Link
           to="/dashboard"
-          className="font-semibold text-lg tracking-tight flex items-center gap-2.5"
-          style={{ color: "var(--text-primary)" }}
+          className="flex items-center gap-2"
+          style={{ color: "var(--ink)", textDecoration: "none" }}
         >
-          <div
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold"
-            style={{ background: "var(--primary)", color: "var(--on-primary)" }}
+          {/* Inline scales icon matching sidebar */}
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7"
+            style={{ width: 18, height: 18, color: "var(--brass)", flexShrink: 0 }}>
+            <path d="M12 3v18M5 7l-3 6a3.5 3.5 0 007 0l-3-6zM19 7l-3 6a3.5 3.5 0 007 0l-3-6zM5 7h14M8 21h8" />
+          </svg>
+          <span
+            style={{
+              fontFamily: "var(--font-sans)",
+              fontSize: "16px",
+              fontWeight: 800,
+              letterSpacing: "0.08em",
+              textTransform: "uppercase",
+              color: "var(--ink)",
+            }}
           >
-            S
-          </div>
-          SUITS
+            SUITS.
+          </span>
         </Link>
       </div>
 
