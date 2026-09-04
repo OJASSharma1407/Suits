@@ -376,6 +376,7 @@ export function DocumentReaderModal({
       id: `msg_${Date.now()}`,
       role: "user",
       message: text,
+      created_at: new Date().toISOString(),
       timestamp: new Date().toISOString(),
     };
     setInternalMessages((prev) => [...prev, userMsg]);
@@ -402,6 +403,7 @@ export function DocumentReaderModal({
               id: `msg_ai_${Date.now()}`,
               role: "assistant",
               message: full,
+              created_at: new Date().toISOString(),
               timestamp: new Date().toISOString(),
             };
             setInternalMessages((prev) => [...prev, aiMsg]);

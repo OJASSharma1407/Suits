@@ -135,14 +135,14 @@ export function AISummaryCard({
       summary && `## 2. KEY FACTS (EXTRACTED FROM RECORD)\n${summary}`,
       plainLanguage && `**Plain Language Explanation:**\n${plainLanguage}`,
       "",
-      issues.length > 0 && `## 3. LEGAL ISSUES IDENTIFIED\n${issues.map((iss, i) => `${i + 1}. ${iss}`).join("\n")}`,
-      petArguments.length > 0 && `**Petitioner Arguments:**\n${petArguments.map((a) => `- ${a}`).join("\n")}`,
-      respArguments.length > 0 && `**Respondent Arguments:**\n${respArguments.map((a) => `- ${a}`).join("\n")}`,
+      issues.length > 0 && `## 3. LEGAL ISSUES IDENTIFIED\n${issues.map((iss: string, i: number) => `${i + 1}. ${iss}`).join("\n")}`,
+      petArguments.length > 0 && `**Petitioner Arguments:**\n${petArguments.map((a: string) => `- ${a}`).join("\n")}`,
+      respArguments.length > 0 && `**Respondent Arguments:**\n${respArguments.map((a: string) => `- ${a}`).join("\n")}`,
       "",
       ratioDecidendi && `## 4. RATIO DECIDENDI (BINDING LEGAL PRINCIPLE)\n> "${ratioDecidendi}"`,
       reasoning && `\n**Court Reasoning:**\n${reasoning}`,
       "",
-      directions.length > 0 && `## 5. BENCH DIRECTIONS & OPERATIVE ORDERS\n${directions.map((d, i) => `${i + 1}. ${d}`).join("\n")}`,
+      directions.length > 0 && `## 5. BENCH DIRECTIONS & OPERATIVE ORDERS\n${directions.map((d: string, i: number) => `${i + 1}. ${d}`).join("\n")}`,
       statutesCited.length > 0 && `**Statutes Cited:** ${statutesCited.join(", ")}`,
       caseLaws.length > 0 && `**Precedents Referenced:** ${caseLaws.join(", ")}`,
     ]
@@ -513,7 +513,7 @@ export function AISummaryCard({
                 </h5>
                 <div className="flex flex-wrap gap-2 pt-1">
                   {statutesCited.length > 0 ? (
-                    statutesCited.map((st, i) => (
+                    statutesCited.map((st: string, i: number) => (
                       <span
                         key={i}
                         className="text-[11.5px] font-mono px-2.5 py-1 rounded font-medium"
@@ -545,7 +545,7 @@ export function AISummaryCard({
 
           {issues.length > 0 ? (
             <div className="grid grid-cols-1 gap-3">
-              {issues.map((issue, i) => (
+              {issues.map((issue: string, i: number) => (
                 <div
                   key={i}
                   className="card-float p-5 flex items-start gap-3.5 text-sm"
@@ -577,7 +577,7 @@ export function AISummaryCard({
                     Petitioners' Submissions
                   </h5>
                   <ul className="list-disc list-inside text-xs space-y-2" style={{ color: "var(--ink-dim)" }}>
-                    {petArguments.map((arg, i) => (
+                    {petArguments.map((arg: string, i: number) => (
                       <li key={i}>{arg}</li>
                     ))}
                   </ul>
@@ -590,7 +590,7 @@ export function AISummaryCard({
                     Respondents' Submissions
                   </h5>
                   <ul className="list-disc list-inside text-xs space-y-2" style={{ color: "var(--ink-dim)" }}>
-                    {respArguments.map((arg, i) => (
+                    {respArguments.map((arg: string, i: number) => (
                       <li key={i}>{arg}</li>
                     ))}
                   </ul>
@@ -647,7 +647,7 @@ export function AISummaryCard({
                 Bench Directions / Operative Orders ({directions.length})
               </h5>
               <div className="grid grid-cols-1 gap-2">
-                {directions.map((dir, i) => (
+                {directions.map((dir: string, i: number) => (
                   <div
                     key={i}
                     className="card-float p-4 flex items-start gap-2.5 text-sm"

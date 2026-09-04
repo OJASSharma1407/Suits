@@ -106,7 +106,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             yield session
             await session.commit()
         except Exception:
-            await session.rollback()
+            # Always rollback — including when the transaction is already in a
+            # PendingRollbackError state due to a previous flush failure (e.g.
+            # FK constraint on messages.conversation_id).
+            try:
+                await session.rollback()
+            except Exception:
+                pass
             raise
         finally:
             await session.close()

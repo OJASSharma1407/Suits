@@ -9,6 +9,7 @@ import type {
   DocumentFilters,
   DocumentTag,
 } from "@/types/document";
+import type { OrderAI } from "@/types/case";
 
 export const documentService = {
   /** Upload a document with optional CNR and tag. Returns progress callback. */

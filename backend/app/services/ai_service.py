@@ -171,6 +171,11 @@ class AIService:
             )
 
             # Persist user message immediately so it appears in history
+            # Verify conversation still exists before inserting to avoid FK failure
+            verify = await self.conversation_repo.get_by_id(conversation_id)
+            if not verify:
+                from app.core.exceptions import NotFoundError
+                raise NotFoundError("Conversation")
             user_msg = Message(
                 conversation_id=conversation_id,
                 role=MessageRole.USER,

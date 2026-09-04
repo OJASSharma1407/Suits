@@ -45,7 +45,7 @@ export function ChatInput({
   };
 
   return (
-    <div className="w-full">
+    <div className="w-full relative">
       <form
         onSubmit={handleSubmit}
         className="relative flex items-center gap-2 p-1.5 sm:p-2 rounded-2xl border transition-all duration-200 focus-within:ring-2 focus-within:ring-[var(--brass-soft)] focus-within:border-[var(--brass)]"
@@ -78,7 +78,7 @@ export function ChatInput({
           onChange={(e) => setText(e.target.value)}
           onKeyDown={handleKeyDown}
           disabled={disabled}
-          placeholder="Ask a legal question, analyze citations, or request ratio..."
+          placeholder="Ask a legal question, analyze citations, or dictate pleadings (Hold Alt to speak)..."
           className="flex-1 max-h-[160px] min-h-[38px] py-2 px-1.5 text-xs sm:text-[13.5px] resize-none outline-none bg-transparent leading-relaxed"
           style={{ color: "var(--ink)" }}
           rows={1}
@@ -88,7 +88,7 @@ export function ChatInput({
         <button
           type="submit"
           disabled={!text.trim() || disabled}
-          className="w-9 h-9 rounded-xl flex-shrink-0 transition-all disabled:opacity-35 cursor-pointer flex items-center justify-center self-end"
+          className="w-9 h-9 rounded-xl flex-shrink-0 transition-all disabled:opacity-35 cursor-pointer flex items-center justify-center self-end active:scale-95"
           style={{ background: "var(--brass)", color: "#FFFFFF" }}
           title="Send"
         >

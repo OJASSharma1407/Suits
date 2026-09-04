@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import Sidebar from "./Sidebar";
 import { TopSearchBar } from "./TopSearchBar";
 import { CommandPalette } from "@/components/common/CommandPalette";
+import { GlobalVoiceDictation } from "@/components/chat/GlobalVoiceDictation";
 import { useThemeStore } from "@/store/theme-store";
 import { Toaster } from "sonner";
 
@@ -35,6 +36,7 @@ export default function AppLayout() {
       </div>
 
       <CommandPalette />
+      <GlobalVoiceDictation />
 
       <Toaster
         position="top-right"
