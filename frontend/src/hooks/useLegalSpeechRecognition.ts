@@ -31,6 +31,7 @@ export function useLegalSpeechRecognition({
   const animFrameRef = useRef<number | null>(null);
   const isExplicitStopRef = useRef<boolean>(false);
   const interimTextRef = useRef<string>("");
+  const committedRef = useRef<boolean>(false);
 
   // Keep interimTextRef synced
   useEffect(() => {
@@ -126,6 +127,7 @@ export function useLegalSpeechRecognition({
       if (corrections.length > 0) {
         setRecentCorrections((prev) => [...prev, ...corrections]);
       }
+      committedRef.current = true;
       onFinalTranscript(correctedText, corrections);
       interimTextRef.current = "";
     }
@@ -167,6 +169,7 @@ export function useLegalSpeechRecognition({
     setRecentCorrections([]);
     isExplicitStopRef.current = false;
     interimTextRef.current = "";
+    committedRef.current = false;
 
     // Play Siri activation chime
     if (enableChime) {
@@ -200,6 +203,13 @@ export function useLegalSpeechRecognition({
         const rawTranscript = result[0]?.transcript || "";
 
         if (result.isFinal) {
+          // If stopListening already committed the interim text, skip this
+          // browser-fired final event to prevent double submission.
+          if (committedRef.current) {
+            committedRef.current = false;
+            interimTextRef.current = "";
+            continue;
+          }
           // Process final transcript through Indian Legal Vocabulary Auto-Correction
           const { correctedText, corrections } = correctLegalSpeech(rawTranscript);
           if (corrections.length > 0) {

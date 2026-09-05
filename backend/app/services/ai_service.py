@@ -42,6 +42,10 @@ class AIService:
         messages = await self.conversation_repo.get_messages(conversation_id, limit=20)
         history = [{"role": m.role.value, "message": m.message} for m in messages]
 
+        # For general (non-case) conversations, skip case/order context loading
+        if not cnr or cnr.upper() == "GENERAL":
+            return cnr, None, history, ""
+
         case_context = ""
         cached_case = await cache_service.get(f"case:{cnr}")
         if cached_case:
@@ -96,8 +100,11 @@ class AIService:
         )
         await self.conversation_repo.add_message(user_msg)
 
+        # Determine if this is a general legal inquiry (no case context)
+        is_general = not cnr or cnr.upper() == "GENERAL"
+
         # RAG Precedent Search via Indian Kanoon API
-        sources = [f"Indian Kanoon Record: {cnr}"]
+        sources = [] if is_general else [f"Indian Kanoon Record: {cnr}"]
         try:
             from app.clients.kanoon_client import kanoon_client
             kanoon_results = await kanoon_client.search_docs(query=user_message.strip(), pagenum=1)
@@ -123,7 +130,7 @@ class AIService:
                 system_prompt=MASTER_SYSTEM_PROMPT,
                 conversation_history=history,
                 user_message=user_message,
-                case_context=case_context or "No case context available.",
+                case_context=case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available."),
                 order_context=order_context,
             )
             if not ai_response or not ai_response.strip():
@@ -134,7 +141,7 @@ class AIService:
                 system_prompt=MASTER_SYSTEM_PROMPT,
                 conversation_history=history,
                 user_message=user_message,
-                case_context=case_context or "No case context available.",
+                case_context=case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available."),
                 order_context=order_context,
             )
 
@@ -183,6 +190,10 @@ class AIService:
             )
             await self.conversation_repo.add_message(user_msg)
 
+            # Determine if this is a general legal inquiry
+            is_general = not cnr or cnr.upper() == "GENERAL"
+            effective_context = case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available.")
+
             # Stream tokens via OpenRouter (gpt-oss-120b) with Gemini fallback
             full_response: list[str] = []
             try:
@@ -190,7 +201,7 @@ class AIService:
                     system_prompt=MASTER_SYSTEM_PROMPT,
                     conversation_history=history,
                     user_message=user_message,
-                    case_context=case_context or "No case context available.",
+                    case_context=effective_context,
                     order_context=order_context,
                 ):
                     if token:
@@ -205,7 +216,7 @@ class AIService:
                     system_prompt=MASTER_SYSTEM_PROMPT,
                     conversation_history=history,
                     user_message=user_message,
-                    case_context=case_context or "No case context available.",
+                    case_context=effective_context,
                     order_context=order_context,
                 ):
                     if token:

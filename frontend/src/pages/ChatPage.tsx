@@ -20,6 +20,7 @@ export default function ChatPage() {
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>([]);
   const streamAbortRef = useRef<AbortController | null>(null);
   const lastProcessedPromptRef = useRef<string | null>(null);
+  const conversationsRef = useRef<Conversation[]>([]);
 
   const { pendingFullScreenPrompt, setPendingFullScreenPrompt } = useDictationStore();
 
@@ -28,6 +29,7 @@ export default function ChatPage() {
       const data = await chatService.getConversations();
       const list = data || [];
       setConversations(list);
+      conversationsRef.current = list;
 
       // Validate urlConversationId against actual database conversations
       if (urlConversationId) {
@@ -115,10 +117,14 @@ export default function ChatPage() {
       let targetId = forceNew ? undefined : activeId;
 
       // Verify targetId actually exists in our valid conversations list
-      if (!targetId || !conversations.some((c) => c.id === targetId)) {
+      if (!targetId || !conversationsRef.current.some((c) => c.id === targetId)) {
         try {
           const newConv = await chatService.createConversation("GENERAL", "General Legal Research");
-          setConversations((prev) => [newConv, ...prev.filter((c) => c.id !== newConv.id)]);
+          setConversations((prev) => {
+            const updated = [newConv, ...prev.filter((c) => c.id !== newConv.id)];
+            conversationsRef.current = updated;
+            return updated;
+          });
           targetId = newConv.id;
           setActiveId(targetId);
           navigate(`/chat/${targetId}`, { replace: true });
@@ -210,7 +216,7 @@ export default function ChatPage() {
       );
       streamAbortRef.current = controller;
     },
-    [activeId, conversations, navigate]
+    [activeId, navigate]
   );
 
   // Handle incoming voice dictation query (both on initial navigation and while on page)
