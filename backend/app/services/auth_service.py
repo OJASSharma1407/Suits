@@ -223,6 +223,7 @@ class AuthService:
                 credential_jwt,
                 google_requests.Request(),
                 audience=client_id,
+                clock_skew_in_seconds=60,
             )
         except Exception as e:
             logger.warning("google_token_verification_failed", error=str(e))
