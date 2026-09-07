@@ -309,9 +309,32 @@ async def download_document(document_id: uuid.UUID, user: CurrentUser, db: DbSes
         raise HTTPException(status_code=404, detail="Document not found.")
     if doc.user_id != user.id:
         raise HTTPException(status_code=403, detail="Access denied.")
-    file_path = Path(doc.file_path)
-    if not file_path.exists():
-        raise HTTPException(status_code=404, detail="File not found on disk.")
+
+    # Resolve the stored path — may be an old relative path or a new absolute path.
+    # Try as stored first, then resolve relative to the backend root.
+    stored = Path(doc.file_path)
+    from app.services.document_processor import _BACKEND_ROOT
+    candidates = [
+        stored,                           # absolute or already-correct relative
+        _BACKEND_ROOT / stored,           # legacy relative path stored without leading root
+        Path.cwd() / stored,              # fallback: relative to current CWD
+    ]
+    file_path = next((p for p in candidates if p.exists()), None)
+
+    if file_path is None:
+        logger.warning(
+            "document_file_missing_on_disk",
+            document_id=str(document_id),
+            stored_path=doc.file_path,
+        )
+        raise HTTPException(
+            status_code=410,
+            detail=(
+                "The original file for this document no longer exists on disk. "
+                "The database record is intact. Please re-upload the document."
+            ),
+        )
+
     return FileResponse(
         path=str(file_path),
         filename=doc.original_filename,

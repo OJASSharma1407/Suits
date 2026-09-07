@@ -1,22 +1,16 @@
 import React, { useEffect, useState } from "react";
 import {
-  BarChart3,
   TrendingUp,
   Activity,
   Scale,
-  BookOpen,
   Flame,
   RotateCw,
-  Sparkles,
-  Calendar,
   Landmark,
 } from "lucide-react";
 import { MetricCard } from "@/components/common/MetricCard";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
-import { ResearchHeatmap } from "@/components/analytics/ResearchHeatmap";
 import { TopCitedActsCard } from "@/components/analytics/TopCitedActsCard";
 import { CourtDistributionCard } from "@/components/analytics/CourtDistributionCard";
-import { AnalyticsChart } from "@/components/analytics/AnalyticsChart";
 import { analyticsService } from "@/services/analytics";
 import type { PracticeInsightsData } from "@/types/analytics";
 
@@ -54,14 +48,6 @@ export default function AnalyticsPage() {
     );
   }
 
-  const weeklyTrendData = (data?.activity_trends.weekly_trends || []).map((w) => ({
-    name: w.period_label,
-    Searches: w.searches,
-    "AI Queries": w.ai_queries,
-    "Case Reads": w.case_views,
-    value: w.total_actions,
-  }));
-
   return (
     <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36, paddingBottom: 48 }}>
       {/* ── Page Header ────────────────────────────────────────── */}
@@ -74,7 +60,7 @@ export default function AnalyticsPage() {
             Practice Intelligence & Telemetry
           </h1>
           <p className="text-xs mt-1" style={{ color: "var(--ink-faint)" }}>
-            Real-time statutory frequency, forum distribution, and longitudinal research cadence
+            Real-time statutory frequency and forum distribution telemetry
           </p>
         </div>
 
@@ -131,36 +117,8 @@ export default function AnalyticsPage() {
         />
       </div>
 
-      {/* ── Section 1: Research Activity Trends & Heatmap ─────── */}
-      <div className="flex items-center gap-2" style={{ marginTop: 44, marginBottom: 20 }}>
-        <Calendar size={16} style={{ color: "var(--brass)" }} />
-        <h2
-          className="text-[12px] font-semibold uppercase tracking-widest"
-          style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
-        >
-          Research Cadence & Velocity
-        </h2>
-        <div className="flex-1 h-px" style={{ background: "var(--hairline)" }} />
-      </div>
-
-      <div className="grid grid-cols-1 gap-6">
-        {data && <ResearchHeatmap telemetry={data.activity_trends} />}
-      </div>
-
-      {/* Optional Weekly Velocity Trend Area Chart */}
-      {weeklyTrendData.length > 0 && weeklyTrendData.some((w) => w.value > 0) && (
-        <div className="mt-6">
-          <AnalyticsChart
-            type="area"
-            data={weeklyTrendData}
-            title="Weekly Research Velocity (12-Week Trajectory)"
-            subtitle="Combined weekly volume of search inquiries, AI legal interactions, and judgment readings"
-          />
-        </div>
-      )}
-
-      {/* ── Section 2: Legal Practice Focus & Forum Telemetry ─── */}
-      <div className="flex items-center gap-2" style={{ marginTop: 44, marginBottom: 20 }}>
+      {/* ── Legal Practice Focus & Forum Telemetry ─────────────── */}
+      <div className="flex items-center gap-2" style={{ marginTop: 36, marginBottom: 20 }}>
         <Landmark size={16} style={{ color: "var(--brass)" }} />
         <h2
           className="text-[12px] font-semibold uppercase tracking-widest"

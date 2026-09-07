@@ -73,7 +73,17 @@ export const documentService = {
   getArrayBuffer: async (documentId: string): Promise<ArrayBuffer> => {
     const res = await api.get(`/documents/${documentId}/arraybuffer`, {
       responseType: "arraybuffer",
+      validateStatus: (status) => status < 500,
     });
+    if (res.status === 410) {
+      // File missing on disk — surface a user-friendly error
+      throw new Error(
+        "The original file for this document no longer exists on disk. Please re-upload the document."
+      );
+    }
+    if (res.status !== 200) {
+      throw new Error(`Failed to fetch document (HTTP ${res.status})`);
+    }
     return res.data as ArrayBuffer;
   },
 

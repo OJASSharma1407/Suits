@@ -21,10 +21,12 @@ const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
 const SettingsPage = lazy(() => import("@/pages/SettingsPage"));
 const NotFoundPage = lazy(() => import("@/pages/NotFoundPage"));
 
+import { SuitsLoader } from "@/components/common/SuitsLoader";
+
 function PageLoader() {
   return (
-    <div className="flex items-center justify-center min-h-screen">
-      <div className="w-8 h-8 border-2 border-[var(--accent)] border-t-transparent rounded-full animate-spin" />
+    <div className="flex items-center justify-center min-h-[60vh]">
+      <SuitsLoader size={50} label="Loading…" />
     </div>
   );
 }

@@ -17,8 +17,10 @@ from app.services.embedding_service import embedding_service
 
 logger = structlog.get_logger()
 
-# Upload directory
-UPLOAD_DIR = Path("data/uploads")
+# Upload directory — anchored to the backend root (parent of the `app` package)
+# so stored absolute paths resolve correctly regardless of the process CWD.
+_BACKEND_ROOT = Path(__file__).resolve().parent.parent.parent  # …/Suits/backend
+UPLOAD_DIR = _BACKEND_ROOT / "data" / "uploads"
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Supported MIME types and their extensions

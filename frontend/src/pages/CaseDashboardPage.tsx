@@ -11,6 +11,7 @@ import { AISummaryCard } from "@/components/case/AISummaryCard";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
 import { CitationNetworkView } from "@/components/case/citation/CitationNetworkView";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { SuitsLoader } from "@/components/common/SuitsLoader";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { ErrorState } from "@/components/common/ErrorState";
 
@@ -396,9 +397,23 @@ export default function CaseDashboardPage() {
 
   if (loading) {
     return (
-      <div className="space-y-4 max-w-5xl mx-auto">
-        <SkeletonLoader count={1} height="180px" />
-        <SkeletonLoader count={3} height="80px" />
+      <div
+        className="flex flex-col items-center justify-center py-24 my-6 rounded-2xl border transition-all max-w-5xl mx-auto"
+        style={{
+          background: "var(--surface)",
+          borderColor: "var(--hairline)",
+          minHeight: "420px",
+        }}
+      >
+        <SuitsLoader
+          size={52}
+          label="Opening Case Dossier…"
+          sublabel={
+            cnr
+              ? `Retrieving judicial proceedings, parties, and court orders for ${cnr}`
+              : "Fetching verified court records and orders"
+          }
+        />
       </div>
     );
   }

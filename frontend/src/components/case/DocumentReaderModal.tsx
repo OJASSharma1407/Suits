@@ -28,6 +28,7 @@ import { ReaderResearchPanel } from "./reader/ReaderResearchPanel";
 import { AISummaryCard } from "./AISummaryCard";
 import { ResearchBriefModal } from "../files/ResearchBriefModal";
 import { ChatPanel } from "@/components/chat/ChatPanel";
+import { SuitsLoader } from "@/components/common/SuitsLoader";
 import type { OrderItem, OrderAI } from "@/types/case";
 import type { PDFHighlight } from "@/types/file";
 import type { ChatMessage } from "@/types/chat";
@@ -239,10 +240,19 @@ export function DocumentReaderModal({
       }
       pdfBufferCache.set(cacheKey, buffer.slice(0));
       setPdfData(buffer.slice(0));
-    } catch {
-      setPdfError("Original document PDF is unavailable for this record.");
-      setMode("text");
-      toast.info("Showing clean digital transcript.");
+    } catch (err: any) {
+      const msg: string =
+        err?.message ||
+        "Original document PDF is unavailable for this record.";
+      const isFileMissing = msg.toLowerCase().includes("no longer exists");
+      setPdfError(msg);
+      if (!isFileMissing) {
+        // Only auto-switch to text mode if there's a chance text exists
+        setMode("text");
+        toast.info("Showing clean digital transcript.");
+      } else {
+        toast.error("Document file is missing. Please re-upload.");
+      }
     } finally {
       setPdfLoading(false);
     }
@@ -730,11 +740,12 @@ export function DocumentReaderModal({
           {mode === "pdf" && (
             <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden">
               {pdfLoading && !pdfData ? (
-                <div className="flex flex-col items-center gap-3">
-                  <Loader2 size={32} className="animate-spin" style={{ color: "var(--primary)" }} />
-                  <p className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
-                    Loading document PDF…
-                  </p>
+                <div className="flex flex-col items-center justify-center h-full">
+                  <SuitsLoader
+                    size={46}
+                    label="Loading document PDF…"
+                    sublabel="Fetching verified court record copy"
+                  />
                 </div>
               ) : pdfError ? (
                 <div className="text-center max-w-md p-6 card-float space-y-4">
@@ -789,11 +800,12 @@ export function DocumentReaderModal({
               {/* Clean text article centered */}
               <div className="flex-1 h-full overflow-y-auto p-6 sm:p-12 md:p-16 flex justify-center selection:bg-[var(--brass-soft)] min-w-0">
                 {textLoading ? (
-                  <div className="flex flex-col items-center justify-center h-full gap-3">
-                    <Loader2 size={32} className="animate-spin" style={{ color: "var(--primary)" }} />
-                    <p className="text-sm font-medium" style={{ color: "var(--text-muted)" }}>
-                      Formatting digital text…
-                    </p>
+                  <div className="flex flex-col items-center justify-center h-full">
+                    <SuitsLoader
+                      size={46}
+                      label="Formatting digital transcript…"
+                      sublabel="Converting judgment text"
+                    />
                   </div>
                 ) : textError ? (
                   <div className="flex flex-col items-center justify-center h-full text-center max-w-md space-y-3">
@@ -872,11 +884,12 @@ export function DocumentReaderModal({
             <div className="w-full h-full flex overflow-y-auto p-4 sm:p-8 justify-center">
               <div className="w-full max-w-5xl">
                 {aiLoading ? (
-                  <div className="flex flex-col items-center justify-center py-24 gap-3">
-                    <Loader2 size={36} className="animate-spin" style={{ color: "var(--brass)" }} />
-                    <p className="text-sm font-medium" style={{ color: "var(--ink-faint)" }}>
-                      Synthesizing structured legal breakdown…
-                    </p>
+                  <div className="flex flex-col items-center justify-center py-24">
+                    <SuitsLoader
+                      size={48}
+                      label="Synthesizing structured legal breakdown…"
+                      sublabel="Extracting core holdings, ratio decidendi, and cited precedents"
+                    />
                   </div>
                 ) : (
                   <AISummaryCard
