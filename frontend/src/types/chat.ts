@@ -13,6 +13,7 @@ export interface ChatMessage {
   role: "user" | "assistant";
   message: string;
   created_at: string;
+  timestamp?: string;
 }
 
 export interface ChatResponse {

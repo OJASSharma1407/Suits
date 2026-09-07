@@ -55,3 +55,28 @@ async def require_admin(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_admin)]
 DbSession = Annotated[AsyncSession, Depends(get_db)]
+
+optional_security_scheme = HTTPBearer(auto_error=False)
+
+
+async def get_optional_current_user(
+    credentials: Annotated[HTTPAuthorizationCredentials | None, Depends(optional_security_scheme)],
+    db: Annotated[AsyncSession, Depends(get_db)],
+) -> User | None:
+    if not credentials:
+        return None
+    payload = decode_access_token(credentials.credentials)
+    if payload is None:
+        return None
+    user_id = payload.get("sub")
+    if not user_id:
+        return None
+    try:
+        repo = UserRepository(db)
+        return await repo.get_by_id(uuid.UUID(user_id))
+    except Exception:
+        return None
+
+
+OptionalUser = Annotated[User | None, Depends(get_optional_current_user)]
+

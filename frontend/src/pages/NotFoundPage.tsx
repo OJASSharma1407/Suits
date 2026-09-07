@@ -19,7 +19,7 @@ export default function NotFoundPage() {
       <p className="text-sm max-w-md mb-8 leading-relaxed" style={{ color: "var(--text-secondary)" }}>
         The page you are looking for doesn't exist or has been moved. Check the URL or return to your dashboard.
       </p>
-      <Link to="/dashboard" className="btn-primary">
+      <Link to="/dashboard" className="btn-primary px-3 py-1.5 rounded-lg hover:transition-all duration-200 ease-in-out cursor-pointer">
         <Home size={16} /> Return Home
       </Link>
     </div>

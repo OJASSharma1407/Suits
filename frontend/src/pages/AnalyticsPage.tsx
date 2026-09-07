@@ -1,111 +1,183 @@
 import React, { useEffect, useState } from "react";
-import { BarChart3, TrendingUp, Activity, Scale, BookOpen } from "lucide-react";
-import { AnalyticsChart } from "@/components/analytics/AnalyticsChart";
+import {
+  BarChart3,
+  TrendingUp,
+  Activity,
+  Scale,
+  BookOpen,
+  Flame,
+  RotateCw,
+  Sparkles,
+  Calendar,
+  Landmark,
+} from "lucide-react";
 import { MetricCard } from "@/components/common/MetricCard";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
-import api from "@/lib/axios";
+import { ResearchHeatmap } from "@/components/analytics/ResearchHeatmap";
+import { TopCitedActsCard } from "@/components/analytics/TopCitedActsCard";
+import { CourtDistributionCard } from "@/components/analytics/CourtDistributionCard";
+import { AnalyticsChart } from "@/components/analytics/AnalyticsChart";
+import { analyticsService } from "@/services/analytics";
+import type { PracticeInsightsData } from "@/types/analytics";
 
 export default function AnalyticsPage() {
-  const [stats, setStats] = useState<any>(null);
+  const [data, setData] = useState<PracticeInsightsData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadData = async (isRefresh = false) => {
+    if (isRefresh) setRefreshing(true);
+    else setLoading(true);
+
+    try {
+      const res = await analyticsService.getDashboardAnalytics();
+      setData(res);
+    } catch {
+      // Silently handle
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
 
   useEffect(() => {
-    async function loadStats() {
-      try {
-        const res = await api.get("/analytics/dashboard");
-        setStats(res.data.data);
-      } catch {
-        // Silently handle
-      } finally {
-        setLoading(false);
-      }
-    }
-    loadStats();
+    loadData();
   }, []);
 
-  /* ── Mock Chart Data ──────────────────────────────────────── */
-  const caseTypeData = [
-    { name: "Civil Suit", value: 45 },
-    { name: "Writ Petition", value: 30 },
-    { name: "Criminal Appeal", value: 15 },
-    { name: "Bail App", value: 10 },
-  ];
-
-  const statusData = [
-    { name: "Pending", value: 60 },
-    { name: "Disposed", value: 35 },
-    { name: "Transferred", value: 5 },
-  ];
-
-  if (loading) {
+  if (loading && !data) {
     return (
       <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36 }}>
         <SkeletonLoader count={1} height="70px" />
-        <SkeletonLoader count={1} height="220px" />
+        <SkeletonLoader count={1} height="140px" />
+        <SkeletonLoader count={1} height="320px" />
       </div>
     );
   }
 
+  const weeklyTrendData = (data?.activity_trends.weekly_trends || []).map((w) => ({
+    name: w.period_label,
+    Searches: w.searches,
+    "AI Queries": w.ai_queries,
+    "Case Reads": w.case_views,
+    value: w.total_actions,
+  }));
+
   return (
-    <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36 }}>
-      {/* ── Page Header (Clean title without subtitle) ───────────── */}
-      <div className="mb-6">
-        <h1
-          className="text-2xl font-medium"
-          style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
-        >
-          Workspace Analytics
-        </h1>
+    <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36, paddingBottom: 48 }}>
+      {/* ── Page Header ────────────────────────────────────────── */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+        <div>
+          <h1
+            className="text-2xl font-medium"
+            style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
+          >
+            Practice Intelligence & Telemetry
+          </h1>
+          <p className="text-xs mt-1" style={{ color: "var(--ink-faint)" }}>
+            Real-time statutory frequency, forum distribution, and longitudinal research cadence
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2 self-start sm:self-auto">
+          <div
+            className="flex items-center gap-1.5 text-[11px] font-mono px-3 py-1 rounded-full font-medium"
+            style={{
+              background: "rgba(63, 122, 84, 0.10)",
+              color: "var(--seal-disposed)",
+              border: "1px solid rgba(63, 122, 84, 0.20)",
+            }}
+          >
+            <span className="w-2 h-2 rounded-full bg-[var(--seal-disposed)] animate-pulse" />
+            Live Telemetry
+          </div>
+
+          <button
+            onClick={() => loadData(true)}
+            disabled={refreshing}
+            className="p-1.5 rounded-lg transition-all hover:shadow-xs"
+            style={{
+              background: "var(--surface-container)",
+              color: "var(--ink-dim)",
+              border: "1px solid var(--hairline)",
+            }}
+            title="Refresh Telemetry"
+          >
+            <RotateCw size={14} className={refreshing ? "animate-spin" : ""} />
+          </button>
+        </div>
       </div>
 
-      {/* ── Metric Cards (No percentage / live badges) ───────────── */}
+      {/* ── Metric Cards ───────────────────────────────────────── */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard
-          title="Total Bookmarks"
-          value={stats?.bookmarks || 0}
-          icon={<BookOpen size={18} />}
+          title="Current Practice Streak"
+          value={`${data?.activity_trends.current_streak_days || 0} Days`}
+          icon={<Flame size={18} style={{ color: "#DC641E" }} />}
         />
         <MetricCard
-          title="AI Conversations"
-          value={stats?.conversations || 0}
-          icon={<Activity size={18} />}
+          title="Statutes Analyzed"
+          value={data?.total_statutes_analyzed || 0}
+          icon={<Scale size={18} style={{ color: "var(--brass)" }} />}
         />
         <MetricCard
-          title="Total Searches"
-          value={stats?.searches || 0}
-          icon={<TrendingUp size={18} />}
+          title="AI Legal Discussions"
+          value={data?.conversations || 0}
+          icon={<Activity size={18} style={{ color: "var(--seal-disposed)" }} />}
         />
         <MetricCard
-          title="Research Hours (Est.)"
-          value={Math.round((stats?.conversations || 0) * 0.5 + (stats?.searches || 0) * 0.1)}
-          icon={<Scale size={18} />}
+          title="Case Searches Conducted"
+          value={data?.searches || 0}
+          icon={<TrendingUp size={18} style={{ color: "var(--seal-reserved)" }} />}
         />
       </div>
 
-      {/* ── Section Divider with generous spacing above & below ───── */}
-      <div className="flex items-center gap-2" style={{ marginTop: 48, marginBottom: 24 }}>
-        <BarChart3 size={16} style={{ color: "var(--brass)" }} />
+      {/* ── Section 1: Research Activity Trends & Heatmap ─────── */}
+      <div className="flex items-center gap-2" style={{ marginTop: 44, marginBottom: 20 }}>
+        <Calendar size={16} style={{ color: "var(--brass)" }} />
         <h2
           className="text-[12px] font-semibold uppercase tracking-widest"
           style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
         >
-          Activity Breakdown
+          Research Cadence & Velocity
         </h2>
         <div className="flex-1 h-px" style={{ background: "var(--hairline)" }} />
       </div>
 
-      {/* ── Charts Grid ──────────────────────────────────────────── */}
+      <div className="grid grid-cols-1 gap-6">
+        {data && <ResearchHeatmap telemetry={data.activity_trends} />}
+      </div>
+
+      {/* Optional Weekly Velocity Trend Area Chart */}
+      {weeklyTrendData.length > 0 && weeklyTrendData.some((w) => w.value > 0) && (
+        <div className="mt-6">
+          <AnalyticsChart
+            type="area"
+            data={weeklyTrendData}
+            title="Weekly Research Velocity (12-Week Trajectory)"
+            subtitle="Combined weekly volume of search inquiries, AI legal interactions, and judgment readings"
+          />
+        </div>
+      )}
+
+      {/* ── Section 2: Legal Practice Focus & Forum Telemetry ─── */}
+      <div className="flex items-center gap-2" style={{ marginTop: 44, marginBottom: 20 }}>
+        <Landmark size={16} style={{ color: "var(--brass)" }} />
+        <h2
+          className="text-[12px] font-semibold uppercase tracking-widest"
+          style={{ color: "var(--ink-faint)", fontFamily: "var(--font-mono)" }}
+        >
+          Statutory Focus & Forum Footprint
+        </h2>
+        <div className="flex-1 h-px" style={{ background: "var(--hairline)" }} />
+      </div>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AnalyticsChart
-          type="pie"
-          data={caseTypeData}
-          title="Bookmarked Cases by Type"
-        />
-        <AnalyticsChart
-          type="pie"
-          data={statusData}
-          title="Case Status Distribution"
-        />
+        {data && (
+          <>
+            <TopCitedActsCard statutes={data.top_cited_acts || []} />
+            <CourtDistributionCard distribution={data.court_distribution || []} />
+          </>
+        )}
       </div>
     </div>
   );

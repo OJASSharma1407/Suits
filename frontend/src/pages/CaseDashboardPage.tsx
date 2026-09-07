@@ -23,6 +23,7 @@ import type { ChatMessage } from "@/types/chat";
 import type { CitationNode } from "@/types/citation";
 import { Sparkles, MessageSquare, X, RotateCcw, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
+import { useDictationStore } from "@/store/dictation-store";
 
 export default function CaseDashboardPage() {
   const { cnr } = useParams<{ cnr: string }>();
@@ -379,6 +380,20 @@ export default function CaseDashboardPage() {
     }
   };
 
+  // Connect global Alt-key dictation: auto-open mini chat and stream response immediately
+  const { registerCaseQueryHandler } = useDictationStore();
+  useEffect(() => {
+    const handler = (query: string) => {
+      setIsChatOpen(true);
+      handleSendMessage(query);
+    };
+    registerCaseQueryHandler(handler);
+
+    return () => {
+      registerCaseQueryHandler(null);
+    };
+  }, [registerCaseQueryHandler, cnr, conversationId]);
+
   if (loading) {
     return (
       <div className="space-y-4 max-w-5xl mx-auto">
@@ -415,7 +430,7 @@ export default function CaseDashboardPage() {
 
         {/* Sidebar */}
         <div className="lg:col-span-1">
-          <JudgeCard judges={caseData.judges} />
+          <JudgeCard judges={caseData.judges} courtName={caseData.court?.court_name} />
         </div>
       </div>
 
