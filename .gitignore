@@ -225,4 +225,8 @@ backend/suits.db-wal
 backend/app/suits.db-shm
 backend/app/suits.db-wal
 backend/app/suits.db
+<<<<<<< HEAD
 backend/data/uploads/805fc2ee-61ad-496e-b255-e4166ab5d53f/f879cca09bac48a4b6450a59d812cc28_Judgement.pdf
+=======
+backend/data/uploads/b8b26e23-0a67-4bc5-b7ed-79fa030bc890/7816a43020124c6cadef798755b76832_Judgement.pdf
+>>>>>>> e2ce0a0 (Bug Fixes)

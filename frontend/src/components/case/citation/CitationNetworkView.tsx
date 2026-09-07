@@ -3,6 +3,7 @@ import { CitationGraphCanvas } from "./CitationGraphCanvas";
 import { CitationGraphControls } from "./CitationGraphControls";
 import { CitationNodeInspector } from "./CitationNodeInspector";
 import { CitationLegend } from "./CitationLegend";
+import { SuitsLoader } from "@/components/common/SuitsLoader";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { ErrorState } from "@/components/common/ErrorState";
 import { citationService } from "@/services/citations";
@@ -71,9 +72,19 @@ export function CitationNetworkView({
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <SkeletonLoader count={1} height="80px" />
-        <SkeletonLoader count={1} height="480px" />
+      <div
+        className="rounded-2xl border flex flex-col items-center justify-center p-12 min-h-[520px] transition-all"
+        style={{
+          background: "var(--surface)",
+          borderColor: "var(--hairline)",
+          boxShadow: "var(--shadow-card)",
+        }}
+      >
+        <SuitsLoader
+          size={56}
+          label="Citation & Precedent Authority Network"
+          sublabel="Mapping cited precedents, subsequent citations, and statutory cross-references…"
+        />
       </div>
     );
   }

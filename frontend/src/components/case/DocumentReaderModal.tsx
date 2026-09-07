@@ -779,8 +779,15 @@ export function DocumentReaderModal({
           {/* MODE 2: CLEAN TEXT DIGITAL TRANSCRIPT */}
           {mode === "text" && (
             <div className="w-full h-full flex overflow-hidden relative">
+              {/* Research Workspace (In-flow side-by-side) */}
+              {sidebarMode === "research" && (
+                <div className="h-full flex-shrink-0 z-20 animate-slide-left">
+                  {researchPanelNode}
+                </div>
+              )}
+
               {/* Clean text article centered */}
-              <div className="flex-1 h-full overflow-y-auto p-6 sm:p-12 md:p-16 flex justify-center selection:bg-[var(--brass-soft)]">
+              <div className="flex-1 h-full overflow-y-auto p-6 sm:p-12 md:p-16 flex justify-center selection:bg-[var(--brass-soft)] min-w-0">
                 {textLoading ? (
                   <div className="flex flex-col items-center justify-center h-full gap-3">
                     <Loader2 size={32} className="animate-spin" style={{ color: "var(--primary)" }} />
@@ -857,13 +864,6 @@ export function DocumentReaderModal({
                   </article>
                 )}
               </div>
-
-              {/* Absolute Left Drawer in Clean text mode */}
-              {sidebarMode === "research" && (
-                <div className="absolute top-0 left-0 bottom-0 z-30 shadow-2xl animate-slide-left">
-                  {researchPanelNode}
-                </div>
-              )}
             </div>
           )}
 

@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { useSearchParams } from "react-router-dom";
 import { SearchBar } from "@/components/search/SearchBar";
 import { SearchResultCard } from "@/components/search/SearchResultCard";
+import { SuitsLoader } from "@/components/common/SuitsLoader";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { searchService } from "@/services/search";
 import { bookmarkService } from "@/services/bookmarks";
@@ -113,7 +114,7 @@ export default function SearchPage() {
   return (
     <div className="dashboard-layout">
       {/* In-page Search bar */}
-      <SearchBar initialValue={filters.query} onSearch={handleSearch} />
+      <SearchBar initialValue={filters.query} onSearch={handleSearch} isLoading={loading} />
 
       {/* Quick Search Suggestions */}
       <div className="flex items-center gap-2 overflow-x-auto pb-2 -mt-2 mb-4 scrollbar-none text-xs">
@@ -149,8 +150,23 @@ export default function SearchPage() {
 
       {/* Content */}
       {loading ? (
-        <div style={{ marginTop: 16 }}>
-          <SkeletonLoader count={5} height="72px" />
+        <div
+          className="flex flex-col items-center justify-center py-20 my-4 rounded-2xl border transition-all"
+          style={{
+            background: "var(--surface)",
+            borderColor: "var(--hairline)",
+            minHeight: "360px",
+          }}
+        >
+          <SuitsLoader
+            size={52}
+            label="Searching case records…"
+            sublabel={
+              filters.query
+                ? `Scanning court registers and judgments for "${filters.query}"`
+                : "Fetching featured and recent court proceedings"
+            }
+          />
         </div>
       ) : results.length === 0 ? (
         <div className="empty-note" style={{ marginTop: 12 }}>

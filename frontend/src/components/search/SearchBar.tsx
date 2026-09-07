@@ -5,12 +5,14 @@ interface SearchBarProps {
   initialValue?: string;
   onSearch: (value: string) => void;
   placeholder?: string;
+  isLoading?: boolean;
 }
 
 export function SearchBar({
   initialValue = "",
   onSearch,
   placeholder = 'Try "Murmu vs Chowdhury" or a CNR number…',
+  isLoading = false,
 }: SearchBarProps) {
   const [value, setValue] = useState(initialValue);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -111,10 +113,31 @@ export function SearchBar({
 
       <button
         type="submit"
+        disabled={isLoading}
         className="btn btn-primary"
-        style={{ marginRight: 2, flexShrink: 0 }}
+        style={{
+          marginRight: 2,
+          flexShrink: 0,
+          minWidth: "82px",
+          display: "inline-flex",
+          alignItems: "center",
+          justifyContent: "center",
+          gap: "6px",
+        }}
       >
-        Search
+        {isLoading ? (
+          <span
+            className="loader"
+            style={{
+              ["--loader-size" as string]: "15px",
+              ["--loader-thickness" as string]: "2.5px",
+              ["--loader-color" as string]: "#ffffff",
+              display: "inline-block",
+            }}
+          />
+        ) : (
+          "Search"
+        )}
       </button>
     </form>
   );

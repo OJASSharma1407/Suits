@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, useImperativeHandle, forwardRef } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorker from "pdfjs-dist/build/pdf.worker.min.mjs?url";
+import "pdfjs-dist/web/pdf_viewer.css";
 import {
   ZoomIn,
   ZoomOut,
@@ -121,6 +122,136 @@ function PDFThumbnail({
   );
 }
 
+/**
+ * Merges raw DOMRects into clean, line-by-line highlight rectangles.
+ * - Clusters word/character fragments on the same line into a single uninterrupted horizontal bar.
+ * - Eliminates internal gaps between words on the same line.
+ * - Resolves vertical overlaps between adjacent lines to prevent dark multiplier seams.
+ * - Discards tiny phantom artifacts (e.g. trailing cursor rects).
+ */
+export function cleanHighlightRects(rects: HighlightRect[]): HighlightRect[] {
+  if (!rects || rects.length === 0) return [];
+  if (rects.length === 1) {
+    const r = rects[0];
+    const w = r.widthPct ?? r.width ?? 0;
+    const h = r.heightPct ?? r.height ?? 0;
+    return w > 0.3 && h > 0.3 ? [r] : [];
+  }
+
+  // Filter out tiny or invalid rects
+  const valid = rects.filter((r) => {
+    const w = r.widthPct ?? r.width ?? 0;
+    const h = r.heightPct ?? r.height ?? 0;
+    return w > 0.3 && h > 0.3;
+  });
+
+  if (valid.length <= 1) return valid;
+
+  const isPct = valid[0].topPct != null;
+
+  // Sort primarily by vertical position (top) then horizontal (left)
+  const sorted = [...valid].sort((a, b) => {
+    const topA = (isPct ? a.topPct : a.top) ?? 0;
+    const topB = (isPct ? b.topPct : b.top) ?? 0;
+    if (Math.abs(topA - topB) > 0.15) return topA - topB;
+    const leftA = (isPct ? a.leftPct : a.left) ?? 0;
+    const leftB = (isPct ? b.leftPct : b.left) ?? 0;
+    return leftA - leftB;
+  });
+
+  interface LineGroup {
+    top: number;
+    bottom: number;
+    items: HighlightRect[];
+  }
+  const lines: LineGroup[] = [];
+
+  for (const r of sorted) {
+    const rTop = (isPct ? r.topPct : r.top) ?? 0;
+    const rHeight = (isPct ? r.heightPct : r.height) ?? 0;
+    const rBottom = rTop + rHeight;
+
+    let matched = false;
+    for (const line of lines) {
+      const overlap = Math.min(line.bottom, rBottom) - Math.max(line.top, rTop);
+      const minHeight = Math.min(line.bottom - line.top, rHeight);
+      // Rectangles overlapping vertically by at least 35% belong to the same line
+      if (overlap >= minHeight * 0.35) {
+        line.items.push(r);
+        line.top = Math.min(line.top, rTop);
+        line.bottom = Math.max(line.bottom, rBottom);
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      lines.push({ top: rTop, bottom: rBottom, items: [r] });
+    }
+  }
+
+  // Sort line groups vertically
+  lines.sort((a, b) => a.top - b.top);
+
+  // Merge each line into a single uninterrupted horizontal bar
+  let merged = lines.map((line) => {
+    const lefts = line.items.map((r) => (isPct ? r.leftPct : r.left) ?? 0);
+    const rights = line.items.map((r) => ((isPct ? r.leftPct : r.left) ?? 0) + ((isPct ? r.widthPct : r.width) ?? 0));
+    const minLeft = Math.min(...lefts);
+    const maxRight = Math.max(...rights);
+
+    return {
+      top: line.top,
+      bottom: line.bottom,
+      left: minLeft,
+      width: Math.max(0.1, maxRight - minLeft),
+      height: Math.max(0.1, line.bottom - line.top),
+    };
+  });
+
+  // Filter out tiny phantom lines at the very end (e.g. trailing selection artifacts)
+  if (merged.length > 1) {
+    merged = merged.filter((l, idx) => {
+      if (idx === merged.length - 1 && l.width < (isPct ? 1.5 : 12)) return false;
+      return true;
+    });
+  }
+
+  // Prevent vertical overlap between adjacent lines to stop dark multiplier seams
+  for (let i = 0; i < merged.length - 1; i++) {
+    const curr = merged[i];
+    const next = merged[i + 1];
+    if (curr.bottom > next.top) {
+      const mid = (curr.bottom + next.top) / 2;
+      curr.bottom = mid;
+      curr.height = Math.max(0.1, curr.bottom - curr.top);
+      next.top = mid;
+      next.height = Math.max(0.1, next.bottom - next.top);
+    }
+  }
+
+  return merged.map((m) => {
+    if (isPct) {
+      return {
+        topPct: m.top,
+        leftPct: m.left,
+        widthPct: m.width,
+        heightPct: m.height,
+        top: m.top,
+        left: m.left,
+        width: m.width,
+        height: m.height,
+      };
+    }
+    return {
+      top: m.top,
+      left: m.left,
+      width: m.width,
+      height: m.height,
+    };
+  });
+}
+
 export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerProps>(
   function CustomPDFViewer(
     {
@@ -155,10 +286,23 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
     const paperSheetRefs = useRef<Map<number, HTMLDivElement>>(new Map());
     const canvasRefs = useRef<Map<number, HTMLCanvasElement>>(new Map());
     const textLayerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+    const activeTextLayers = useRef<Map<number, pdfjsLib.TextLayer>>(new Map());
     const renderedPages = useRef<Set<number>>(new Set());
     const renderingPages = useRef<Set<number>>(new Set());
     // Tracks live intersection ratio per page so we always pick the most-visible page
     const intersectionRatios = useRef<Map<number, number>>(new Map());
+
+    // Clean up active text layers on unmount
+    useEffect(() => {
+      return () => {
+        activeTextLayers.current.forEach((tl) => {
+          try {
+            tl.cancel();
+          } catch {}
+        });
+        activeTextLayers.current.clear();
+      };
+    }, []);
 
     // Selection & Floating Highlighter State
     const [selectionPopup, setSelectionPopup] = useState<{
@@ -268,13 +412,22 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
             viewport: viewport,
           }).promise;
 
-          // Render Text Layer spans for 1:1 text selection & highlighting
+          // Render Official PDF.js Text Layer for 1:1 character alignment & selection
           if (textLayerDiv) {
+            const prevTextLayer = activeTextLayers.current.get(pageNumber);
+            if (prevTextLayer) {
+              try {
+                prevTextLayer.cancel();
+              } catch {}
+            }
+
             textLayerDiv.innerHTML = "";
             textLayerDiv.style.width = `${viewport.width}px`;
             textLayerDiv.style.height = `${viewport.height}px`;
+            textLayerDiv.style.setProperty("--scale-factor", scale.toString());
 
             const textContent = await page.getTextContent();
+<<<<<<< HEAD
             textContent.items.forEach((item: any) => {
               if (!item.str) return;
               const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
@@ -292,7 +445,16 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
               span.style.cursor = "text";
               span.style.userSelect = "text";
               textLayerDiv.appendChild(span);
+=======
+            const textLayer = new pdfjsLib.TextLayer({
+              textContentSource: textContent,
+              container: textLayerDiv,
+              viewport: viewport,
+>>>>>>> e2ce0a0 (Bug Fixes)
             });
+
+            activeTextLayers.current.set(pageNumber, textLayer);
+            await textLayer.render();
           }
 
           renderedPages.current.add(pageNumber);
@@ -424,11 +586,13 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
       const paperRect = paperSheet ? paperSheet.getBoundingClientRect() : null;
 
       const relativeRects: HighlightRect[] = [];
-      const clientRects = range.getClientRects();
+      const clientRects = Array.from(range.getClientRects());
 
       if (paperRect && paperRect.width > 0 && paperRect.height > 0) {
         for (let i = 0; i < clientRects.length; i++) {
           const cr = clientRects[i];
+          if (cr.width < 2 || cr.height < 2) continue;
+
           const top = cr.top - paperRect.top;
           const left = cr.left - paperRect.left;
           const width = cr.width;
@@ -447,12 +611,18 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
         }
       }
 
+      const mergedRects = cleanHighlightRects(relativeRects);
+      if (mergedRects.length === 0) {
+        setSelectionPopup(null);
+        return;
+      }
+
       setSelectionPopup({
         x: rect.left + rect.width / 2,
         y: rect.top - 10,
         text,
         pageNum,
-        rects: relativeRects,
+        rects: mergedRects,
       });
     };
 
@@ -764,15 +934,54 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
           </div>
         </div>
 
-        {/* Main Viewport: Fixed Stable Center Document Canvas (Zero Horizontal Movement on Sidebar Toggles) */}
-        <div className="flex-1 w-full h-full overflow-hidden relative">
-          {/* Continuous Centered Scroll PDF Document Canvas Pages (Spanning full width so center is 100% stable) */}
+        {/* Main Viewport */}
+        <div className="flex-1 w-full h-full overflow-hidden relative flex">
+          {/* Left Panel Layer (Thumbnails overlay, retains zero shift when opening thumbnails) */}
+          {sidebarMode === "thumbnails" && pdfDoc && (
+            <aside
+              className="absolute top-0 left-0 bottom-0 z-30 w-52 border-r overflow-y-auto p-3 space-y-2.5 flex-shrink-0 animate-slide-left shadow-2xl select-none"
+              style={{
+                background: "var(--card)",
+                borderColor: "var(--border)",
+              }}
+            >
+              <div className="flex items-center justify-between px-1 pb-1">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted font-mono">
+                  Thumbnails
+                </span>
+                <span className="text-[10px] font-mono text-muted">
+                  {numPages} {numPages === 1 ? "Page" : "Pages"}
+                </span>
+              </div>
+
+              <div className="space-y-3">
+                {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
+                  <PDFThumbnail
+                    key={pageNum}
+                    pdfDoc={pdfDoc}
+                    pageNum={pageNum}
+                    isActive={currentPage === pageNum}
+                    onClick={() => scrollToPage(pageNum)}
+                  />
+                ))}
+              </div>
+            </aside>
+          )}
+
+          {/* Research Workspace (In-flow side-by-side to fit document view without overlap) */}
+          {sidebarMode === "research" && (
+            <div className="h-full flex-shrink-0 z-20 animate-slide-left">
+              {researchPanel}
+            </div>
+          )}
+
+          {/* Continuous Centered Scroll PDF Document Canvas Pages */}
           <div
             ref={containerRef}
-            className="w-full h-full overflow-y-auto overflow-x-auto p-4 sm:p-8 flex flex-col items-center select-text"
+            className="flex-1 h-full overflow-y-auto overflow-x-auto p-4 sm:p-8 flex flex-col items-center select-text min-w-0"
             style={{ background: "var(--surface-dim)" }}
           >
-            <div className="w-full flex flex-col items-center space-y-8 pb-20">
+            <div className="min-w-fit w-full flex flex-col items-center space-y-8 pb-20">
               {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
                 const pageHighlights = highlights.filter((h) => h.pageNum === pageNum);
 
@@ -811,42 +1020,49 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
                         }}
                       />
 
-                      {/* PDF.js Text Layer Overlay for Selection */}
+                      {/* Persistent Highlights Layer (Rendered below textLayer to preserve selection, cleaned & line-merged) */}
+                      {pageHighlights.map((h) => {
+                        const cleaned = cleanHighlightRects(h.rects || []);
+                        return (
+                          <div key={h.id} className="pointer-events-none absolute inset-0 z-[1]">
+                            {cleaned.map((r, rIdx) => (
+                              <div
+                                key={rIdx}
+                                className="absolute mix-blend-multiply opacity-40 rounded-[2px] pointer-events-auto cursor-pointer hover:opacity-75 transition-opacity"
+                                style={{
+                                  top: r.topPct != null ? `${r.topPct}%` : `${r.top}px`,
+                                  left: r.leftPct != null ? `${r.leftPct}%` : `${r.left}px`,
+                                  width: r.widthPct != null ? `${r.widthPct}%` : `${r.width}px`,
+                                  height: r.heightPct != null ? `${r.heightPct}%` : `${r.height}px`,
+                                  background: colorHexMap[h.color] || "#F59E0B",
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  onDeleteHighlight?.(h.id);
+                                }}
+                                title="Click to remove highlight"
+                              />
+                            ))}
+                          </div>
+                        );
+                      })}
+
+                      {/* PDF.js Text Layer Overlay for Selection (Official TextLayer with 1:1 character alignment) */}
                       <div
                         ref={(el) => {
                           if (el) textLayerRefs.current.set(pageNum, el);
                           else textLayerRefs.current.delete(pageNum);
                         }}
+<<<<<<< HEAD
                         className="pdf-text-layer absolute inset-0 overflow-hidden select-text pointer-events-auto leading-none"
+=======
+                        className="textLayer absolute inset-0 overflow-hidden select-text pointer-events-auto leading-none text-transparent z-[2]"
+>>>>>>> e2ce0a0 (Bug Fixes)
                         style={{
                           width: `${basePageWidth}px`,
                           height: `${basePageHeight}px`,
                         }}
                       />
-
-                      {/* Persistent Highlights Layer (Zero-offset percentage rendering) */}
-                      {pageHighlights.map((h) => (
-                        <div key={h.id} className="pointer-events-none absolute inset-0">
-                          {h.rects?.map((r, rIdx) => (
-                            <div
-                              key={rIdx}
-                              className="absolute mix-blend-multiply opacity-40 rounded-[1.5px] pointer-events-auto cursor-pointer hover:opacity-75 transition-opacity"
-                              style={{
-                                top: r.topPct != null ? `${r.topPct}%` : `${r.top}px`,
-                                left: r.leftPct != null ? `${r.leftPct}%` : `${r.left}px`,
-                                width: r.widthPct != null ? `${r.widthPct}%` : `${r.width}px`,
-                                height: r.heightPct != null ? `${r.heightPct}%` : `${r.height}px`,
-                                background: colorHexMap[h.color] || "#F59E0B",
-                              }}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteHighlight?.(h.id);
-                              }}
-                              title="Click to remove highlight"
-                            />
-                          ))}
-                        </div>
-                      ))}
 
                       {/* Subtle placeholder while canvas renders */}
                       {!renderedPages.current.has(pageNum) && renderVersion >= 0 && (
@@ -866,44 +1082,6 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
               })}
             </div>
           </div>
-
-          {/* Left Panel Layer (Absolute: Zero Horizontal Shift of Center Document) */}
-          {sidebarMode === "thumbnails" && pdfDoc && (
-            <aside
-              className="absolute top-0 left-0 bottom-0 z-30 w-52 border-r overflow-y-auto p-3 space-y-2.5 flex-shrink-0 animate-slide-left shadow-2xl select-none"
-              style={{
-                background: "var(--card)",
-                borderColor: "var(--border)",
-              }}
-            >
-              <div className="flex items-center justify-between px-1 pb-1">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted font-mono">
-                  Thumbnails
-                </span>
-                <span className="text-[10px] font-mono text-muted">
-                  {numPages} {numPages === 1 ? "Page" : "Pages"}
-                </span>
-              </div>
-
-              <div className="space-y-3">
-                {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-                  <PDFThumbnail
-                    key={pageNum}
-                    pdfDoc={pdfDoc}
-                    pageNum={pageNum}
-                    isActive={currentPage === pageNum}
-                    onClick={() => scrollToPage(pageNum)}
-                  />
-                ))}
-              </div>
-            </aside>
-          )}
-
-          {sidebarMode === "research" && (
-            <div className="absolute top-0 left-0 bottom-0 z-30 shadow-2xl animate-slide-left">
-              {researchPanel}
-            </div>
-          )}
         </div>
       </div>
     );
