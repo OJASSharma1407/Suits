@@ -443,7 +443,6 @@ export function DocumentReaderModal({
 
   const handleDeleteHighlight = (id: string) => {
     setHighlights((prev) => prev.filter((h) => h.id !== id));
-    toast.info("Highlight removed.");
   };
 
   const handleAddToResearchNotes = (quoteText: string) => {

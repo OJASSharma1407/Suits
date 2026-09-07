@@ -16,7 +16,6 @@ import {
   X,
 } from "lucide-react";
 import type { PDFHighlight, HighlightColor, HighlightRect } from "@/types/file";
-import { toast } from "sonner";
 
 // Configure PDF.js worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker;
@@ -124,130 +123,160 @@ function PDFThumbnail({
 
 /**
  * Merges raw DOMRects into clean, line-by-line highlight rectangles.
- * - Clusters word/character fragments on the same line into a single uninterrupted horizontal bar.
- * - Eliminates internal gaps between words on the same line.
+ * - Discards tiny phantom artifacts (<2px) and out-of-bound coords.
+ * - Clusters word/character fragments on the same line using vertical center baseline proximity.
+ * - Never cascades or expands vertically into neighboring lines.
+ * - Merges each line into a single uninterrupted horizontal bar matching the true selected width.
  * - Resolves vertical overlaps between adjacent lines to prevent dark multiplier seams.
- * - Discards tiny phantom artifacts (e.g. trailing cursor rects).
  */
 export function cleanHighlightRects(rects: HighlightRect[]): HighlightRect[] {
   if (!rects || rects.length === 0) return [];
-  if (rects.length === 1) {
-    const r = rects[0];
-    const w = r.widthPct ?? r.width ?? 0;
-    const h = r.heightPct ?? r.height ?? 0;
-    return w > 0.3 && h > 0.3 ? [r] : [];
-  }
 
-  // Filter out tiny or invalid rects
+  const isPct = rects.some((r) => r.topPct != null && (r.widthPct != null || r.width != null));
+
+  // Filter out tiny or invalid rects (less than 2px or 0.25% width/height, or negative coords)
+  const minDimension = isPct ? 0.25 : 2;
   const valid = rects.filter((r) => {
-    const w = r.widthPct ?? r.width ?? 0;
-    const h = r.heightPct ?? r.height ?? 0;
-    return w > 0.3 && h > 0.3;
+    const w = isPct ? (r.widthPct ?? r.width ?? 0) : (r.width ?? 0);
+    const h = isPct ? (r.heightPct ?? r.height ?? 0) : (r.height ?? 0);
+    const top = isPct ? (r.topPct ?? r.top ?? 0) : (r.top ?? 0);
+    const left = isPct ? (r.leftPct ?? r.left ?? 0) : (r.left ?? 0);
+    return w >= minDimension && h >= minDimension && top >= 0 && left >= 0;
   });
 
   if (valid.length <= 1) return valid;
 
-  const isPct = valid[0].topPct != null;
+  interface NormRect {
+    top: number;
+    left: number;
+    width: number;
+    height: number;
+    bottom: number;
+    right: number;
+    centerY: number;
+  }
 
-  // Sort primarily by vertical position (top) then horizontal (left)
-  const sorted = [...valid].sort((a, b) => {
-    const topA = (isPct ? a.topPct : a.top) ?? 0;
-    const topB = (isPct ? b.topPct : b.top) ?? 0;
-    if (Math.abs(topA - topB) > 0.15) return topA - topB;
-    const leftA = (isPct ? a.leftPct : a.left) ?? 0;
-    const leftB = (isPct ? b.leftPct : b.left) ?? 0;
-    return leftA - leftB;
+  const items: NormRect[] = valid.map((r) => {
+    const top = (isPct ? r.topPct : r.top) ?? 0;
+    const left = (isPct ? r.leftPct : r.left) ?? 0;
+    const width = (isPct ? r.widthPct : r.width) ?? 0;
+    const height = (isPct ? r.heightPct : r.height) ?? 0;
+    return {
+      top,
+      left,
+      width,
+      height,
+      bottom: top + height,
+      right: left + width,
+      centerY: top + height / 2,
+    };
   });
 
-  interface LineGroup {
-    top: number;
-    bottom: number;
-    items: HighlightRect[];
+  // Sort primarily by vertical center, then horizontal left
+  items.sort((a, b) => {
+    if (Math.abs(a.centerY - b.centerY) > (isPct ? 0.4 : 3)) {
+      return a.centerY - b.centerY;
+    }
+    return a.left - b.left;
+  });
+
+  // Group into distinct lines based on vertical center baseline proximity
+  // We keep a stable baseline centerY for each line to avoid cascading into adjacent lines
+  interface LineCluster {
+    centerY: number;
+    avgHeight: number;
+    items: NormRect[];
   }
-  const lines: LineGroup[] = [];
+  const lineClusters: LineCluster[] = [];
 
-  for (const r of sorted) {
-    const rTop = (isPct ? r.topPct : r.top) ?? 0;
-    const rHeight = (isPct ? r.heightPct : r.height) ?? 0;
-    const rBottom = rTop + rHeight;
-
-    let matched = false;
-    for (const line of lines) {
-      const overlap = Math.min(line.bottom, rBottom) - Math.max(line.top, rTop);
-      const minHeight = Math.min(line.bottom - line.top, rHeight);
-      // Rectangles overlapping vertically by at least 35% belong to the same line
-      if (overlap >= minHeight * 0.35) {
-        line.items.push(r);
-        line.top = Math.min(line.top, rTop);
-        line.bottom = Math.max(line.bottom, rBottom);
-        matched = true;
+  for (const item of items) {
+    let matchedCluster: LineCluster | null = null;
+    for (const cluster of lineClusters) {
+      // Two fragments are on the same line if their vertical centers are within 48% of line height
+      const threshold = Math.min(cluster.avgHeight, item.height) * 0.48;
+      if (Math.abs(item.centerY - cluster.centerY) <= threshold) {
+        matchedCluster = cluster;
         break;
       }
     }
 
-    if (!matched) {
-      lines.push({ top: rTop, bottom: rBottom, items: [r] });
+    if (matchedCluster) {
+      matchedCluster.items.push(item);
+      const count = matchedCluster.items.length;
+      matchedCluster.centerY = (matchedCluster.centerY * (count - 1) + item.centerY) / count;
+      matchedCluster.avgHeight = (matchedCluster.avgHeight * (count - 1) + item.height) / count;
+    } else {
+      lineClusters.push({
+        centerY: item.centerY,
+        avgHeight: item.height,
+        items: [item],
+      });
     }
   }
 
-  // Sort line groups vertically
-  lines.sort((a, b) => a.top - b.top);
+  // Sort line clusters from top to bottom
+  lineClusters.sort((a, b) => a.centerY - b.centerY);
 
-  // Merge each line into a single uninterrupted horizontal bar
-  let merged = lines.map((line) => {
-    const lefts = line.items.map((r) => (isPct ? r.leftPct : r.left) ?? 0);
-    const rights = line.items.map((r) => ((isPct ? r.leftPct : r.left) ?? 0) + ((isPct ? r.widthPct : r.width) ?? 0));
+  // For each line cluster, merge horizontally into a clean bar for that line
+  const mergedLineRects: NormRect[] = [];
+
+  for (const cluster of lineClusters) {
+    cluster.items.sort((a, b) => a.left - b.left);
+
+    const lefts = cluster.items.map((i) => i.left);
+    const rights = cluster.items.map((i) => i.right);
+    const tops = cluster.items.map((i) => i.top);
+    const bottoms = cluster.items.map((i) => i.bottom);
+
     const minLeft = Math.min(...lefts);
     const maxRight = Math.max(...rights);
+    const minTop = Math.min(...tops);
+    const maxBottom = Math.max(...bottoms);
 
-    return {
-      top: line.top,
-      bottom: line.bottom,
+    mergedLineRects.push({
+      top: minTop,
       left: minLeft,
-      width: Math.max(0.1, maxRight - minLeft),
-      height: Math.max(0.1, line.bottom - line.top),
-    };
-  });
-
-  // Filter out tiny phantom lines at the very end (e.g. trailing selection artifacts)
-  if (merged.length > 1) {
-    merged = merged.filter((l, idx) => {
-      if (idx === merged.length - 1 && l.width < (isPct ? 1.5 : 12)) return false;
-      return true;
+      width: Math.max(isPct ? 0.1 : 1, maxRight - minLeft),
+      height: Math.max(isPct ? 0.1 : 1, maxBottom - minTop),
+      bottom: maxBottom,
+      right: maxRight,
+      centerY: (minTop + maxBottom) / 2,
     });
   }
 
   // Prevent vertical overlap between adjacent lines to stop dark multiplier seams
-  for (let i = 0; i < merged.length - 1; i++) {
-    const curr = merged[i];
-    const next = merged[i + 1];
-    if (curr.bottom > next.top) {
+  // and keep distinct line highlights cleanly separated
+  for (let i = 0; i < mergedLineRects.length - 1; i++) {
+    const curr = mergedLineRects[i];
+    const next = mergedLineRects[i + 1];
+    if (curr.bottom >= next.top) {
+      const gap = isPct ? 0.08 : 1;
       const mid = (curr.bottom + next.top) / 2;
-      curr.bottom = mid;
-      curr.height = Math.max(0.1, curr.bottom - curr.top);
-      next.top = mid;
-      next.height = Math.max(0.1, next.bottom - next.top);
+      curr.bottom = mid - gap / 2;
+      curr.height = Math.max(isPct ? 0.1 : 1, curr.bottom - curr.top);
+      next.top = mid + gap / 2;
+      next.height = Math.max(isPct ? 0.1 : 1, next.bottom - next.top);
     }
   }
 
-  return merged.map((m) => {
+  return mergedLineRects.map((m) => {
     if (isPct) {
       return {
-        topPct: m.top,
-        leftPct: m.left,
-        widthPct: m.width,
-        heightPct: m.height,
-        top: m.top,
-        left: m.left,
-        width: m.width,
-        height: m.height,
+        topPct: +m.top.toFixed(3),
+        leftPct: +m.left.toFixed(3),
+        widthPct: +m.width.toFixed(3),
+        heightPct: +m.height.toFixed(3),
+        top: +m.top.toFixed(3),
+        left: +m.left.toFixed(3),
+        width: +m.width.toFixed(3),
+        height: +m.height.toFixed(3),
       };
     }
     return {
-      top: m.top,
-      left: m.left,
-      width: m.width,
-      height: m.height,
+      top: +m.top.toFixed(2),
+      left: +m.left.toFixed(2),
+      width: +m.width.toFixed(2),
+      height: +m.height.toFixed(2),
     };
   });
 }
@@ -278,8 +307,14 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
     // this the white spinner overlay would never disappear on its own)
     const [renderVersion, setRenderVersion] = useState<number>(0);
 
-    // Standard page aspect ratio (width / height)
-    const [pageAspect, setPageAspect] = useState<number>(0.707);
+    // Natural page dimensions in PDF points (scale: 1)
+    const [defaultPageDim, setDefaultPageDim] = useState<{ width: number; height: number }>({
+      width: 595.28,
+      height: 841.89,
+    });
+    const [pageDimensions, setPageDimensions] = useState<Map<number, { width: number; height: number }>>(
+      new Map()
+    );
 
     const containerRef = useRef<HTMLDivElement>(null);
     const pageContainerRefs = useRef<Map<number, HTMLDivElement>>(new Map());
@@ -359,12 +394,17 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
           setNumPages(doc.numPages);
           setLoading(false);
 
-          // Fetch page 1 to determine natural aspect ratio
+          // Fetch page 1 to determine natural dimensions
           doc.getPage(1).then((firstPage) => {
             if (isCancelled) return;
             const vp = firstPage.getViewport({ scale: 1 });
             if (vp.width && vp.height) {
-              setPageAspect(vp.width / vp.height);
+              setDefaultPageDim({ width: vp.width, height: vp.height });
+              setPageDimensions((prev) => {
+                const next = new Map(prev);
+                next.set(1, { width: vp.width, height: vp.height });
+                return next;
+              });
             }
           });
         })
@@ -394,6 +434,17 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
 
         try {
           const page = await pdfDoc.getPage(pageNumber);
+          const naturalVp = page.getViewport({ scale: 1 });
+          if (naturalVp.width && naturalVp.height) {
+            setPageDimensions((prev) => {
+              const curr = prev.get(pageNumber);
+              if (curr?.width === naturalVp.width && curr?.height === naturalVp.height) return prev;
+              const next = new Map(prev);
+              next.set(pageNumber, { width: naturalVp.width, height: naturalVp.height });
+              return next;
+            });
+          }
+
           const dpr = window.devicePixelRatio || 1;
           const viewport = page.getViewport({ scale });
 
@@ -534,6 +585,97 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
       return () => observer.disconnect();
     }, [pdfDoc, numPages, scale, renderPageCanvas]);
 
+/**
+ * Walks all Text nodes contained within a DOM Range and returns character sub-slices.
+ * This guarantees that only actual text characters are measured, completely ignoring
+ * PDF.js presentation elements like <br role="presentation"> which otherwise create
+ * full-line selection artifacts that span across empty margins.
+ */
+function getTextNodesInRange(range: Range): { node: Text; start: number; end: number }[] {
+  const result: { node: Text; start: number; end: number }[] = [];
+  let startNode: Node = range.startContainer;
+  let startOffset = range.startOffset;
+  let endNode: Node = range.endContainer;
+  let endOffset = range.endOffset;
+
+  if (startNode.nodeType === Node.ELEMENT_NODE && startNode.hasChildNodes()) {
+    const child = startNode.childNodes[Math.min(startOffset, startNode.childNodes.length - 1)];
+    if (child) {
+      startNode = child;
+      startOffset = 0;
+    }
+  }
+
+  if (endNode.nodeType === Node.ELEMENT_NODE && endNode.hasChildNodes()) {
+    const child = endNode.childNodes[Math.min(Math.max(0, endOffset - 1), endNode.childNodes.length - 1)];
+    if (child) {
+      endNode = child;
+      endOffset = child.nodeType === Node.TEXT_NODE ? (child as Text).length : 0;
+    }
+  }
+
+  // Single text node selection
+  if (startNode === endNode && startNode.nodeType === Node.TEXT_NODE) {
+    if (startOffset < endOffset) {
+      result.push({
+        node: startNode as Text,
+        start: startOffset,
+        end: endOffset,
+      });
+    }
+    return result;
+  }
+
+  const root = range.commonAncestorContainer;
+  const container = root.nodeType === Node.TEXT_NODE ? root.parentElement || root : root;
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+
+  let started = false;
+  let currentNode = walker.nextNode();
+
+  while (currentNode) {
+    const text = currentNode as Text;
+    const isStart =
+      currentNode === startNode ||
+      (startNode.nodeType === Node.ELEMENT_NODE && startNode.contains(currentNode));
+    const isEnd =
+      currentNode === endNode ||
+      (endNode.nodeType === Node.ELEMENT_NODE && endNode.contains(currentNode));
+
+    if (isStart && isEnd) {
+      const s = startOffset;
+      const e = endOffset;
+      if (s < e) {
+        result.push({ node: text, start: s, end: e });
+      }
+      break;
+    } else if (isStart) {
+      started = true;
+      const s =
+        currentNode === startNode && startNode.nodeType === Node.TEXT_NODE ? startOffset : 0;
+      const e = text.length;
+      if (s < e) {
+        result.push({ node: text, start: s, end: e });
+      }
+    } else if (isEnd) {
+      const s = 0;
+      const e =
+        currentNode === endNode && endNode.nodeType === Node.TEXT_NODE ? endOffset : text.length;
+      if (s < e) {
+        result.push({ node: text, start: s, end: e });
+      }
+      break;
+    } else if (started) {
+      if (text.length > 0) {
+        result.push({ node: text, start: 0, end: text.length });
+      }
+    }
+    currentNode = walker.nextNode();
+  }
+
+  return result;
+}
+
     // Handle Text Selection for Floating Highlighter (with ZERO offset calculation)
     const handleMouseUp = () => {
       const selection = window.getSelection();
@@ -566,17 +708,39 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
       const paperRect = paperSheet ? paperSheet.getBoundingClientRect() : null;
 
       const relativeRects: HighlightRect[] = [];
-      const clientRects = Array.from(range.getClientRects());
+
+      // Measure character sub-ranges directly to exclude <br> artifacts and trailing line-break boxes
+      const clientRects: DOMRect[] = [];
+      const textNodes = getTextNodesInRange(range);
+
+      if (textNodes.length > 0) {
+        for (const item of textNodes) {
+          try {
+            const subRange = document.createRange();
+            subRange.setStart(item.node, item.start);
+            subRange.setEnd(item.node, item.end);
+            const rects = subRange.getClientRects();
+            for (let i = 0; i < rects.length; i++) {
+              clientRects.push(rects[i]);
+            }
+          } catch {}
+        }
+      } else {
+        clientRects.push(...Array.from(range.getClientRects()));
+      }
 
       if (paperRect && paperRect.width > 0 && paperRect.height > 0) {
         for (let i = 0; i < clientRects.length; i++) {
           const cr = clientRects[i];
-          if (cr.width < 2 || cr.height < 2) continue;
+          if (cr.width < 3 || cr.height < 3) continue;
 
           const top = cr.top - paperRect.top;
           const left = cr.left - paperRect.left;
           const width = cr.width;
           const height = cr.height;
+
+          // Ensure rect is within paper sheet bounds
+          if (left < 0 || top < 0 || left >= paperRect.width || top >= paperRect.height) continue;
 
           relativeRects.push({
             top,
@@ -626,11 +790,6 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
 
       window.getSelection()?.removeAllRanges();
       setSelectionPopup(null);
-      toast.success(
-        andAddToResearch
-          ? "Excerpt highlighted & added to Research Notes."
-          : "Text highlighted."
-      );
     };
 
     const handleClearSelection = () => {
@@ -706,8 +865,13 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
       );
     }
 
-    const basePageWidth = Math.round(620 * scale);
-    const basePageHeight = Math.round(basePageWidth / pageAspect);
+    const getPageSize = (pageNum: number) => {
+      const natural = pageDimensions.get(pageNum) || defaultPageDim;
+      return {
+        width: Math.round(natural.width * scale),
+        height: Math.round(natural.height * scale),
+      };
+    };
 
     return (
       <div
@@ -964,6 +1128,7 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
             <div className="min-w-fit w-full flex flex-col items-center space-y-8 pb-20">
               {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
                 const pageHighlights = highlights.filter((h) => h.pageNum === pageNum);
+                const pageSize = getPageSize(pageNum);
 
                 return (
                   <div
@@ -981,10 +1146,10 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
                         if (el) paperSheetRefs.current.set(pageNum, el);
                         else paperSheetRefs.current.delete(pageNum);
                       }}
-                      className="pdf-paper-sheet bg-white rounded-sm shadow-xl border border-neutral-300 dark:border-neutral-700 overflow-hidden flex items-center justify-center relative"
+                      className="pdf-paper-sheet bg-white rounded-sm shadow-xl border border-neutral-300 dark:border-neutral-700 overflow-hidden relative"
                       style={{
-                        width: `${basePageWidth}px`,
-                        height: `${basePageHeight}px`,
+                        width: `${pageSize.width}px`,
+                        height: `${pageSize.height}px`,
                       }}
                     >
                       {/* PDF Canvas */}
@@ -993,10 +1158,10 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
                           if (el) canvasRefs.current.set(pageNum, el);
                           else canvasRefs.current.delete(pageNum);
                         }}
-                        className="block max-w-none"
+                        className="absolute inset-0 block max-w-none"
                         style={{
-                          width: `${basePageWidth}px`,
-                          height: `${basePageHeight}px`,
+                          width: `${pageSize.width}px`,
+                          height: `${pageSize.height}px`,
                         }}
                       />
 
@@ -1035,8 +1200,9 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
                         }}
                         className="textLayer absolute inset-0 overflow-hidden select-text pointer-events-auto leading-none text-transparent z-[2]"
                         style={{
-                          width: `${basePageWidth}px`,
-                          height: `${basePageHeight}px`,
+                          width: `${pageSize.width}px`,
+                          height: `${pageSize.height}px`,
+                          ["--scale-factor" as any]: scale,
                         }}
                       />
 

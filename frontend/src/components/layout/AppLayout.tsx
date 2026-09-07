@@ -5,7 +5,7 @@ import { TopSearchBar } from "./TopSearchBar";
 import { CommandPalette } from "@/components/common/CommandPalette";
 import { GlobalVoiceDictation } from "@/components/chat/GlobalVoiceDictation";
 import { useThemeStore } from "@/store/theme-store";
-import { Toaster } from "sonner";
+
 
 export default function AppLayout() {
   const { theme } = useThemeStore();
@@ -38,20 +38,7 @@ export default function AppLayout() {
       <CommandPalette />
       <GlobalVoiceDictation />
 
-      <Toaster
-        position="top-right"
-        theme={theme}
-        toastOptions={{
-          style: {
-            background: "var(--surface)",
-            color: "var(--ink)",
-            border: "1px solid var(--hairline)",
-            borderRadius: "var(--radius-md)",
-            fontFamily: "var(--font-sans)",
-            boxShadow: "var(--shadow-float)",
-          },
-        }}
-      />
+
     </div>
   );
 }
