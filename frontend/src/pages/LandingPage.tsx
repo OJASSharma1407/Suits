@@ -703,7 +703,7 @@ export default function LandingPage() {
             />
 
             <button
-              ref={(el) => (tabRefs.current["about"] = el)}
+              ref={(el) => { tabRefs.current["about"] = el; }}
               onClick={() => scrollTo("about")}
               className={`nav-item ${activeSection === "about" ? "active" : ""}`}
             >
@@ -711,7 +711,7 @@ export default function LandingPage() {
             </button>
 
             <button
-              ref={(el) => (tabRefs.current["mission"] = el)}
+              ref={(el) => { tabRefs.current["mission"] = el; }}
               onClick={() => scrollTo("mission")}
               className={`nav-item ${activeSection === "mission" ? "active" : ""}`}
             >
@@ -719,7 +719,7 @@ export default function LandingPage() {
             </button>
 
             <button
-              ref={(el) => (tabRefs.current["how-it-works"] = el)}
+              ref={(el) => { tabRefs.current["how-it-works"] = el; }}
               onClick={() => scrollTo("how-it-works")}
               className={`nav-item ${activeSection === "how-it-works" ? "active" : ""}`}
             >
@@ -727,7 +727,7 @@ export default function LandingPage() {
             </button>
 
             <button
-              ref={(el) => (tabRefs.current["contact"] = el)}
+              ref={(el) => { tabRefs.current["contact"] = el; }}
               onClick={() => scrollTo("contact")}
               className={`nav-item ${activeSection === "contact" ? "active" : ""}`}
             >

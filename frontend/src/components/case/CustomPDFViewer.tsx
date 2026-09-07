@@ -427,30 +427,10 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
             textLayerDiv.style.setProperty("--scale-factor", scale.toString());
 
             const textContent = await page.getTextContent();
-<<<<<<< HEAD
-            textContent.items.forEach((item: any) => {
-              if (!item.str) return;
-              const tx = pdfjsLib.Util.transform(viewport.transform, item.transform);
-              const fontHeight = Math.sqrt(tx[2] * tx[2] + tx[3] * tx[3]);
-              const span = document.createElement("span");
-              span.textContent = item.str;
-              span.style.position = "absolute";
-              span.style.left = `${tx[4]}px`;
-              span.style.top = `${tx[5] - fontHeight}px`;
-              span.style.fontSize = `${fontHeight}px`;
-              span.style.fontFamily = item.fontName || "sans-serif";
-              span.style.color = "rgba(0, 0, 0, 0.004)"; // near-invisible but not transparent — keeps cursor visible
-              span.style.lineHeight = "1";
-              span.style.whiteSpace = "pre";
-              span.style.cursor = "text";
-              span.style.userSelect = "text";
-              textLayerDiv.appendChild(span);
-=======
             const textLayer = new pdfjsLib.TextLayer({
               textContentSource: textContent,
               container: textLayerDiv,
               viewport: viewport,
->>>>>>> e2ce0a0 (Bug Fixes)
             });
 
             activeTextLayers.current.set(pageNumber, textLayer);
@@ -1053,11 +1033,7 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
                           if (el) textLayerRefs.current.set(pageNum, el);
                           else textLayerRefs.current.delete(pageNum);
                         }}
-<<<<<<< HEAD
-                        className="pdf-text-layer absolute inset-0 overflow-hidden select-text pointer-events-auto leading-none"
-=======
                         className="textLayer absolute inset-0 overflow-hidden select-text pointer-events-auto leading-none text-transparent z-[2]"
->>>>>>> e2ce0a0 (Bug Fixes)
                         style={{
                           width: `${basePageWidth}px`,
                           height: `${basePageHeight}px`,
