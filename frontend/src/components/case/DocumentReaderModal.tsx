@@ -155,14 +155,27 @@ export function DocumentReaderModal({
     setCurrentOrderDate(initialOrderDate);
     setMode(initialMode);
     if (userDoc) {
-      if (userDoc.extracted_text) setTextContent(userDoc.extracted_text);
-      if (userDoc.ai_analysis) setStructuredAI(userDoc.ai_analysis);
-      if (userDoc.notes) setNotes(userDoc.notes);
-      if (userDoc.highlights) setHighlights(userDoc.highlights);
-      if (userDoc.tags_list) setTags(userDoc.tags_list);
+      setTextContent(userDoc.extracted_text || null);
+      setStructuredAI(userDoc.ai_analysis || null);
+      setNotes(userDoc.notes || "");
+      setHighlights(userDoc.highlights || []);
+      setTags(userDoc.tags_list || []);
       setIsSaved(true);
+      setPdfData(null);
+      setPdfError(null);
+      setTextError(null);
+    } else {
+      setTextContent(null);
+      setPdfData(null);
+      setStructuredAI(initialAiData || null);
+      setNotes("");
+      setHighlights([]);
+      setTags([]);
+      setIsSaved(false);
+      setPdfError(null);
+      setTextError(null);
     }
-  }, [isOpen, effectiveFilename, initialOrderDate, initialMode, userDoc]);
+  }, [isOpen, effectiveFilename, effectiveCnr, effectiveId, initialOrderDate, initialMode, userDoc, initialAiData]);
 
   // Load saved research notes & highlights for public case order
   useEffect(() => {
@@ -186,7 +199,7 @@ export function DocumentReaderModal({
       .catch(() => {});
   }, [isOpen, effectiveCnr, currentFilename, effectiveId]);
 
-  // Load content whenever currentFilename or active mode changes
+  // Load content whenever currentFilename, effectiveCnr, effectiveId, or active mode changes
   useEffect(() => {
     if (!isOpen) return;
     if (mode === "pdf") {
@@ -196,7 +209,7 @@ export function DocumentReaderModal({
     } else if (mode === "ai") {
       loadAI(currentFilename);
     }
-  }, [isOpen, currentFilename, mode]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isOpen, currentFilename, effectiveCnr, effectiveId, mode]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Keyboard shortcut listener (Esc to close, Alt+1/2/3 to switch mode)
   useEffect(() => {
@@ -231,6 +244,7 @@ export function DocumentReaderModal({
 
     setPdfLoading(true);
     setPdfError(null);
+    setPdfData(null);
     try {
       let buffer: ArrayBuffer;
       if (effectiveId) {
@@ -259,7 +273,6 @@ export function DocumentReaderModal({
   };
 
   const loadMarkdown = async (fname: string) => {
-    if (textContent) return;
     const cacheKey = effectiveId ? `doc_md_${effectiveId}` : `${effectiveCnr}_${fname}`;
     if (textCache.has(cacheKey)) {
       setTextContent(textCache.get(cacheKey)!);
@@ -269,6 +282,7 @@ export function DocumentReaderModal({
 
     setTextLoading(true);
     setTextError(null);
+    setTextContent(null);
     try {
       if (effectiveId) {
         const doc = await documentService.getById(effectiveId);
@@ -292,17 +306,6 @@ export function DocumentReaderModal({
   };
 
   const loadAI = async (fname: string) => {
-    const raw = structuredAI as any;
-    const hasValidSummary =
-      raw &&
-      (raw.executive_summary ||
-        raw.executiveSummary ||
-        raw.summary ||
-        raw.plain_language_summary ||
-        raw.plainLanguageSummary);
-
-    if (hasValidSummary && !effectiveId) return;
-
     setAiLoading(true);
     try {
       if (effectiveId) {
@@ -328,6 +331,11 @@ export function DocumentReaderModal({
     if (found) {
       setCurrentFilename(selectedFname);
       setCurrentOrderDate(found.order_date || "Court Order");
+      setTextContent(null);
+      setPdfData(null);
+      setStructuredAI(null);
+      setTextError(null);
+      setPdfError(null);
     }
   };
 
@@ -538,7 +546,11 @@ export function DocumentReaderModal({
                       border: "1px solid var(--border)",
                     }}
                   >
-                    CNR: {effectiveCnr}
+                    {effectiveCnr.startsWith("doc_") || /^\d+$/.test(effectiveCnr)
+                      ? `Kanoon Doc: ${effectiveCnr.replace("doc_", "")}`
+                      : effectiveCnr.length === 16
+                      ? `CNR: ${effectiveCnr}`
+                      : `Ref: ${effectiveCnr}`}
                   </span>
                 )}
               </div>

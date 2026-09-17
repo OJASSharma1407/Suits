@@ -28,21 +28,26 @@ export const caseService = {
 
   getOrderMarkdown: async (cnr: string, filename: string) => {
     const safeFilename = sanitizeFilename(filename);
-    const res = await api.get<APIResponse<OrderMarkdown>>(`/orders/${cnr}/markdown/${safeFilename}`);
+    const res = await api.get<APIResponse<OrderMarkdown>>(
+      `/orders/${encodeURIComponent(cnr)}/markdown/${encodeURIComponent(safeFilename)}`
+    );
     return res.data.data;
   },
 
   getOrderAI: async (cnr: string, filename: string) => {
     const safeFilename = sanitizeFilename(filename);
-    const res = await api.get<APIResponse<OrderAI>>(`/orders/${cnr}/ai/${safeFilename}`);
+    const res = await api.get<APIResponse<OrderAI>>(
+      `/orders/${encodeURIComponent(cnr)}/ai/${encodeURIComponent(safeFilename)}`
+    );
     return res.data.data;
   },
 
   downloadOrderPDF: async (cnr: string, filename: string) => {
     const safeFilename = sanitizeFilename(filename);
-    const res = await api.get(`/orders/${cnr}/download/${safeFilename}`, {
-      responseType: "blob",
-    });
+    const res = await api.get(
+      `/orders/${encodeURIComponent(cnr)}/download/${encodeURIComponent(safeFilename)}`,
+      { responseType: "blob" }
+    );
     
     let extractedFilename = `${cnr}_${safeFilename}`;
     const disposition = res.headers['content-disposition'];
@@ -57,9 +62,10 @@ export const caseService = {
 
   getOrderPDFArrayBuffer: async (cnr: string, filename: string) => {
     const safeFilename = sanitizeFilename(filename);
-    const res = await api.get(`/orders/${cnr}/download/${safeFilename}`, {
-      responseType: "arraybuffer",
-    });
+    const res = await api.get(
+      `/orders/${encodeURIComponent(cnr)}/download/${encodeURIComponent(safeFilename)}`,
+      { responseType: "arraybuffer" }
+    );
     return res.data as ArrayBuffer;
   },
 

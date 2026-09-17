@@ -92,16 +92,14 @@ class OrderService:
         if cnr_url_match:
             return cnr_url_match.group(1)
 
-        # 2. Check if filename contains pure standalone digits (e.g. "doc_29724830")
-        filename_digits = "".join(filter(str.isdigit, filename_clean))
-        if (
-            filename_digits
-            and len(filename_digits) >= 4
-            and not filename_clean.startswith("order-")
-            and not "section" in filename_clean.lower()
-            and not "article" in filename_clean.lower()
-        ):
-            return filename_digits
+        # 2. Check if filename or CNR is explicitly a Kanoon doc ID (e.g. "doc_29724830", "doc-29724830", "193792759.pdf")
+        doc_match = _re.match(r'^(?:doc[_-])?(\d{4,12})(?:\.(?:pdf|html|txt))?$', filename_clean, _re.IGNORECASE)
+        if doc_match:
+            return doc_match.group(1)
+
+        cnr_match = _re.match(r'^(?:doc[_-])?(\d{4,12})(?:\.(?:pdf|html|txt))?$', cnr_clean, _re.IGNORECASE)
+        if cnr_match:
+            return cnr_match.group(1)
 
         # 3. Search Indian Kanoon using filename if it is a descriptive precedent title or statutory provision
         if (

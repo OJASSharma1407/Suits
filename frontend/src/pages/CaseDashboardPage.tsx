@@ -275,6 +275,10 @@ export default function CaseDashboardPage() {
   };
 
   const handleOpenPrecedentReader = (node: CitationNode) => {
+    if (node.node_type === "target") {
+      handleOpenReader();
+      return;
+    }
     const docId = node.tid || node.title;
     if (!docId) {
       toast.error("Precedent document identifier unavailable.");
@@ -505,8 +509,12 @@ export default function CaseDashboardPage() {
       {/* In-Built Document Reader Modal with Research Panel & Chat */}
       {readerFilename && (
         <DocumentReaderModal
+          key={`${readerCnr || caseData.cnr}_${readerFilename}_${readerMode}`}
           isOpen={isReaderOpen}
-          onClose={() => setIsReaderOpen(false)}
+          onClose={() => {
+            setIsReaderOpen(false);
+            setReaderFilename(null);
+          }}
           cnr={readerCnr || caseData.cnr}
           filename={readerFilename}
           caseTitle={readerCaseTitle || caseData.case_title}
