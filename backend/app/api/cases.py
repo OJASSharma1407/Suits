@@ -6,9 +6,11 @@ from fastapi import APIRouter
 from app.dependencies.auth import CurrentUser, DbSession
 from app.schemas.case import CaseDetailsResponse, RefreshResponse
 from app.schemas.citation import CitationGraphResponse
+from app.schemas.similar_case import SimilarCasesResponse
 from app.schemas.common import APIResponse
 from app.services.case_service import CaseService
 from app.services.citation_service import CitationService
+from app.services.similar_cases_service import SimilarCasesService
 from app.services.ecourts_service import ecourts_service
 from app.core.exceptions import InvalidCNRError
 
@@ -70,10 +72,21 @@ async def get_citation_graph(cnr: str, user: CurrentUser, db: DbSession):
     return APIResponse(data=graph_data)
 
 
+@router.get("/{cnr}/similar-cases", response_model=APIResponse[SimilarCasesResponse])
+@router.get("/{cnr}/similar", response_model=APIResponse[SimilarCasesResponse])
+async def get_similar_cases(cnr: str, user: CurrentUser, db: DbSession):
+    """Retrieve legally analogous cases and precedents using Hybrid RAG."""
+    cnr = _validate_cnr(cnr)
+    service = SimilarCasesService(db)
+    similar_data = await service.get_similar_cases(cnr)
+    return APIResponse(data=similar_data)
+
+
 @router.post("/{cnr}/refresh", response_model=APIResponse[RefreshResponse])
 async def refresh_case(cnr: str, user: CurrentUser, db: DbSession):
     cnr = _validate_cnr(cnr)
     service = CaseService(db)
     result = await service.refresh_case(cnr)
     return APIResponse(data=result, message="Refresh request submitted.")
+
 

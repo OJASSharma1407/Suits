@@ -10,6 +10,7 @@ import { DocumentLiquidNavBar } from "@/components/case/DocumentLiquidNavBar";
 import { AISummaryCard } from "@/components/case/AISummaryCard";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
 import { CitationNetworkView } from "@/components/case/citation/CitationNetworkView";
+import { SimilarCasesCard } from "@/components/case/SimilarCasesCard";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SuitsLoader } from "@/components/common/SuitsLoader";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
@@ -491,6 +492,15 @@ export default function CaseDashboardPage() {
         {/* Interactive Citation Network Graph Section */}
         <div id="citation-network-section">
           <CitationNetworkView
+            cnr={caseData.cnr}
+            caseTitle={caseData.case_title}
+            onReadDocument={handleOpenPrecedentReader}
+          />
+        </div>
+
+        {/* Similar Cases & Precedents – Hybrid RAG */}
+        <div id="similar-cases-section">
+          <SimilarCasesCard
             cnr={caseData.cnr}
             caseTitle={caseData.case_title}
             onReadDocument={handleOpenPrecedentReader}

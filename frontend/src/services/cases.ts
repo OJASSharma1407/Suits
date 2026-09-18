@@ -1,6 +1,7 @@
 import api from "@/lib/axios";
 import type { APIResponse } from "@/types/common";
 import type { CaseDetails, OrderMarkdown, OrderAI } from "@/types/case";
+import type { SimilarCasesResponse } from "@/types/similar-case";
 
 /**
  * Sanitize a filename for use in API URL path segments.
@@ -24,6 +25,11 @@ export const caseService = {
   refreshCase: async (cnr: string) => {
     const res = await api.post<APIResponse<unknown>>(`/cases/${cnr}/refresh`);
     return res.data;
+  },
+
+  getSimilarCases: async (cnr: string) => {
+    const res = await api.get<APIResponse<SimilarCasesResponse>>(`/cases/${cnr}/similar-cases`);
+    return res.data.data;
   },
 
   getOrderMarkdown: async (cnr: string, filename: string) => {
