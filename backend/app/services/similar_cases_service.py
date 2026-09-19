@@ -26,6 +26,7 @@ from app.schemas.similar_case import (
 )
 from app.services.cache_service import cache_service
 from app.services.embedding_service import embedding_service
+from app.services.inlegal_bert_service import inlegal_bert_service
 
 logger = structlog.get_logger()
 
@@ -319,7 +320,6 @@ class SimilarCasesService:
 
             # ── Semantic bonus (up to +8 pts on top of base) ──────────────
             semantic_bonus = int(sem_score * 8)
-
             total_hybrid = int(min(99, max(40, channel_base - position_decay + tier_bonus + semantic_bonus)))
 
             precedent_nature = (
@@ -335,14 +335,33 @@ class SimilarCasesService:
                 "year": _extract_year(cand_title) or str(case_year - (idx + 1)),
                 "channel": channel,
                 "semantic_score": round(sem_score, 3),
+                "inlegalbert_score": round(sem_score, 3),
                 "hybrid_score": total_hybrid,
                 "precedent_type": precedent_nature,
                 "raw_headline": cand.get("headline", ""),
             })
 
-        # Sort descending by hybrid score
+        # Sort descending by preliminary hybrid score and take top candidates
         scored_candidates.sort(key=lambda x: x["hybrid_score"], reverse=True)
-        top_candidates = scored_candidates[:5]
+        top_candidates = scored_candidates[:6]
+
+        # Stage C: InLegalBERT refined scoring over top 6 candidates in background thread
+        if executive_summary and top_candidates:
+            try:
+                def _score_top_precedents(summary_text: str, cand_list: list[dict[str, Any]]):
+                    t_chunks = inlegal_bert_service.chunk_legal_text(summary_text, max_tokens=300)[:2]
+                    t_vecs = [inlegal_bert_service.embed_text(c) for c in t_chunks]
+                    for item in cand_list:
+                        c_text = f"{item['title']}. {item.get('raw_headline', '')}"
+                        inlegal_sim = inlegal_bert_service.score_precedent_match_with_vecs(t_vecs, c_text)
+                        item["inlegalbert_score"] = inlegal_sim
+                        lex_norm = min(1.0, item["hybrid_score"] / 100.0)
+                        item["hybrid_score"] = int(min(99, max(40, (0.45 * inlegal_sim + 0.55 * lex_norm) * 100)))
+
+                await asyncio.to_thread(_score_top_precedents, executive_summary, top_candidates)
+                top_candidates.sort(key=lambda x: x["hybrid_score"], reverse=True)
+            except Exception as e:
+                logger.warning("inlegalbert_batch_rerank_failed", error=str(e))
 
 
         # 6. LLM Legal RAG Synthesis (Gemini)

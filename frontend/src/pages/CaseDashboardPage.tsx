@@ -11,6 +11,9 @@ import { AISummaryCard } from "@/components/case/AISummaryCard";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
 import { CitationNetworkView } from "@/components/case/citation/CitationNetworkView";
 import { SimilarCasesCard } from "@/components/case/SimilarCasesCard";
+import { CasePredictionCard } from "@/components/case/CasePredictionCard";
+import { CaseHeadnoteCard } from "@/components/case/CaseHeadnoteCard";
+import { CriminalEraTransitionCard } from "@/components/case/CriminalEraTransitionCard";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SuitsLoader } from "@/components/common/SuitsLoader";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
@@ -275,7 +278,7 @@ export default function CaseDashboardPage() {
     setIsReaderOpen(true);
   };
 
-  const handleOpenPrecedentReader = (node: CitationNode) => {
+  const handleOpenPrecedentReader = (node: { tid?: string | null; title: string; court?: string | null; node_type: string; year?: string | number | null }) => {
     if (node.node_type === "target") {
       handleOpenReader();
       return;
@@ -467,6 +470,19 @@ export default function CaseDashboardPage() {
       )}
 
       <div className="space-y-8">
+        {/* Editorial Publisher Headnote & Ratio Extractor */}
+        <div id="headnote-section">
+          <CaseHeadnoteCard
+            cnr={caseData.cnr}
+            selectedFilename={selectedOrderFilename}
+          />
+        </div>
+
+        {/* Criminal Law Era Transition Engine (IPC/CrPC/IEA <-> BNS/BNSS/BSA) */}
+        <div id="era-transition-section">
+          <CriminalEraTransitionCard cnr={caseData.cnr} />
+        </div>
+
         {/* AI Analysis Display */}
         <div id="ai-summary-section">
           {aiLoading ? (
@@ -504,6 +520,14 @@ export default function CaseDashboardPage() {
             cnr={caseData.cnr}
             caseTitle={caseData.case_title}
             onReadDocument={handleOpenPrecedentReader}
+          />
+        </div>
+
+        {/* Precedent Comparison & Outcome Prediction */}
+        <div id="prediction-analysis-section">
+          <CasePredictionCard
+            cnr={caseData.cnr}
+            caseTitle={caseData.case_title}
           />
         </div>
 

@@ -4,7 +4,9 @@ Handles prompt submission, response parsing, and token tracking with automatic m
 Uses Google GenAI SDK (google-genai >= 2.0) with async support via client.aio.models.
 """
 
+import asyncio
 import json
+import re
 from typing import Any
 
 import structlog
@@ -66,9 +68,9 @@ class GeminiClient:
         )
 
     def _model_candidates(self) -> list[str]:
-        """Return ordered list of model names to try, deduplicating while preserving order."""
-        primary = settings.gemini_model or "gemini-2.5-flash"
-        candidates = [primary, "gemini-2.5-flash", "gemini-flash-latest", "gemini-2.5-flash-lite", "gemini-2.5-pro"]
+        """Return ordered list of verified healthy models to try, removing deprecated 404/quota-0 slugs."""
+        primary = settings.gemini_model or "gemini-3.6-flash"
+        candidates = [primary, "gemini-3.6-flash", "gemini-3-flash-preview"]
         seen: set[str] = set()
         return [m for m in candidates if not (m in seen or seen.add(m))]
 
@@ -86,23 +88,28 @@ class GeminiClient:
 
         last_error = ""
         for model_name in self._model_candidates():
-            try:
-                response = await self.client.aio.models.generate_content(  # type: ignore[union-attr]
-                    model=model_name,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        temperature=temperature,
-                        max_output_tokens=max_output_tokens,
-                    ),
-                )
-                if response and response.text:
-                    logger.info("gemini_success", model=model_name)
-                    return response.text
-            except Exception as exc:
-                last_error = str(exc)
-                logger.warning("gemini_model_try_failed", model=model_name, error=last_error)
-                continue
+            for attempt in range(2):
+                try:
+                    coro = self.client.aio.models.generate_content(  # type: ignore[union-attr]
+                        model=model_name,
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            temperature=temperature,
+                            max_output_tokens=max_output_tokens,
+                        ),
+                    )
+                    response = await asyncio.wait_for(coro, timeout=25.0)
+                    if response and response.text:
+                        logger.info("gemini_success", model=model_name, attempt=attempt)
+                        return response.text
+                except Exception as exc:
+                    last_error = str(exc)
+                    logger.warning("gemini_model_try_failed", model=model_name, attempt=attempt, error=last_error)
+                    if ("503" in last_error or "UNAVAILABLE" in last_error or isinstance(exc, asyncio.TimeoutError)) and attempt == 0:
+                        await asyncio.sleep(1.0)
+                        continue
+                    break
 
         return self._get_fallback_analysis(error_msg=last_error)
 
@@ -124,24 +131,33 @@ class GeminiClient:
 
         last_error = ""
         for model_name in self._model_candidates():
-            try:
-                response = await self.client.aio.models.generate_content(  # type: ignore[union-attr]
-                    model=model_name,
-                    contents=user_prompt,
-                    config=types.GenerateContentConfig(
-                        system_instruction=system_prompt,
-                        temperature=temperature,
-                        max_output_tokens=max_output_tokens,
-                        response_mime_type="application/json",
-                    ),
-                )
-                if response and response.text:
-                    logger.info("gemini_json_success", model=model_name)
-                    return json.loads(response.text)
-            except Exception as exc:
-                last_error = str(exc)
-                logger.warning("gemini_json_model_failed", model=model_name, error=last_error)
-                continue
+            for attempt in range(2):
+                try:
+                    coro = self.client.aio.models.generate_content(  # type: ignore[union-attr]
+                        model=model_name,
+                        contents=user_prompt,
+                        config=types.GenerateContentConfig(
+                            system_instruction=system_prompt,
+                            temperature=temperature,
+                            max_output_tokens=max_output_tokens,
+                            response_mime_type="application/json",
+                        ),
+                    )
+                    response = await asyncio.wait_for(coro, timeout=25.0)
+                    if response and response.text:
+                        logger.info("gemini_json_success", model=model_name, attempt=attempt)
+                        raw = response.text.strip()
+                        if raw.startswith("```"):
+                            raw = re.sub(r"^```(?:json)?\s*", "", raw)
+                            raw = re.sub(r"\s*```$", "", raw)
+                        return json.loads(raw)
+                except Exception as exc:
+                    last_error = str(exc)
+                    logger.warning("gemini_json_model_failed", model=model_name, attempt=attempt, error=last_error)
+                    if ("503" in last_error or "UNAVAILABLE" in last_error or isinstance(exc, asyncio.TimeoutError)) and attempt == 0:
+                        await asyncio.sleep(1.0)
+                        continue
+                    break
 
         logger.warning("gemini_json_all_models_failed_trying_openrouter", error=last_error)
         try:

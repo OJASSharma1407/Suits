@@ -7,7 +7,9 @@ import {
   BookOpen,
   Highlighter,
   ArrowRight,
+  ArrowLeftRight,
   Hash,
+  FolderLock,
 } from "lucide-react";
 import { fileService } from "@/services/files";
 import type { SavedFile } from "@/types/file";
@@ -15,9 +17,11 @@ import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
 import { ResearchBriefModal } from "@/components/files/ResearchBriefModal";
+import { EraTransitionExplorer } from "@/components/research/EraTransitionExplorer";
 import { toast } from "sonner";
 
 export default function ResearchPage() {
+  const [activeTab, setActiveTab] = useState<"era_transition" | "vault">("era_transition");
   const [files, setFiles] = useState<SavedFile[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -72,7 +76,36 @@ export default function ResearchPage() {
 
   return (
     <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36 }}>
-      {loading ? (
+      {/* Top Page Tabs */}
+      <div className="flex items-center gap-3 border-b border-border/40 pb-3 mb-6">
+        <button
+          onClick={() => setActiveTab("era_transition")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === "era_transition"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+          }`}
+        >
+          <ArrowLeftRight className="h-4 w-4" />
+          <span>Criminal Law Era Transition Hub (IPC/CrPC ⇄ BNS/BNSS)</span>
+        </button>
+
+        <button
+          onClick={() => setActiveTab("vault")}
+          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+            activeTab === "vault"
+              ? "bg-primary text-primary-foreground shadow-sm"
+              : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
+          }`}
+        >
+          <FolderLock className="h-4 w-4" />
+          <span>Research Vault & Saved Dossiers ({files.length})</span>
+        </button>
+      </div>
+
+      {activeTab === "era_transition" ? (
+        <EraTransitionExplorer />
+      ) : loading ? (
         <SkeletonLoader count={3} height="76px" />
       ) : files.length === 0 ? (
         <EmptyState

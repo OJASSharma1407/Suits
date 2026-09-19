@@ -39,6 +39,17 @@ class Settings(BaseSettings):
     openrouter_model: str = Field(default="nvidia/nemotron-3-ultra-550b-a55b:free")
     openrouter_max_tokens: int = Field(default=4096)
 
+    # Isolated Judicial Outcome Prediction Engine (Does not touch gemini_api_key or openrouter_api_key)
+    prediction_gemini_api_key: str = Field(default="")
+    prediction_gemini_model: str = Field(default="gemini-3.1-pro-preview")
+    prediction_thinking_level: str = Field(default="high")          # low | medium | high
+    prediction_thinking_budget: int = Field(default=24576)          # budget for legacy models
+    prediction_cache_ttl: int = Field(default=604800)               # 7 days (state-hash based invalidation)
+    prediction_max_precedents: int = Field(default=6)
+    prediction_enabled: bool = Field(default=True)                  # Enabled for testing/demo
+    inlegalbert_scoring_mode: str = Field(default="whitened")       # "whitened" | "finetuned"
+    inlegalbert_device: str = Field(default="auto")                 # auto | cuda | cpu
+
     # Google OAuth
     google_client_id: str = Field(default="")
 

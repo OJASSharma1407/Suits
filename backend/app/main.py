@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.exceptions import SuitsBaseException
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics, files, documents
+from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics, files, documents, statutes
 from app.clients.ecourts_client import ecourts_client
 from app.services.cache_service import cache_service
 from app.database.session import engine, init_db
@@ -137,8 +137,20 @@ app.include_router(history.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
+app.include_router(statutes.router, prefix="/api")
 
 
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "version": "1.0.0"}
+
+
+@app.get("/api/health/prediction")
+async def prediction_health_check():
+    has_key = bool(settings.prediction_gemini_api_key and settings.prediction_gemini_api_key.strip())
+    return {
+        "status": "configured" if has_key else "unconfigured",
+        "service": "Judicial Outcome Prediction Engine",
+        "model": settings.prediction_gemini_model,
+        "key_present": has_key,
+    }
