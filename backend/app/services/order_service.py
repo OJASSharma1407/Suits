@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.gemini_client import gemini_client
+from app.clients.openrouter_client import openrouter_client
 from app.clients.kanoon_client import kanoon_client
 from app.models.cached_order import CachedOrder
 from app.models.cached_ai_analysis import CachedAIAnalysis
@@ -262,14 +263,22 @@ class OrderService:
             }
             return self._transform_ai_response(cnr, filename, raw)
 
-        # 4. Generate structured analysis via Gemini
+        # 4. Generate structured analysis via OpenRouter (with Gemini fallback)
         logger.info("ORDER_AI_CALLING_LLM", cnr=cnr, filename=filename, text_length=len(order_text))
         extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.format(order_text=order_text[:16000])
 
-        raw = await gemini_client.generate_json(
-            system_prompt=_ORDER_AI_SYSTEM_PROMPT,
-            user_prompt=extraction_prompt,
-        )
+        raw = None
+        try:
+            raw = await openrouter_client.generate_json(
+                system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+                user_prompt=extraction_prompt,
+            )
+        except Exception as or_err:
+            logger.warning("openrouter_order_ai_failed_using_gemini", error=str(or_err))
+            raw = await gemini_client.generate_json(
+                system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+                user_prompt=extraction_prompt,
+            )
 
 
         if not raw or not raw.get("executiveSummary"):

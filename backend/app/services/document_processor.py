@@ -294,9 +294,9 @@ class DocumentProcessor:
             await cache_service.set(redis_key, db_summary)
             return db_summary
 
-        # 3. LLM Generation via Gemini
+        # 3. LLM Generation via OpenRouter (with Gemini fallback)
         try:
-            from app.clients.gemini_client import gemini_client
+            summary = None
             prompt = (
                 f"The following is the text of a legal document named '{filename}'.\n\n"
                 f"{snippet}\n\n"
@@ -305,16 +305,29 @@ class DocumentProcessor:
                 "3) the key legal significance or content. "
                 "Keep it short and factual."
             )
-            summary = await gemini_client.generate(
-                system_prompt="You are a legal document analyst. Provide concise, accurate summaries.",
-                user_prompt=prompt,
-                temperature=0.2,
-                max_output_tokens=256,
-            )
-            cleaned_summary = summary.strip()
-            if cleaned_summary and len(cleaned_summary) > 15:
-                await cache_service.set(redis_key, cleaned_summary)
-                return cleaned_summary
+            try:
+                from app.clients.openrouter_client import openrouter_client
+                summary = await openrouter_client.generate(
+                    system_prompt="You are a legal document analyst. Provide concise, accurate summaries.",
+                    user_prompt=prompt,
+                    temperature=0.2,
+                    max_output_tokens=256,
+                )
+            except Exception as or_err:
+                logger.warning("openrouter_summary_failed_using_gemini", error=str(or_err))
+                from app.clients.gemini_client import gemini_client
+                summary = await gemini_client.generate(
+                    system_prompt="You are a legal document analyst. Provide concise, accurate summaries.",
+                    user_prompt=prompt,
+                    temperature=0.2,
+                    max_output_tokens=256,
+                )
+
+            if summary:
+                cleaned_summary = summary.strip()
+                if cleaned_summary and len(cleaned_summary) > 15:
+                    await cache_service.set(redis_key, cleaned_summary)
+                    return cleaned_summary
         except Exception as exc:
             logger.warning("summary_generation_failed", error=str(exc))
 
@@ -363,18 +376,28 @@ class DocumentProcessor:
                 except Exception:
                     pass
 
-        # 4. Synthesize via Gemini
+        # 4. Synthesize via OpenRouter (with Gemini fallback)
         from app.services.order_service import _ORDER_AI_SYSTEM_PROMPT, _ORDER_AI_EXTRACTION_PROMPT
-        from app.clients.gemini_client import gemini_client
 
         extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.replace("{order_text}", text[:30000])
 
         try:
             logger.info("DOCUMENT_AI_EXTRACTION_START", filename=filename, text_length=len(text))
-            raw = await gemini_client.generate_json(
-                system_prompt=_ORDER_AI_SYSTEM_PROMPT,
-                user_prompt=extraction_prompt,
-            )
+            raw = None
+            try:
+                from app.clients.openrouter_client import openrouter_client
+                raw = await openrouter_client.generate_json(
+                    system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+                    user_prompt=extraction_prompt,
+                )
+            except Exception as or_err:
+                logger.warning("openrouter_doc_ai_failed_using_gemini", error=str(or_err))
+                from app.clients.gemini_client import gemini_client
+                raw = await gemini_client.generate_json(
+                    system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+                    user_prompt=extraction_prompt,
+                )
+
             if isinstance(raw, dict) and raw.get("executiveSummary"):
                 logger.info("DOCUMENT_AI_EXTRACTION_SUCCESS", filename=filename, keys=list(raw.keys()))
                 if cnr and "cnr" not in raw:

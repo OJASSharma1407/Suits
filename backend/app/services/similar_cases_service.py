@@ -18,6 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.gemini_client import gemini_client
+from app.clients.openrouter_client import openrouter_client
 from app.clients.kanoon_client import kanoon_client
 from app.core.config import settings
 from app.repositories.cache_repository import CacheRepository
@@ -448,20 +449,30 @@ class SimilarCasesService:
         )
 
         ai_results: list[dict[str, Any]] = []
+        raw_json = None
         try:
-            raw_json = await gemini_client.generate_json(
+            raw_json = await openrouter_client.generate_json(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=0.2,
             )
-            if isinstance(raw_json, list):
-                ai_results = raw_json
-            elif isinstance(raw_json, dict) and "cases" in raw_json and isinstance(raw_json["cases"], list):
-                ai_results = raw_json["cases"]
-            elif isinstance(raw_json, dict) and "results" in raw_json and isinstance(raw_json["results"], list):
-                ai_results = raw_json["results"]
-        except Exception as exc:
-            logger.warning("gemini_synthesis_failed_using_fallback", error=str(exc))
+        except Exception as or_err:
+            logger.warning("openrouter_nexus_failed_using_gemini", error=str(or_err))
+            try:
+                raw_json = await gemini_client.generate_json(
+                    system_prompt=system_prompt,
+                    user_prompt=user_prompt,
+                    temperature=0.2,
+                )
+            except Exception as exc:
+                logger.warning("gemini_synthesis_failed_using_fallback", error=str(exc))
+
+        if isinstance(raw_json, list):
+            ai_results = raw_json
+        elif isinstance(raw_json, dict) and "cases" in raw_json and isinstance(raw_json["cases"], list):
+            ai_results = raw_json["cases"]
+        elif isinstance(raw_json, dict) and "results" in raw_json and isinstance(raw_json["results"], list):
+            ai_results = raw_json["results"]
 
         # Index AI results by title lowercase
         ai_map: dict[str, dict[str, Any]] = {}

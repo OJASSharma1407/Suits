@@ -254,15 +254,25 @@ async def chat_with_document(
 
         try:
             ai_text = None
-            ai_text = await gemini_client.generate_with_context(
-                system_prompt=system_prompt,
-                conversation_history=formatted_history,
-                user_message=request.message,
-                case_context=doc_context,
-            )
+            try:
+                from app.clients.openrouter_client import openrouter_client
+                ai_text = await openrouter_client.generate_with_context(
+                    system_prompt=system_prompt,
+                    conversation_history=formatted_history,
+                    user_message=request.message,
+                    case_context=doc_context,
+                )
+            except Exception as or_err:
+                logger.warning("openrouter_doc_chat_failed_using_gemini", error=str(or_err))
+                ai_text = await gemini_client.generate_with_context(
+                    system_prompt=system_prompt,
+                    conversation_history=formatted_history,
+                    user_message=request.message,
+                    case_context=doc_context,
+                )
 
             if not ai_text:
-                ai_text = "I could not analyze the uploaded document at this time. Please check your Gemini API key configuration."
+                ai_text = "I could not analyze the uploaded document at this time. Please check your AI API key configuration."
 
             # Stream tokens
             chunk_size = 20

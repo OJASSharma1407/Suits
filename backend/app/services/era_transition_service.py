@@ -23,6 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.prediction_gemini_client import prediction_gemini_client
+from app.clients.openrouter_client import openrouter_client
 from app.core.config import settings
 from app.data.criminal_statutes_concordance import (
     CRIMINAL_CONCORDANCE_DATA,
@@ -357,7 +358,13 @@ class EraTransitionService:
         )
 
         try:
-            parsed_json, _ = await prediction_gemini_client.generate_prediction_json(system_prompt, user_prompt)
+            parsed_json = None
+            try:
+                parsed_json = await openrouter_client.generate_json(system_prompt, user_prompt)
+            except Exception as or_err:
+                logger.warning("openrouter_transposition_failed_using_gemini", error=str(or_err))
+                parsed_json, _ = await prediction_gemini_client.generate_prediction_json(system_prompt, user_prompt)
+
             if parsed_json and "transpositions" in parsed_json and isinstance(parsed_json["transpositions"], list):
                 items = []
                 for raw in parsed_json["transpositions"]:
@@ -368,7 +375,7 @@ class EraTransitionService:
                 if items:
                     return items
         except Exception as exc:
-            logger.warning("gemini_transposition_synthesis_failed", error=str(exc))
+            logger.warning("transposition_synthesis_failed", error=str(exc))
 
         # Fallback synthesis
         fallback_items = []
