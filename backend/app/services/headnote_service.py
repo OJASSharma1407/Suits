@@ -225,6 +225,51 @@ class HeadnoteService:
                 except Exception as e:
                     logger.warning("corrupt_cached_headnote_in_db", error=str(e))
 
+            # 3c. Derive from CachedAIAnalysis if already analyzed by unified OrderService
+            target_fn = filename.strip() if filename else None
+            ai_row = await self.cache_repo.get_cached_ai(cnr_clean, target_fn) if target_fn else None
+            if not ai_row:
+                ai_row = await self.cache_repo.get_cached_ai(cnr_clean, cnr_clean)
+
+            if ai_row and ai_row.ai_json:
+                try:
+                    ai_raw = json.loads(ai_row.ai_json)
+                    if ai_raw.get("ratioDecidendi") or ai_raw.get("heldPoints"):
+                        logger.info("headnote_derived_from_cached_ai_analysis", cnr=cnr_clean)
+                        held_list = ai_raw.get("heldPoints") or ai_raw.get("held_points")
+                        if not held_list and ai_raw.get("ratioDecidendi"):
+                            held_list = [ai_raw.get("ratioDecidendi")]
+                        elif not held_list:
+                            held_list = []
+
+                        headnote_dict = {
+                            "target_cnr": cnr_clean,
+                            "order_id": filename or "primary",
+                            "order_title": ai_raw.get("caseNumber") or filename or "Court Judgment",
+                            "order_date": ai_raw.get("orderDate") or ai_raw.get("order_date"),
+                            "court_name": ai_raw.get("courtName") or ai_raw.get("court_name"),
+                            "bench_coram": ai_raw.get("judgeNames") or ai_raw.get("judge_names", []),
+                            "headnote": {
+                                "catchwords": ai_raw.get("catchwords", []),
+                                "held_points": held_list,
+                                "ratio_decidendi_summary": ai_raw.get("ratioDecidendi") or ai_raw.get("courtReasoning", ""),
+                                "obiter_dicta": ai_raw.get("obiterDicta") or ai_raw.get("obiter_dicta", []),
+                                "precedent_citator_table": ai_raw.get("precedentCitatorTable") or ai_raw.get("precedent_citator_table", []),
+                                "statutory_provisions_considered": ai_raw.get("statutoryProvisionsConsidered") or ai_raw.get("statutory_provisions_considered", []),
+                                "operative_disposition": ai_raw.get("operativeDisposition") or ai_raw.get("outcome") or ai_raw.get("dispositionStatus") or "Disposed",
+                            },
+                            "model_attribution": "Unified Case Intelligence · InLegalBERT & Gemini/Groq",
+                            "order_hash": order_hash,
+                            "is_cached": True,
+                            "generated_at": datetime.now(timezone.utc).isoformat(),
+                        }
+                        resp = CaseHeadnoteResponse.model_validate(headnote_dict)
+                        resp.is_cached = True
+                        await cache_service.set(redis_key, resp.model_dump(), settings.prediction_cache_ttl)
+                        return resp
+                except Exception as e:
+                    logger.warning("failed_to_derive_headnote_from_ai_analysis", error=str(e))
+
         # 4. Stage 1: InLegalBERT Rhetorical Role Segmentation (run in thread pool)
         logger.info("starting_inlegalbert_rhetorical_segmentation", cnr=cnr_clean)
         distilled_ratio_text, candidate_citations = await asyncio.to_thread(

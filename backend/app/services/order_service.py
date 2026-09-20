@@ -1,5 +1,4 @@
-"""Order service - handles order markdown, AI analysis, and PDF downloads from Indian Kanoon."""
-
+import hashlib
 import json
 import re
 from datetime import datetime, timezone
@@ -9,10 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import structlog
 
 from app.clients.gemini_client import gemini_client
-from app.clients.openrouter_client import openrouter_client
 from app.clients.kanoon_client import kanoon_client
 from app.models.cached_order import CachedOrder
 from app.models.cached_ai_analysis import CachedAIAnalysis
+from app.models.cached_headnote import CachedHeadnote
 from app.repositories.cache_repository import CacheRepository
 from app.schemas.order import OrderMarkdownResponse, OrderAIResponse
 from app.services.cache_service import cache_service
@@ -51,6 +50,12 @@ Fields to extract:
 - respondentArguments (list of strings): Key arguments made by the respondent
 - courtReasoning (string): The court's substantive reasoning and legal analysis in 3-6 sentences
 - ratioDecidendi (string): The core legal principle/ratio established by this order
+- catchwords (list of strings): 3-6 hierarchical editorial catchwords conforming to law report standards e.g. ["Arbitration", "Section 11(6)", "Appointment of Arbitrator", "Stamped Agreement"]
+- heldPoints (list of strings): 2-5 numbered publisher-grade statements articulating the pure ratio decidendi / holdings of the court
+- operativeDisposition (string): The final operative ruling e.g. "Appeal Allowed", "Writ Dismissed", "Bail Granted", "Interim Injunction Directed"
+- obiterDicta (list of strings): Non-binding observations, judicial guidance, or passing remarks made by the bench
+- precedentCitatorTable (list of objects with "precedent_name", "treatment" [OVERRULED/FOLLOWED/DISTINGUISHED/RELIED ON/REFERRED], "bench_commentary"): Precedents treated in judgment
+- statutoryProvisionsConsidered (list of objects with "act_name", "section_article", "nature_of_interpretation", "interpretation_summary"): Specific statutory provisions construed
 - executiveSummary (string): A detailed, comprehensive, multi-paragraph case summary covering (1) factual background & parties, (2) the specific dispute and relief sought, (3) key legal contentions, (4) the court's findings/disposition, and (5) practical directives. Provide full context so the reader gets complete understanding of the case.
 - plainLanguageSummary (string): A clear 2-4 sentence explanation in plain, everyday language explaining what this means practically for the parties and business operations
 - litigantFriendlyExplanation (string): Direct practical advice: what action steps or compliance requirements the party must follow next
@@ -263,23 +268,18 @@ class OrderService:
             }
             return self._transform_ai_response(cnr, filename, raw)
 
-        # 4. Generate structured analysis via OpenRouter (with Gemini fallback)
+        # 4. Generate structured analysis via Gemini (with Groq Cloud fallback)
         logger.info("ORDER_AI_CALLING_LLM", cnr=cnr, filename=filename, text_length=len(order_text))
         extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.format(order_text=order_text[:16000])
 
         raw = None
         try:
-            raw = await openrouter_client.generate_json(
-                system_prompt=_ORDER_AI_SYSTEM_PROMPT,
-                user_prompt=extraction_prompt,
-            )
-        except Exception as or_err:
-            logger.warning("openrouter_order_ai_failed_using_gemini", error=str(or_err))
             raw = await gemini_client.generate_json(
                 system_prompt=_ORDER_AI_SYSTEM_PROMPT,
                 user_prompt=extraction_prompt,
             )
-
+        except Exception as exc:
+            logger.warning("gemini_order_ai_failed", error=str(exc))
 
         if not raw or not raw.get("executiveSummary"):
             raw = {
@@ -309,6 +309,47 @@ class OrderService:
                 ))
             except Exception as save_ai_err:
                 logger.warning("failed_to_save_cached_ai", cnr=cnr, error=str(save_ai_err))
+
+            # Also synthesize and cache unified publisher headnote to avoid duplicate extraction
+            try:
+                order_hash = hashlib.sha256(order_text.encode("utf-8")).hexdigest()[:16]
+                held_list = raw.get("heldPoints") or raw.get("held_points")
+                if not held_list and raw.get("ratioDecidendi"):
+                    held_list = [raw.get("ratioDecidendi")]
+                elif not held_list:
+                    held_list = []
+
+                headnote_payload = {
+                    "target_cnr": cnr,
+                    "order_id": filename,
+                    "order_title": raw.get("caseNumber") or filename,
+                    "order_date": raw.get("orderDate") or raw.get("order_date"),
+                    "court_name": raw.get("courtName") or raw.get("court_name"),
+                    "bench_coram": raw.get("judgeNames") or raw.get("judge_names", []),
+                    "headnote": {
+                        "catchwords": raw.get("catchwords", []),
+                        "held_points": held_list,
+                        "ratio_decidendi_summary": raw.get("ratioDecidendi") or raw.get("courtReasoning", ""),
+                        "obiter_dicta": raw.get("obiterDicta") or raw.get("obiter_dicta", []),
+                        "precedent_citator_table": raw.get("precedentCitatorTable") or raw.get("precedent_citator_table", []),
+                        "statutory_provisions_considered": raw.get("statutoryProvisionsConsidered") or raw.get("statutory_provisions_considered", []),
+                        "operative_disposition": raw.get("operativeDisposition") or raw.get("outcome") or raw.get("dispositionStatus") or "Disposed",
+                    },
+                    "model_attribution": "Unified Case Intelligence · InLegalBERT & Gemini/Groq",
+                    "order_hash": order_hash,
+                    "is_cached": True,
+                    "generated_at": datetime.now(timezone.utc).isoformat(),
+                }
+                await self.cache_repo.save_cached_headnote(CachedHeadnote(
+                    cnr=cnr,
+                    order_hash=order_hash,
+                    headnote_json=json.dumps(headnote_payload, default=str),
+                    fetched_at=datetime.now(timezone.utc),
+                ))
+                await cache_service.set(f"headnote:{cnr}:{order_hash}", headnote_payload)
+                await cache_service.set(f"headnote:{cnr}:latest", headnote_payload)
+            except Exception as headnote_err:
+                logger.warning("failed_to_save_unified_headnote", cnr=cnr, error=str(headnote_err))
 
         response = self._transform_ai_response(cnr, filename, raw)
         await cache_service.set(redis_key, response.model_dump())
@@ -381,6 +422,12 @@ class OrderService:
             compliance_directions=raw.get("complianceDirections") or raw.get("compliance_directions", []),
             risks=raw.get("risks", []),
             implications=raw.get("implications", []),
+            operative_disposition=raw.get("operativeDisposition") or raw.get("operative_disposition") or raw.get("outcome") or raw.get("dispositionStatus"),
+            catchwords=raw.get("catchwords", []),
+            held_points=raw.get("heldPoints") or raw.get("held_points", []),
+            obiter_dicta=raw.get("obiterDicta") or raw.get("obiter_dicta", []),
+            precedent_citator_table=raw.get("precedentCitatorTable") or raw.get("precedent_citator_table", []),
+            statutory_provisions_considered=raw.get("statutoryProvisionsConsidered") or raw.get("statutory_provisions_considered", []),
             extraction_confidence=raw.get("extractionConfidence") or raw.get("extraction_confidence", 0.0),
             raw_data=raw,
         )

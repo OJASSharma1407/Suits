@@ -58,6 +58,14 @@ class OrderAIResponse(BaseModel):
     risks: list[str] = []
     implications: list[str] = []
 
+    # Editorial Headnote (Unified with CaseHeadnote)
+    operative_disposition: str | None = None
+    catchwords: list[str] = []
+    held_points: list[str] = []
+    obiter_dicta: list[str] = []
+    precedent_citator_table: list[dict[str, Any]] = []
+    statutory_provisions_considered: list[dict[str, Any]] = []
+
     # Quality metadata
     extraction_confidence: float | None = None
     raw_data: dict[str, Any] = {}

@@ -75,16 +75,20 @@ class SimilarCasesService:
         self.db = db
         self.cache_repo = CacheRepository(db)
 
-    async def get_similar_cases(self, cnr: str) -> SimilarCasesResponse:
-        """Execute the Hybrid RAG pipeline for an active case."""
+    async def get_similar_cases(self, cnr: str, synthesize_llm: bool = False) -> SimilarCasesResponse:
+        """Execute the Hybrid RAG pipeline for an active case.
+
+        When synthesize_llm=False (default), delivers instantaneous precedent listing using
+        InLegalBERT semantic embeddings & Kanoon citation graph with ZERO LLM calls.
+        """
         start_time = time.monotonic()
         cnr_clean = cnr.strip()
-        redis_key = f"similar_cases:{cnr_clean}"
+        redis_key = f"similar_cases:{cnr_clean}:synth_{synthesize_llm}"
 
         # 1. Check Redis Cache
         cached = await cache_service.get(redis_key)
         if cached and isinstance(cached, dict) and cached.get("cases"):
-            logger.info("SIMILAR_CASES_REDIS_HIT", cnr=cnr_clean, count=len(cached["cases"]))
+            logger.info("SIMILAR_CASES_REDIS_HIT", cnr=cnr_clean, count=len(cached["cases"]), synth=synthesize_llm)
             resp = SimilarCasesResponse(**cached)
             resp.is_cached = True
             return resp
@@ -365,14 +369,38 @@ class SimilarCasesService:
             except Exception as e:
                 logger.warning("inlegalbert_batch_rerank_failed", error=str(e))
 
-        # 6. LLM Legal RAG Synthesis (Gemini) - strictly top 5
-        synthesized_cases = await self._synthesize_legal_nexus(
-            case_title=case_title,
-            court_name=court_name,
-            category=category,
-            acts=acts_and_sections,
-            candidates=top_candidates[:5],
-        )
+        # 6. LLM Legal RAG Synthesis (Only executed if synthesize_llm is explicitly True)
+        if synthesize_llm:
+            synthesized_cases = await self._synthesize_legal_nexus(
+                case_title=case_title,
+                court_name=court_name,
+                category=category,
+                acts=acts_and_sections,
+                candidates=top_candidates[:5],
+            )
+        else:
+            # Zero-Token Mode: Build high-fidelity precedent items from InLegalBERT & Kanoon graph directly
+            synthesized_cases = []
+            for cand in top_candidates[:5]:
+                tier = cand.get("court_tier", "hc")
+                prec_type = "Binding Precedent" if tier == "sc" else "Persuasive Authority"
+                shared_s = [a for a in acts_and_sections if a in cand.get("raw_headline", "")] or acts_and_sections[:2]
+                synthesized_cases.append(
+                    SimilarCaseItem(
+                        case_title=cand["title"],
+                        tid=cand.get("tid"),
+                        court_name=cand.get("court") or ("Supreme Court of India" if tier == "sc" else "High Court Record"),
+                        court_tier=tier,
+                        decision_year=int(cand["year"]) if cand.get("year") else None,
+                        similarity_score=cand.get("hybrid_score", 75),
+                        precedent_type=prec_type,
+                        legal_nexus=f"Analogous {tier.upper()} authority retrieved via InLegalBERT semantic & citation matching with {cand.get('hybrid_score', 75)}% legal alignment.",
+                        key_ratio=f"Judicial holding governing {' & '.join(shared_s) if shared_s else 'applicable statutory questions'}.",
+                        strategic_alignment="Neutral",
+                        shared_statutes=shared_s or ["General Judicial Provisions"],
+                        distinguishing_factors=None,
+                    )
+                )
 
         elapsed_ms = round((time.monotonic() - start_time) * 1000)
         binding_count = sum(1 for c in synthesized_cases if c.precedent_type == "Binding Precedent")

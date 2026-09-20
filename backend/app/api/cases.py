@@ -74,11 +74,11 @@ async def get_citation_graph(cnr: str, user: CurrentUser, db: DbSession):
 
 @router.get("/{cnr}/similar-cases", response_model=APIResponse[SimilarCasesResponse])
 @router.get("/{cnr}/similar", response_model=APIResponse[SimilarCasesResponse])
-async def get_similar_cases(cnr: str, user: CurrentUser, db: DbSession):
+async def get_similar_cases(cnr: str, user: CurrentUser, db: DbSession, synthesize: bool = False):
     """Retrieve legally analogous cases and precedents using Hybrid RAG."""
     cnr = _validate_cnr(cnr)
     service = SimilarCasesService(db)
-    similar_data = await service.get_similar_cases(cnr)
+    similar_data = await service.get_similar_cases(cnr, synthesize_llm=synthesize)
     return APIResponse(data=similar_data)
 
 

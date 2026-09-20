@@ -152,9 +152,9 @@ class PredictionService:
                 resp.is_cached = True
                 return resp
 
-        # 3. Retrieve Similar Cases via SimilarCasesService
+        # 3. Retrieve Similar Cases via SimilarCasesService (Zero-Token mode)
         similar_service = SimilarCasesService(self.db)
-        similar_resp = await similar_service.get_similar_cases(cnr_clean)
+        similar_resp = await similar_service.get_similar_cases(cnr_clean, synthesize_llm=False)
         candidates = similar_resp.cases if similar_resp else []
 
         if not candidates:
