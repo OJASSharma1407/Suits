@@ -341,11 +341,11 @@ class SimilarCasesService:
                 "raw_headline": cand.get("headline", ""),
             })
 
-        # Sort descending by preliminary hybrid score and take top candidates
+        # Sort descending by preliminary hybrid score and take top 5 candidates
         scored_candidates.sort(key=lambda x: x["hybrid_score"], reverse=True)
-        top_candidates = scored_candidates[:6]
+        top_candidates = scored_candidates[:5]
 
-        # Stage C: InLegalBERT refined scoring over top 6 candidates in background thread
+        # Stage C: InLegalBERT refined scoring over top 5 candidates in background thread
         if executive_summary and top_candidates:
             try:
                 def _score_top_precedents(summary_text: str, cand_list: list[dict[str, Any]]):
@@ -360,17 +360,17 @@ class SimilarCasesService:
 
                 await asyncio.to_thread(_score_top_precedents, executive_summary, top_candidates)
                 top_candidates.sort(key=lambda x: x["hybrid_score"], reverse=True)
+                top_candidates = top_candidates[:5]
             except Exception as e:
                 logger.warning("inlegalbert_batch_rerank_failed", error=str(e))
 
-
-        # 6. LLM Legal RAG Synthesis (Gemini)
+        # 6. LLM Legal RAG Synthesis (Gemini) - strictly top 5
         synthesized_cases = await self._synthesize_legal_nexus(
             case_title=case_title,
             court_name=court_name,
             category=category,
             acts=acts_and_sections,
-            candidates=top_candidates,
+            candidates=top_candidates[:5],
         )
 
         elapsed_ms = round((time.monotonic() - start_time) * 1000)
@@ -418,6 +418,7 @@ class SimilarCasesService:
         candidates: list[dict[str, Any]],
     ) -> list[SimilarCaseItem]:
         """Prompt Gemini to synthesize precise legal rationale, strategic alignment, and ratio."""
+        candidates = candidates[:5]
         acts_text = ", ".join(acts) if acts else "General Judicial Provisions"
         candidates_preview = "\n".join([
             f"- [{c['court_tier'].upper()}] {c['title']} (TID: {c.get('tid')}, Score: {c['hybrid_score']}%)"

@@ -147,7 +147,7 @@ async def health_check():
 
 @app.get("/api/health/prediction")
 async def prediction_health_check():
-    has_key = bool(settings.prediction_gemini_api_key and settings.prediction_gemini_api_key.strip())
+    has_key = bool(settings.gemini_api_key and settings.gemini_api_key.strip())
     return {
         "status": "configured" if has_key else "unconfigured",
         "service": "Judicial Outcome Prediction Engine",

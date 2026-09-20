@@ -4,6 +4,8 @@ import io
 import re
 import os
 import uuid
+import hashlib
+import json
 import structlog
 from pathlib import Path
 from typing import Optional
@@ -13,6 +15,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.models.user_document import UserDocument, DocumentStatus
 from app.models.document_chunk import DocumentChunk
+from app.repositories.document_repository import DocumentRepository
+from app.repositories.cache_repository import CacheRepository
+from app.services.cache_service import cache_service
 from app.services.embedding_service import embedding_service
 
 logger = structlog.get_logger()
@@ -45,6 +50,8 @@ class DocumentProcessor:
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.doc_repo = DocumentRepository(db)
+        self.cache_repo = CacheRepository(db)
 
     # ------------------------------------------------------------------ #
     #  File Validation & Storage                                          #
@@ -128,8 +135,25 @@ class DocumentProcessor:
             logger.warning("docx_extraction_failed", error=str(exc))
             return ""
 
-    async def _extract_image_ocr(self, image_bytes: bytes, mime_type: str) -> str:
-        """Use Gemini multimodal to OCR a scanned evidence image."""
+    async def _extract_image_ocr(self, image_bytes: bytes, mime_type: str, img_hash: Optional[str] = None) -> str:
+        """Use Gemini multimodal to OCR a scanned evidence image with Redis and DB caching."""
+        hash_val = img_hash or hashlib.sha256(image_bytes).hexdigest()[:16]
+        redis_key = f"image_ocr:{hash_val}"
+
+        # 1. Fast Redis cache check
+        cached = await cache_service.get(redis_key)
+        if cached and isinstance(cached, str) and not cached.startswith("*"):
+            logger.info("image_ocr_redis_cache_hit", hash=hash_val)
+            return cached
+
+        # 2. Database cache check via DocumentRepository
+        db_ocr = await self.doc_repo.find_matching_ocr(hash_val)
+        if db_ocr:
+            text, _ = db_ocr
+            logger.info("image_ocr_db_cache_hit", hash=hash_val)
+            await cache_service.set(redis_key, text)
+            return text
+
         try:
             from google.genai import types
             from app.clients.gemini_client import gemini_client
@@ -153,7 +177,9 @@ class DocumentProcessor:
                         config=types.GenerateContentConfig(temperature=0.1, max_output_tokens=4096),
                     )
                     if response and response.text:
-                        return response.text
+                        ocr_result = response.text.strip()
+                        await cache_service.set(redis_key, ocr_result)
+                        return ocr_result
                 except Exception as exc:
                     logger.warning("gemini_image_ocr_failed", model=model_name, error=str(exc))
                     continue
@@ -208,11 +234,69 @@ class DocumentProcessor:
     #  AI Summary & Structured Legal Analysis                            #
     # ------------------------------------------------------------------ #
 
-    async def generate_summary(self, text: str, filename: str) -> str:
-        """Generate a concise 2-3 sentence summary of the document for the UI."""
+    @staticmethod
+    def _heuristic_document_summary(text: str, filename: str) -> str:
+        """Extract a structured factual summary from document text without calling an external LLM."""
+        lines = [line.strip() for line in text.splitlines() if line.strip()]
+        if not lines:
+            return f"Legal document: {filename}"
+
+        clean_name = filename.lower()
+        if "fir" in clean_name or any("first information report" in l.lower() for l in lines[:15]):
+            doc_type = "First Information Report (FIR)"
+        elif "bail" in clean_name or any("bail application" in l.lower() for l in lines[:15]):
+            doc_type = "Bail Application"
+        elif "writ" in clean_name or any("writ petition" in l.lower() for l in lines[:15]):
+            doc_type = "Writ Petition"
+        elif "affidavit" in clean_name or any("affidavit" in l.lower() for l in lines[:15]):
+            doc_type = "Sworn Affidavit"
+        elif "order" in clean_name or any("in the court of" in l.lower() or "judgment" in l.lower() for l in lines[:15]):
+            doc_type = "Court Order / Judgment"
+        elif "notice" in clean_name or any("legal notice" in l.lower() for l in lines[:15]):
+            doc_type = "Legal Notice"
+        elif "agreement" in clean_name or "contract" in clean_name:
+            doc_type = "Agreement / Contract"
+        else:
+            doc_type = "Legal Document"
+
+        paragraphs = [p.strip() for p in re.split(r"\n\s*\n", text) if len(p.strip()) > 60]
+        lead_excerpt = ""
+        for p in paragraphs:
+            if not any(header in p.lower() for header in ["in the high court", "in the supreme court", "before the court"]):
+                lead_excerpt = p[:250].replace("\n", " ").strip()
+                break
+        if not lead_excerpt and paragraphs:
+            lead_excerpt = paragraphs[0][:250].replace("\n", " ").strip()
+
+        if lead_excerpt:
+            return f"{doc_type} ({filename}). Context: {lead_excerpt}..."
+        return f"{doc_type} ({filename}) containing {len(text)} characters of record pleadings."
+
+    async def generate_summary(self, text: str, filename: str, content_hash: Optional[str] = None) -> str:
+        """Generate a concise 2-3 sentence summary of the document for the UI with Redis & DB caching."""
+        if not text or not text.strip():
+            return f"Legal document: {filename}"
+
+        snippet = text[:4000]
+        hash_val = content_hash or hashlib.sha256(snippet.encode("utf-8")).hexdigest()[:16]
+        redis_key = f"doc_summary:{hash_val}"
+
+        # 1. Fast Redis cache check
+        cached = await cache_service.get(redis_key)
+        if cached and isinstance(cached, str) and len(cached.strip()) > 15 and not cached.startswith("Legal document:"):
+            logger.info("doc_summary_redis_cache_hit", hash=hash_val, filename=filename)
+            return cached.strip()
+
+        # 2. Database cache check (across existing user documents with matching content hash)
+        db_summary = await self.doc_repo.find_matching_summary(hash_val)
+        if db_summary:
+            logger.info("doc_summary_db_cache_hit", hash=hash_val, filename=filename)
+            await cache_service.set(redis_key, db_summary)
+            return db_summary
+
+        # 3. LLM Generation via Gemini
         try:
             from app.clients.gemini_client import gemini_client
-            snippet = text[:4000]
             prompt = (
                 f"The following is the text of a legal document named '{filename}'.\n\n"
                 f"{snippet}\n\n"
@@ -227,19 +311,61 @@ class DocumentProcessor:
                 temperature=0.2,
                 max_output_tokens=256,
             )
-            return summary.strip()
+            cleaned_summary = summary.strip()
+            if cleaned_summary and len(cleaned_summary) > 15:
+                await cache_service.set(redis_key, cleaned_summary)
+                return cleaned_summary
         except Exception as exc:
             logger.warning("summary_generation_failed", error=str(exc))
-            return f"Legal document: {filename}"
 
-    async def generate_structured_ai_analysis(self, text: str, filename: str, cnr: Optional[str] = None) -> dict:
-        """Extract rich structured legal data from the uploaded document."""
-        from app.services.order_service import _ORDER_AI_SYSTEM_PROMPT, _ORDER_AI_EXTRACTION_PROMPT
-        from app.clients.gemini_client import gemini_client
-        from app.clients.openrouter_client import openrouter_client
+        # 4. Deterministic heuristic extraction fallback (zero LLM calls)
+        fallback = self._heuristic_document_summary(text, filename)
+        await cache_service.set(redis_key, fallback)
+        return fallback
 
+    async def generate_structured_ai_analysis(
+        self,
+        text: str,
+        filename: str,
+        cnr: Optional[str] = None,
+        content_hash: Optional[str] = None,
+    ) -> dict:
+        """Extract rich structured legal data from the uploaded document with Redis & DB caching."""
         if not text or not text.strip():
             return {}
+
+        hash_val = content_hash or hashlib.sha256(text[:30000].encode("utf-8")).hexdigest()[:16]
+        redis_key = f"doc_analysis:{hash_val}"
+
+        # 1. Fast Redis cache check
+        cached = await cache_service.get(redis_key)
+        if cached and isinstance(cached, dict) and cached.get("executiveSummary"):
+            logger.info("doc_analysis_redis_cache_hit", hash=hash_val, filename=filename)
+            return cached
+
+        # 2. Database cache check via DocumentRepository
+        db_analysis = await self.doc_repo.find_matching_ai_analysis(hash_val)
+        if db_analysis:
+            logger.info("doc_analysis_db_cache_hit", hash=hash_val, filename=filename)
+            await cache_service.set(redis_key, db_analysis)
+            return db_analysis
+
+        # 3. Check CachedAIAnalysis if CNR is attached
+        if cnr:
+            cached_ai = await self.cache_repo.get_cached_ai(cnr, filename)
+            if cached_ai and cached_ai.ai_json:
+                try:
+                    data = json.loads(cached_ai.ai_json)
+                    if isinstance(data, dict) and data.get("executiveSummary"):
+                        logger.info("doc_analysis_cached_ai_hit", cnr=cnr, filename=filename)
+                        await cache_service.set(redis_key, data)
+                        return data
+                except Exception:
+                    pass
+
+        # 4. Synthesize via Gemini
+        from app.services.order_service import _ORDER_AI_SYSTEM_PROMPT, _ORDER_AI_EXTRACTION_PROMPT
+        from app.clients.gemini_client import gemini_client
 
         extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.replace("{order_text}", text[:30000])
 
@@ -249,22 +375,30 @@ class DocumentProcessor:
                 system_prompt=_ORDER_AI_SYSTEM_PROMPT,
                 user_prompt=extraction_prompt,
             )
-            if not raw or not raw.get("executiveSummary") or raw.get("extractionConfidence", 0.0) == 0.0:
-                logger.info("DOCUMENT_AI_FALLING_BACK_TO_OPENROUTER", filename=filename)
-                raw = await openrouter_client.generate_json(
-                    system_prompt=_ORDER_AI_SYSTEM_PROMPT,
-                    user_prompt=extraction_prompt,
-                )
-            if isinstance(raw, dict):
+            if isinstance(raw, dict) and raw.get("executiveSummary"):
                 logger.info("DOCUMENT_AI_EXTRACTION_SUCCESS", filename=filename, keys=list(raw.keys()))
                 if cnr and "cnr" not in raw:
                     raw["cnr"] = cnr
                 raw["filename"] = filename
+                await cache_service.set(redis_key, raw)
+
+                # If CNR attached, also save to CachedAIAnalysis permanent table
+                if cnr:
+                    from app.models.cached_ai_analysis import CachedAIAnalysis
+                    try:
+                        await self.cache_repo.save_cached_ai(CachedAIAnalysis(
+                            cnr=cnr,
+                            filename=filename,
+                            ai_json=json.dumps(raw),
+                        ))
+                    except Exception as err:
+                        logger.warning("failed_saving_cached_ai_analysis", error=str(err))
+
                 return raw
         except Exception as exc:
             logger.error("structured_ai_analysis_failed", filename=filename, error=str(exc))
 
-        return {
+        fallback_dict = {
             "caseNumber": cnr or filename,
             "courtName": "User Document Record",
             "executiveSummary": f"Document {filename} uploaded for legal analysis.",
@@ -273,6 +407,8 @@ class DocumentProcessor:
             "filename": filename,
             "cnr": cnr or "",
         }
+        await cache_service.set(redis_key, fallback_dict)
+        return fallback_dict
 
     # ------------------------------------------------------------------ #
     #  Full Pipeline                                                      #
@@ -302,19 +438,30 @@ class DocumentProcessor:
 
             file_data = file_path.read_bytes()
 
-            # Extract text
-            extracted_text, page_count = await self.extract_text(
-                file_data, doc.mime_type, doc.original_filename
-            )
+            # Ensure content_hash is populated on document
+            content_hash = doc.content_hash or hashlib.sha256(file_data).hexdigest()[:16]
+            doc.content_hash = content_hash
+
+            # Check if OCR / text extraction is already cached in DB for this content hash
+            cached_ocr = await self.doc_repo.find_matching_ocr(content_hash)
+            if cached_ocr:
+                extracted_text, page_count = cached_ocr
+                logger.info("document_ocr_db_cache_hit", document_id=str(document_id), content_hash=content_hash)
+            else:
+                extracted_text, page_count = await self.extract_text(
+                    file_data, doc.mime_type, doc.original_filename
+                )
             doc.extracted_text = extracted_text
             doc.page_count = page_count
 
-            # Generate quick summary
-            doc.summary = await self.generate_summary(extracted_text, doc.original_filename)
+            # Generate quick summary (using Redis + DB cache)
+            doc.summary = await self.generate_summary(
+                extracted_text, doc.original_filename, content_hash=content_hash
+            )
 
-            # Generate deep structured legal AI analysis
+            # Generate deep structured legal AI analysis (using Redis + DB cache)
             doc.ai_analysis = await self.generate_structured_ai_analysis(
-                extracted_text, doc.original_filename, doc.cnr
+                extracted_text, doc.original_filename, doc.cnr, content_hash=content_hash
             )
 
             # Chunk the text
@@ -345,6 +492,7 @@ class DocumentProcessor:
                 document_id=str(document_id),
                 chunks=len(chunks),
                 pages=page_count,
+                content_hash=content_hash,
             )
 
         except Exception as exc:

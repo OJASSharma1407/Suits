@@ -10,7 +10,6 @@ import structlog
 
 from app.clients.gemini_client import gemini_client
 from app.clients.kanoon_client import kanoon_client
-from app.clients.openrouter_client import openrouter_client
 from app.models.cached_order import CachedOrder
 from app.models.cached_ai_analysis import CachedAIAnalysis
 from app.repositories.cache_repository import CacheRepository
@@ -263,7 +262,7 @@ class OrderService:
             }
             return self._transform_ai_response(cnr, filename, raw)
 
-        # 4. Generate structured analysis via Gemini (with OpenRouter fallback)
+        # 4. Generate structured analysis via Gemini
         logger.info("ORDER_AI_CALLING_LLM", cnr=cnr, filename=filename, text_length=len(order_text))
         extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.format(order_text=order_text[:16000])
 
@@ -272,13 +271,6 @@ class OrderService:
             user_prompt=extraction_prompt,
         )
 
-        if not raw or not raw.get("executiveSummary") or raw.get("extractionConfidence", 0.0) == 0.0:
-            # Try OpenRouter fallback
-            logger.info("ORDER_AI_FALLING_BACK_TO_OPENROUTER", cnr=cnr, filename=filename)
-            raw = await openrouter_client.generate_json(
-                system_prompt=_ORDER_AI_SYSTEM_PROMPT,
-                user_prompt=extraction_prompt,
-            )
 
         if not raw or not raw.get("executiveSummary"):
             raw = {

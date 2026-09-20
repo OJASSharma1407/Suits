@@ -36,11 +36,14 @@ class Settings(BaseSettings):
 
     # OpenRouter API (Used for Interactive AI Chatbot)
     openrouter_api_key: str = Field(default="")
-    openrouter_model: str = Field(default="nvidia/nemotron-3-ultra-550b-a55b:free")
-    openrouter_max_tokens: int = Field(default=4096)
+    openrouter_model: str = Field(default="openrouter/free")
+    openrouter_max_tokens: int = Field(default=2048)
 
-    # Isolated Judicial Outcome Prediction Engine (Does not touch gemini_api_key or openrouter_api_key)
-    prediction_gemini_api_key: str = Field(default="")
+    # Groq Cloud API (Gemini fallback — openai/gpt-oss-120b)
+    groq_api_key: str = Field(default="")
+    groq_model: str = Field(default="openai/gpt-oss-120b")
+
+    # Judicial Outcome Prediction Engine (shares gemini_api_key)
     prediction_gemini_model: str = Field(default="gemini-3.1-pro-preview")
     prediction_thinking_level: str = Field(default="high")          # low | medium | high
     prediction_thinking_budget: int = Field(default=24576)          # budget for legacy models

@@ -65,6 +65,9 @@ async def upload_document(
     # Save to disk
     file_path = processor.save_file(user.id, file.filename or "upload", file_data)
 
+    import hashlib
+    content_hash = hashlib.sha256(file_data).hexdigest()[:16]
+
     # Create database record (status=PENDING)
     doc = UserDocument(
         user_id=user.id,
@@ -76,6 +79,7 @@ async def upload_document(
         mime_type=content_type,
         tag=tag,
         status=DocumentStatus.PENDING,
+        content_hash=content_hash,
     )
     repo = DocumentRepository(db)
     doc = await repo.create(doc)
@@ -216,7 +220,6 @@ async def chat_with_document(
     from fastapi.responses import StreamingResponse
     import json
     from app.clients.gemini_client import gemini_client
-    from app.clients.openrouter_client import openrouter_client
 
     repo = DocumentRepository(db)
     doc = await repo.get_by_id(document_id)
@@ -251,29 +254,15 @@ async def chat_with_document(
 
         try:
             ai_text = None
-            try:
-                ai_text = await gemini_client.generate_with_context(
-                    system_prompt=system_prompt,
-                    conversation_history=formatted_history,
-                    user_message=request.message,
-                    case_context=doc_context,
-                )
-            except Exception as gem_exc:
-                logger.warning("gemini_doc_chat_fallback", error=str(gem_exc))
+            ai_text = await gemini_client.generate_with_context(
+                system_prompt=system_prompt,
+                conversation_history=formatted_history,
+                user_message=request.message,
+                case_context=doc_context,
+            )
 
             if not ai_text:
-                try:
-                    ai_text = await openrouter_client.generate_with_context(
-                        system_prompt=system_prompt,
-                        conversation_history=formatted_history,
-                        user_message=request.message,
-                        case_context=doc_context,
-                    )
-                except Exception as or_exc:
-                    logger.error("openrouter_doc_chat_failed", error=str(or_exc))
-
-            if not ai_text:
-                ai_text = "I could not analyze the uploaded document with the AI service at this time. Please check your API keys."
+                ai_text = "I could not analyze the uploaded document at this time. Please check your Gemini API key configuration."
 
             # Stream tokens
             chunk_size = 20

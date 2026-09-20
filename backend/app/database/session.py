@@ -95,6 +95,8 @@ async def init_db() -> None:
                         await conn.execute(text("ALTER TABLE user_documents ADD COLUMN tags_list JSON DEFAULT '[]'"))
                     if "page_count" not in doc_cols:
                         await conn.execute(text("ALTER TABLE user_documents ADD COLUMN page_count INTEGER DEFAULT 0 NOT NULL"))
+                    if "content_hash" not in doc_cols:
+                        await conn.execute(text("ALTER TABLE user_documents ADD COLUMN content_hash VARCHAR(64)"))
             except Exception:
                 pass
 

@@ -33,10 +33,21 @@ class EmbeddingService:
                 return False
         return self._configured
 
+    def _fallback_inlegalbert_embed(self, text: str) -> list[float] | None:
+        """Fallback to local InLegalBERT (768-dim, local CPU/GPU, zero external API cost)."""
+        try:
+            from app.services.inlegal_bert_service import inlegal_bert_service
+            vec = inlegal_bert_service.embed_text(text)
+            if vec and any(vec):
+                return vec
+        except Exception as exc:
+            logger.warning("inlegalbert_embedding_fallback_failed", error=str(exc))
+        return None
+
     async def embed_text(self, text: str) -> list[float] | None:
         """Generate a 768-dim embedding vector for a single text string."""
         if not self._ensure_configured():
-            return None
+            return self._fallback_inlegalbert_embed(text)
         try:
             text = text[:8000]  # Cap at safe token limit
             response = await self._client.aio.models.embed_content(  # type: ignore[union-attr]
@@ -47,7 +58,8 @@ class EmbeddingService:
             return list(values)
         except Exception as exc:
             logger.warning("embed_text_failed", error=str(exc))
-            return None
+            # Seamless fallback to local InLegalBERT
+            return self._fallback_inlegalbert_embed(text)
 
     async def embed_batch(self, texts: list[str]) -> list[list[float] | None]:
         """Generate embeddings for a list of texts, returning None entries on failure."""

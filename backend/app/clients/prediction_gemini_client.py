@@ -1,8 +1,8 @@
-"""Isolated Gemini Client for Judicial Outcome Prediction & Precedent Comparison Engine.
+"""Gemini Client for Judicial Outcome Prediction & Precedent Comparison Engine.
 
-Uses google-genai SDK 2.0+ with settings.prediction_gemini_api_key.
-Completely isolated from the standard gemini_client.py to prevent interfering with
-existing order summarization, OCR, or chat functionalities.
+Uses google-genai SDK 2.0+ with the unified settings.gemini_api_key.
+Shares the same API key as the standard gemini_client.py but maintains
+separate model selection and thinking configuration for prediction tasks.
 """
 
 from __future__ import annotations
@@ -33,11 +33,11 @@ class PredictionGeminiClient:
 
     def _ensure_configured(self) -> bool:
         if not self._configured:
-            key = settings.prediction_gemini_api_key
+            key = settings.gemini_api_key
             if not key or not key.strip():
                 logger.warning(
-                    "prediction_gemini_api_key_missing",
-                    hint="Set PREDICTION_GEMINI_API_KEY in backend/.env",
+                    "gemini_api_key_missing",
+                    hint="Set GEMINI_API_KEY in backend/.env",
                 )
                 return False
             try:
@@ -78,6 +78,28 @@ class PredictionGeminiClient:
 
         return types.GenerateContentConfig(**config_kwargs)
 
+    async def _groq_fallback_prediction(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+    ) -> tuple[dict[str, Any] | None, str | None]:
+        """Fallback to Groq Cloud (openai/gpt-oss-120b) when Gemini is unavailable."""
+        logger.info("prediction_gemini_falling_back_to_groq")
+        try:
+            from app.clients.groq_client import groq_client
+            parsed = await groq_client.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=0.2,
+                max_output_tokens=8192,
+            )
+            if parsed and isinstance(parsed, dict):
+                logger.info("prediction_groq_fallback_success")
+                return parsed, "Outcome prediction synthesized via Groq (GPT OSS 120B fallback)."
+        except Exception as exc:
+            logger.error("prediction_groq_fallback_failed", error=str(exc))
+        return None, None
+
     async def generate_prediction_json(
         self,
         system_prompt: str,
@@ -86,11 +108,11 @@ class PredictionGeminiClient:
         """Call Gemini to produce structured prediction JSON and capture reasoning summary.
 
         Returns (parsed_dict, reasoning_summary).
-        Returns (None, None) on complete failure so caller can return 204 No Content.
+        Falls back to Groq Cloud if Gemini is unconfigured, credits depleted, or models fail.
         """
         if not self._ensure_configured():
-            logger.warning("prediction_gemini_client_not_configured")
-            return None, None
+            logger.warning("prediction_gemini_client_not_configured_trying_groq")
+            return await self._groq_fallback_prediction(system_prompt, user_prompt)
 
         last_error = ""
         for model_name in self._model_candidates():
@@ -146,6 +168,9 @@ class PredictionGeminiClient:
 
                 except Exception as exc:
                     last_error = str(exc)
+                    if "402" in last_error or "prepayment credits are depleted" in last_error.lower():
+                        logger.warning("prediction_gemini_credits_depleted", error="Prepayment credits depleted on Gemini API key. Diverting to Groq.")
+                        break
                     is_503 = "503" in last_error or "UNAVAILABLE" in last_error or isinstance(exc, asyncio.TimeoutError)
                     logger.warning(
                         "prediction_gemini_model_failed",
@@ -159,8 +184,8 @@ class PredictionGeminiClient:
                         continue
                     break
 
-        logger.error("all_prediction_gemini_models_failed", last_error=last_error)
-        return None, None
+        logger.error("prediction_gemini_all_models_failed_trying_groq", last_error=last_error)
+        return await self._groq_fallback_prediction(system_prompt, user_prompt)
 
     async def health_check(self) -> bool:
         """Fast health-check endpoint for early diagnostics."""

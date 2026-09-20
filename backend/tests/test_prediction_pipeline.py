@@ -14,12 +14,11 @@ from app.services.prediction_service import PredictionService
 
 
 def test_key_isolation():
-    """Verify that prediction client settings do not overwrite or touch existing keys."""
-    assert hasattr(settings, "prediction_gemini_api_key")
+    """Verify that prediction engine shares the unified Gemini API key."""
     assert hasattr(settings, "gemini_api_key")
     assert hasattr(settings, "openrouter_api_key")
-    # Assert independent fields
-    assert settings.prediction_gemini_model != settings.gemini_model
+    # Prediction model can still differ from the general-purpose model
+    assert hasattr(settings, "prediction_gemini_model")
 
 
 def test_matter_type_and_era_resolution():

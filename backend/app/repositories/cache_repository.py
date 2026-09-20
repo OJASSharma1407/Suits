@@ -9,6 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.cached_case import CachedCase
 from app.models.cached_order import CachedOrder
 from app.models.cached_ai_analysis import CachedAIAnalysis
+from app.models.cached_headnote import CachedHeadnote
 
 
 def _ensure_utc(dt: datetime) -> datetime:
@@ -136,3 +137,48 @@ class CacheRepository:
         self.db.add(cached_ai)
         await self.db.flush()
         return cached_ai
+
+    # --- Cached Headnotes ---
+
+    async def get_cached_headnote(self, cnr: str, order_hash: str | None = None) -> CachedHeadnote | None:
+        stmt = select(CachedHeadnote).where(CachedHeadnote.cnr == cnr)
+        if order_hash:
+            stmt = stmt.where(CachedHeadnote.order_hash == order_hash)
+        else:
+            stmt = stmt.order_by(CachedHeadnote.generated_at.desc())
+        result = await self.db.execute(stmt)
+        return result.scalars().first()
+
+    async def save_cached_headnote(self, cached_headnote: CachedHeadnote) -> CachedHeadnote:
+        # Ensure parent CachedCase exists to satisfy foreign key constraint
+        existing_case = await self.get_cached_case(cached_headnote.cnr)
+        if not existing_case:
+            from datetime import timedelta
+            now = datetime.now(timezone.utc)
+            await self.save_cached_case(CachedCase(
+                cnr=cached_headnote.cnr,
+                response_json=json.dumps({"cnr": cached_headnote.cnr, "caseTitle": f"Record {cached_headnote.cnr}"}),
+                case_title=f"Record {cached_headnote.cnr}",
+                fetched_at=now,
+                expires_at=now + timedelta(days=30),
+            ))
+
+        existing = await self.get_cached_headnote(cached_headnote.cnr, cached_headnote.order_hash)
+        if existing:
+            existing.headnote_json = cached_headnote.headnote_json
+            existing.generated_at = cached_headnote.generated_at or datetime.now(timezone.utc)
+            if cached_headnote.order_id:
+                existing.order_id = cached_headnote.order_id
+            await self.db.flush()
+            return existing
+
+        self.db.add(cached_headnote)
+        await self.db.flush()
+        return cached_headnote
+
+    async def invalidate_headnote(self, cnr: str, order_hash: str | None = None) -> None:
+        stmt = delete(CachedHeadnote).where(CachedHeadnote.cnr == cnr)
+        if order_hash:
+            stmt = stmt.where(CachedHeadnote.order_hash == order_hash)
+        await self.db.execute(stmt)
+        await self.db.flush()

@@ -20,6 +20,91 @@ from app.prompts.templates import build_case_context
 logger = structlog.get_logger()
 
 
+def _generate_suggested_questions(
+    case_context: str,
+    order_context: str | None,
+    ai_response: str,
+    n: int = 4,
+) -> list[str]:
+    """Generate follow-up question chips locally — zero API calls.
+
+    Inspects available case fields, order context, and the last AI response
+    for legal keywords, then selects the most relevant questions from a
+    curated pool.
+    """
+    ctx = f"{case_context or ''} {order_context or ''} {ai_response or ''}".lower()
+    pool: list[str] = []
+
+    # --- Criminal law signals ---
+    if any(kw in ctx for kw in ("bail", "fir", "arrest", "remand", "custody")):
+        pool.extend([
+            "What are the grounds for granting or denying bail in this case?",
+            "Are there any conditions imposed on the bail order?",
+            "What is the FIR status and investigation timeline?",
+        ])
+    if any(kw in ctx for kw in ("ipc", "bns", "crpc", "bnss", "section 302", "section 420", "cheating", "murder", "theft")):
+        pool.append("Which criminal statutes and sections are invoked, and what are the penalties?")
+
+    # --- Constitutional / Writ signals ---
+    if any(kw in ctx for kw in ("writ", "article 226", "article 32", "fundamental right", "constitutional")):
+        pool.extend([
+            "What fundamental rights are alleged to be violated?",
+            "What is the scope of judicial review applicable here?",
+        ])
+
+    # --- Civil / Contract signals ---
+    if any(kw in ctx for kw in ("contract", "agreement", "arbitration", "specific performance", "damages")):
+        pool.extend([
+            "What are the key contractual obligations in dispute?",
+            "Is the arbitration clause enforceable under Section 11?",
+        ])
+
+    # --- Precedent / Citation signals ---
+    if any(kw in ctx for kw in ("precedent", "cited", "ratio decidendi", "relied upon", "distinguished")):
+        pool.append("What precedents did the court rely upon, and are they binding?")
+
+    # --- Statutes / Acts signals ---
+    if any(kw in ctx for kw in ("act", "section", "statute", "ordinance", "regulation", "rule")):
+        pool.append("List all statutes and specific sections applied by the court.")
+
+    # --- Outcome / Directions signals ---
+    if any(kw in ctx for kw in ("dismissed", "allowed", "disposed", "granted", "directed", "ordered", "relief")):
+        pool.extend([
+            "What specific directions or relief were ordered by the Court?",
+            "What is the practical impact of this order on the parties?",
+        ])
+
+    # --- Hearing / Timeline signals ---
+    if any(kw in ctx for kw in ("next hearing", "adjourned", "listed", "hearing date")):
+        pool.append("What is the next hearing date and what is expected to happen?")
+
+    # --- Evidence signals ---
+    if any(kw in ctx for kw in ("evidence", "witness", "exhibit", "document", "affidavit")):
+        pool.append("What key evidence or documents has the court considered?")
+
+    # --- Always-relevant fallbacks ---
+    fallbacks = [
+        "What is the ratio decidendi established in this case?",
+        "Explain the court's substantive reasoning on the merits.",
+        "What are the key legal issues before the court?",
+        "Summarize the arguments made by both parties.",
+    ]
+
+    # De-duplicate while preserving order, then fill with fallbacks
+    seen: set[str] = set()
+    result: list[str] = []
+    for q in pool + fallbacks:
+        if q not in seen:
+            seen.add(q)
+            result.append(q)
+        if len(result) >= n:
+            break
+
+    return result[:n]
+
+
+
+
 class AIService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -152,10 +237,10 @@ class AIService:
         )
         await self.conversation_repo.add_message(assistant_msg)
 
-        suggested = await openrouter_client.generate_suggested_questions(
-            case_context=case_context or "",
-            last_ai_response=ai_response,
-            n=4,
+        suggested = _generate_suggested_questions(
+            case_context=case_context,
+            order_context=order_context,
+            ai_response=ai_response,
         )
 
         return ChatResponse(
@@ -233,13 +318,12 @@ class AIService:
             )
             await self.conversation_repo.add_message(assistant_msg)
 
-            # Fast contextual suggested questions
-            suggested = [
-                "What is the ratio decidendi established in this case?",
-                "List all precedents and statutes cited.",
-                "Explain the court's substantive reasoning on the merits.",
-                "What specific directions or relief were ordered by the Court?",
-            ]
+            # Fast contextual suggested questions (zero API calls)
+            suggested = _generate_suggested_questions(
+                case_context=effective_context,
+                order_context=order_context,
+                ai_response=ai_response,
+            )
 
             done_payload = json.dumps({"done": True, "suggested_questions": suggested})
             yield f"data: {done_payload}\n\n"

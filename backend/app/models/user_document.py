@@ -49,6 +49,7 @@ class UserDocument(Base):
     file_size: Mapped[int] = mapped_column(Integer, nullable=False)  # bytes
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     page_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    content_hash: Mapped[Optional[str]] = mapped_column(String(64), nullable=True, index=True)
 
     # Classification
     tag: Mapped[DocumentTag] = mapped_column(

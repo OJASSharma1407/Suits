@@ -69,8 +69,17 @@ class InLegalBertService:
                     torch.set_num_threads(2)
 
             logger.info("loading_inlegalbert_model", model=self.model_name, device=str(self._device))
-            self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
-            self._model = AutoModel.from_pretrained(self.model_name)
+
+            # Try local cache first (no network call, ~0.4s).
+            # Falls back to HF Hub download only if model files aren't cached yet.
+            try:
+                self._tokenizer = AutoTokenizer.from_pretrained(self.model_name, local_files_only=True)
+                self._model = AutoModel.from_pretrained(self.model_name, local_files_only=True)
+                logger.info("inlegalbert_loaded_from_local_cache", model=self.model_name)
+            except (OSError, EnvironmentError):
+                logger.info("inlegalbert_not_cached_downloading", model=self.model_name)
+                self._tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                self._model = AutoModel.from_pretrained(self.model_name)
             self._model.to(self._device)
             self._model.eval()
             self._loaded = True

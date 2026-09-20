@@ -134,3 +134,52 @@ class DocumentRepository:
 
         scored.sort(key=lambda x: x[0], reverse=True)
         return scored[:top_k]
+
+    # ------------------------------------------------------------------ #
+    #  Content Cache Lookup Methods                                      #
+    # ------------------------------------------------------------------ #
+
+    async def find_matching_summary(self, content_hash: str) -> str | None:
+        """Find an existing non-trivial summary for a matching content hash."""
+        stmt = (
+            select(UserDocument.summary)
+            .where(
+                UserDocument.content_hash == content_hash,
+                UserDocument.summary.isnot(None),
+            )
+            .order_by(UserDocument.created_at.desc())
+        )
+        res = (await self.db.execute(stmt)).scalars().first()
+        if res and len(res.strip()) > 15 and not res.startswith("Legal document:"):
+            return res.strip()
+        return None
+
+    async def find_matching_ai_analysis(self, content_hash: str) -> dict | None:
+        """Find existing structured AI analysis for a matching content hash."""
+        stmt = (
+            select(UserDocument.ai_analysis)
+            .where(
+                UserDocument.content_hash == content_hash,
+                UserDocument.ai_analysis.isnot(None),
+            )
+            .order_by(UserDocument.created_at.desc())
+        )
+        res = (await self.db.execute(stmt)).scalars().first()
+        if isinstance(res, dict) and res.get("executiveSummary") and "uploaded for legal analysis" not in str(res.get("executiveSummary")):
+            return res
+        return None
+
+    async def find_matching_ocr(self, content_hash: str) -> tuple[str, int] | None:
+        """Find existing extracted text and page count for a matching content hash."""
+        stmt = (
+            select(UserDocument.extracted_text, UserDocument.page_count)
+            .where(
+                UserDocument.content_hash == content_hash,
+                UserDocument.extracted_text.isnot(None),
+            )
+            .order_by(UserDocument.created_at.desc())
+        )
+        res = (await self.db.execute(stmt)).first()
+        if res and res[0] and len(res[0].strip()) > 20 and not res[0].startswith("*"):
+            return res[0].strip(), res[1] or 1
+        return None

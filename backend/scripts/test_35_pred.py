@@ -4,7 +4,7 @@ from google import genai
 from google.genai import types
 from app.core.config import settings
 
-client = genai.Client(api_key=settings.prediction_gemini_api_key)
+client = genai.Client(api_key=settings.gemini_api_key)
 
 async def main():
     model = "gemini-3.5-flash"

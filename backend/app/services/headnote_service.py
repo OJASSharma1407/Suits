@@ -25,6 +25,7 @@ from app.clients.prediction_gemini_client import prediction_gemini_client
 from app.core.config import settings
 from app.models.cached_headnote import CachedHeadnote
 from app.models.cached_order import CachedOrder
+from app.repositories.cache_repository import CacheRepository
 from app.schemas.headnote import (
     CaseHeadnote,
     CaseHeadnoteResponse,
@@ -70,6 +71,7 @@ class HeadnoteService:
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
+        self.cache_repo = CacheRepository(db)
         self.order_service = OrderService(db)
         self._anchor_vectors: dict[str, np.ndarray] | None = None
 
@@ -155,11 +157,7 @@ class HeadnoteService:
         # 1. Resolve order markdown from cache or service
         order_row: CachedOrder | None = None
         if filename:
-            stmt = select(CachedOrder).where(
-                CachedOrder.cnr == cnr_clean,
-                CachedOrder.filename == filename.strip(),
-            )
-            order_row = (await self.db.execute(stmt)).scalar_one_or_none()
+            order_row = await self.cache_repo.get_cached_order(cnr_clean, filename.strip())
 
         if not order_row:
             # Pick first non-empty markdown order for this case
@@ -175,12 +173,27 @@ class HeadnoteService:
         # Fallback: if no order row exists, attempt resolving via OrderService
         if not order_markdown:
             try:
-                md_resp = await self.order_service.get_order_markdown(cnr_clean, filename or "primary")
+                target_filename = filename or "primary"
+                md_resp = await self.order_service.get_markdown(cnr_clean, target_filename)
                 order_markdown = md_resp.markdown
+                if not order_row:
+                    order_row = await self.cache_repo.get_cached_order(cnr_clean, target_filename)
             except Exception as e:
                 logger.warning("order_markdown_resolution_failed", cnr=cnr_clean, error=str(e))
 
         if not order_markdown or len(order_markdown.strip()) < 100:
+            # Check if DB already has a cached headnote for this CNR before giving up
+            if not force_refresh:
+                db_headnote = await self.cache_repo.get_cached_headnote(cnr_clean)
+                if db_headnote and db_headnote.headnote_json:
+                    try:
+                        logger.info("headnote_db_fallback_cache_hit", cnr=cnr_clean)
+                        loaded = json.loads(db_headnote.headnote_json)
+                        resp = CaseHeadnoteResponse.model_validate(loaded)
+                        resp.is_cached = True
+                        return resp
+                    except Exception as e:
+                        logger.warning("corrupt_cached_headnote_in_db", error=str(e))
             logger.warning("insufficient_order_text_for_headnote", cnr=cnr_clean)
             return None
 
@@ -188,23 +201,25 @@ class HeadnoteService:
         order_hash = hashlib.sha256(order_markdown.encode("utf-8")).hexdigest()[:16]
         redis_key = f"headnote:{cnr_clean}:{order_hash}"
 
-        # 3. Cache Check
+        # 3. Cache Check: Redis first, then Database
         if not force_refresh:
+            # 3a. Redis cache check
             cached_val = await cache_service.get(redis_key)
             if cached_val and isinstance(cached_val, dict):
-                return CaseHeadnoteResponse.model_validate(cached_val)
+                logger.info("headnote_redis_cache_hit", cnr=cnr_clean, hash=order_hash)
+                resp = CaseHeadnoteResponse.model_validate(cached_val)
+                resp.is_cached = True
+                return resp
 
-            # Database check
-            stmt = select(CachedHeadnote).where(
-                CachedHeadnote.cnr == cnr_clean,
-                CachedHeadnote.order_hash == order_hash,
-            )
-            db_row = (await self.db.execute(stmt)).scalar_one_or_none()
+            # 3b. Database check via CacheRepository
+            db_row = await self.cache_repo.get_cached_headnote(cnr_clean, order_hash)
             if db_row and db_row.headnote_json:
                 try:
+                    logger.info("headnote_db_cache_hit", cnr=cnr_clean, hash=order_hash)
                     loaded = json.loads(db_row.headnote_json)
                     resp = CaseHeadnoteResponse.model_validate(loaded)
                     resp.is_cached = True
+                    # Rehydrate Redis cache from DB
                     await cache_service.set(redis_key, resp.model_dump(), settings.prediction_cache_ttl)
                     return resp
                 except Exception as e:
@@ -370,24 +385,16 @@ Generate the publisher-grade headnote in JSON adhering to this structure:
         await cache_service.set(redis_key, dumped, settings.prediction_cache_ttl)
 
         try:
-            # Delete existing if any, then insert fresh
-            del_stmt = select(CachedHeadnote).where(
-                CachedHeadnote.cnr == cnr_clean,
-                CachedHeadnote.order_hash == order_hash,
+            db_record = CachedHeadnote(
+                cnr=cnr_clean,
+                order_id=order_row.id if order_row else None,
+                order_hash=order_hash,
+                headnote_json=json.dumps(dumped),
+                generated_at=datetime.now(timezone.utc),
             )
-            existing = (await self.db.execute(del_stmt)).scalar_one_or_none()
-            if existing:
-                existing.headnote_json = json.dumps(dumped)
-                existing.generated_at = datetime.now(timezone.utc)
-            else:
-                db_record = CachedHeadnote(
-                    cnr=cnr_clean,
-                    order_id=order_row.id if order_row else None,
-                    order_hash=order_hash,
-                    headnote_json=json.dumps(dumped),
-                )
-                self.db.add(db_record)
+            await self.cache_repo.save_cached_headnote(db_record)
             await self.db.commit()
+            logger.info("headnote_db_cache_saved", cnr=cnr_clean, hash=order_hash)
         except Exception as e:
             logger.warning("failed_persisting_cached_headnote", cnr=cnr_clean, error=str(e))
             await self.db.rollback()
