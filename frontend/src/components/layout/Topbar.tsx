@@ -4,6 +4,8 @@ import { useAuthStore } from "@/store/auth-store";
 import { useThemeStore } from "@/store/theme-store";
 import { useState } from "react";
 
+import { AIModeIndicator } from "@/components/common/AIModeIndicator";
+
 export default function Topbar() {
   const { user, logout } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
@@ -28,6 +30,9 @@ export default function Topbar() {
 
       {/* Right actions */}
       <div className="topbar-actions">
+        {/* AI Engine Provider Indicator & Local Mode Switch */}
+        <AIModeIndicator />
+
         {/* Refresh action */}
         <button
           onClick={handleRefresh}

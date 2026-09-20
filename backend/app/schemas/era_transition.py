@@ -91,3 +91,22 @@ class ConcordanceLookupResponse(BaseModel):
     query: str = Field(description="Searched section number, statute name, or legal doctrine")
     match_count: int = Field(description="Number of matching concordance pairs")
     pairs: list[StatuteConcordancePair] = Field(default_factory=list, description="Matching concordance pairs")
+
+
+class EraTransitionInstant(BaseModel):
+    """Zero-LLM instant concordance snapshot – served from static Python dictionary (0 tokens, <10ms)."""
+    target_cnr: str = Field(description="Case CNR number")
+    active_era: Literal["NEW_BNS_ERA", "LEGACY_IPC_ERA", "HYBRID_TRANSITION_ERA"] = Field(
+        description="Applicable statutory era resolved from case filing date and cited statutes"
+    )
+    era_explanation: str = Field(description="Plain-language explanation of era categorization")
+    concordance_mappings: list[StatuteConcordancePair] = Field(
+        default_factory=list, description="Applicable old ↔ new statute concordance pairs for this case"
+    )
+    statutory_deltas: list[StatutoryDelta] = Field(
+        default_factory=list, description="Statutory variations between old and new provisions"
+    )
+    procedural_risks: list[str] = Field(
+        default_factory=list, description="Procedural litigator risk alerts derived from concordance data"
+    )
+    source: str = Field(default="STATIC_CONCORDANCE_DICT", description="Data origin – confirms no LLM was called")

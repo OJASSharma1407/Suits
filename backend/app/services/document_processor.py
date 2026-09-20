@@ -306,22 +306,14 @@ class DocumentProcessor:
                 "Keep it short and factual."
             )
             try:
-                from app.clients.openrouter_client import openrouter_client
-                summary = await openrouter_client.generate(
+                from app.services.ai_orchestrator import ai_orchestrator
+                summary = await ai_orchestrator.generate_text(
+                    prompt=prompt,
                     system_prompt="You are a legal document analyst. Provide concise, accurate summaries.",
-                    user_prompt=prompt,
                     temperature=0.2,
-                    max_output_tokens=256,
                 )
             except Exception as or_err:
-                logger.warning("openrouter_summary_failed_using_gemini", error=str(or_err))
-                from app.clients.gemini_client import gemini_client
-                summary = await gemini_client.generate(
-                    system_prompt="You are a legal document analyst. Provide concise, accurate summaries.",
-                    user_prompt=prompt,
-                    temperature=0.2,
-                    max_output_tokens=256,
-                )
+                logger.warning("ai_orchestrator_summary_failed", error=str(or_err))
 
             if summary:
                 cleaned_summary = summary.strip()
@@ -376,27 +368,47 @@ class DocumentProcessor:
                 except Exception:
                     pass
 
-        # 4. Synthesize via OpenRouter (with Gemini fallback)
-        from app.services.order_service import _ORDER_AI_SYSTEM_PROMPT, _ORDER_AI_EXTRACTION_PROMPT
+        # 4. Synthesize via AI Orchestrator (Local Ollama or Cloud)
+        from app.services.ai_orchestrator import ai_orchestrator
+        from app.services.order_service import (
+            _ORDER_AI_SYSTEM_PROMPT,
+            _ORDER_AI_EXTRACTION_PROMPT,
+            _ORDER_AI_LOCAL_SYSTEM_PROMPT,
+            _ORDER_AI_LOCAL_PROMPT,
+        )
 
-        extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.replace("{order_text}", text[:30000])
+        is_local = ai_orchestrator.is_local()
+        if is_local:
+            if len(text) > 7000:
+                head_txt = text[:3500]
+                tail_txt = text[-3500:]
+                condensed_text = f"{head_txt}\n\n[... intermediate text omitted for concise processing ...]\n\n{tail_txt}"
+            else:
+                condensed_text = text
+            extraction_prompt = _ORDER_AI_LOCAL_PROMPT.replace("{order_text}", condensed_text)
+            system_prompt = _ORDER_AI_LOCAL_SYSTEM_PROMPT
+            target_max_tokens = 1500
+        else:
+            condensed_text = text[:30000]
+            extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.replace("{order_text}", condensed_text)
+            system_prompt = _ORDER_AI_SYSTEM_PROMPT
+            target_max_tokens = 4096
 
         try:
-            logger.info("DOCUMENT_AI_EXTRACTION_START", filename=filename, text_length=len(text))
+            logger.info("DOCUMENT_AI_EXTRACTION_START", filename=filename, text_length=len(condensed_text), is_local=is_local)
             raw = None
             try:
-                from app.clients.openrouter_client import openrouter_client
-                raw = await openrouter_client.generate_json(
-                    system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+                raw = await ai_orchestrator.generate_json(
+                    system_prompt=system_prompt,
                     user_prompt=extraction_prompt,
+                    max_tokens=target_max_tokens,
                 )
-            except Exception as or_err:
-                logger.warning("openrouter_doc_ai_failed_using_gemini", error=str(or_err))
-                from app.clients.gemini_client import gemini_client
-                raw = await gemini_client.generate_json(
-                    system_prompt=_ORDER_AI_SYSTEM_PROMPT,
-                    user_prompt=extraction_prompt,
-                )
+            except Exception as exc:
+                logger.warning("ai_orchestrator_doc_ai_failed", error=str(exc))
+
+            if isinstance(raw, dict):
+                from app.services.order_service import _normalize_order_ai_dict
+                raw = _normalize_order_ai_dict(raw)
 
             if isinstance(raw, dict) and raw.get("executiveSummary"):
                 logger.info("DOCUMENT_AI_EXTRACTION_SUCCESS", filename=filename, keys=list(raw.keys()))

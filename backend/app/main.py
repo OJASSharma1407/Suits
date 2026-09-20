@@ -84,6 +84,9 @@ app = FastAPI(
     redoc_url="/redoc" if settings.environment == "development" else None,
 )
 
+from app.middleware.ai_provider import AIProviderMiddleware
+from app.clients.ollama_client import ollama_client
+
 # --- Middleware (order matters: last added = first executed) ---
 
 app.add_middleware(
@@ -93,23 +96,27 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
+    expose_headers=["Content-Disposition", "X-AI-Provider"],
 )
 
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(AIProviderMiddleware)
 
 # --- Global Exception Handler ---
 
 @app.exception_handler(SuitsBaseException)
 async def suits_exception_handler(request: Request, exc: SuitsBaseException):
+    content = {
+        "success": False,
+        "message": exc.detail,
+        "error_code": exc.error_code,
+    }
+    if exc.error_code == "ONLINE_AI_LIMIT_REACHED":
+        content["can_switch_to_ollama"] = True
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "success": False,
-            "message": exc.detail,
-            "error_code": exc.error_code,
-        },
+        content=content,
     )
 
 
@@ -154,3 +161,9 @@ async def prediction_health_check():
         "model": settings.prediction_gemini_model,
         "key_present": has_key,
     }
+
+
+@app.get("/api/health/ollama")
+async def ollama_health_check():
+    """Verify connectivity to local Ollama daemon and target Qwen 7B model status."""
+    return await ollama_client.check_health()

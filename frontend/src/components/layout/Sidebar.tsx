@@ -1,8 +1,10 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Cpu, Cloud, WifiOff } from "lucide-react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth-store";
 import { useThemeStore } from "@/store/theme-store";
+import { useAIModeStore } from "@/store/ai-mode-store";
 
 // SVG icons matching the reference design (stroke-based, 18×18)
 function WorkspaceIcon() {
@@ -77,8 +79,42 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
+  const {
+    mode,
+    isOffline,
+    setMode,
+    getEffectiveProvider,
+    checkOllamaHealth,
+  } = useAIModeStore();
 
   const isDark = theme === "dark";
+  const effectiveProvider = getEffectiveProvider();
+
+  const handleToggleAIMode = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isOffline) {
+      toast.info("Offline Mode: Local Ollama Qwen 7B is automatically active.");
+      return;
+    }
+
+    const nextMode = mode === "cloud" ? "local" : "cloud";
+    setMode(nextMode);
+
+    if (nextMode === "local") {
+      checkOllamaHealth().then(() => {
+        const status = useAIModeStore.getState().ollamaStatus;
+        if (status.running) {
+          toast.success("Switched to Local Ollama (Qwen 7B) — 100% private offline inference");
+        } else {
+          toast.warning("Local AI selected. Make sure Ollama daemon is running (`ollama serve`).");
+        }
+      });
+    } else {
+      toast.success("Switched to Cloud AI (Gemini & OpenRouter)");
+    }
+  };
 
   return (
     <aside className="sidebar">
@@ -121,10 +157,88 @@ export default function Sidebar() {
               </Link>
             );
           })}
+
+          {/* Fluent separator */}
+          <div
+            className="my-1 mx-3 border-t"
+            style={{ borderColor: "var(--hairline)", opacity: 0.4 }}
+          />
+
+          {/* Fluent Merged AI Engine Nav Item */}
+          <div
+            onClick={handleToggleAIMode}
+            className="nav-item select-none cursor-pointer group"
+            style={{
+              background:
+                effectiveProvider === "local"
+                  ? "rgba(39, 174, 96, 0.08)"
+                  : undefined,
+              borderColor:
+                effectiveProvider === "local"
+                  ? "rgba(39, 174, 96, 0.28)"
+                  : "transparent",
+            }}
+            title={
+              effectiveProvider === "local"
+                ? "Local AI Active (Ollama Qwen 7B) — Click to switch to Cloud AI"
+                : "Cloud AI Active (Gemini / OpenRouter) — Click to switch to Local Ollama"
+            }
+          >
+            <div className="nav-item-inner flex items-center justify-between w-full">
+              <div className="flex items-center gap-3">
+                {isOffline ? (
+                  <WifiOff size={18} className="text-amber-500 shrink-0" />
+                ) : effectiveProvider === "local" ? (
+                  <Cpu size={18} className="text-emerald-500 shrink-0" />
+                ) : (
+                  <Cloud size={18} style={{ color: "var(--brass-bright)" }} className="shrink-0" />
+                )}
+                <div className="nav-label flex flex-col text-left leading-tight">
+                  <span className="text-[14px] font-medium" style={{ color: "var(--ink)" }}>
+                    AI Engine
+                  </span>
+                  <span
+                    className="text-[10px] font-mono tracking-tight"
+                    style={{
+                      color:
+                        effectiveProvider === "local"
+                          ? "#27ae60"
+                          : isOffline
+                          ? "#d48806"
+                          : "var(--ink-faint)",
+                    }}
+                  >
+                    {isOffline
+                      ? "Offline (Qwen 7B)"
+                      : effectiveProvider === "local"
+                      ? "Local (Qwen 7B)"
+                      : "Cloud (Gemini)"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Smooth Micro-Toggle Switch */}
+              <div
+                className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out cursor-pointer"
+                style={{
+                  backgroundColor:
+                    effectiveProvider === "local" ? "var(--brass)" : "var(--hairline)",
+                }}
+              >
+                <motion.span
+                  animate={{
+                    x: effectiveProvider === "local" ? 17 : 2,
+                  }}
+                  transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                  className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm"
+                />
+              </div>
+            </div>
+          </div>
         </nav>
       </div>
 
-      {/* Footer: Profile pill → /profile + Theme toggle */}
+      {/* Footer: Clean Profile pill → /profile + Theme toggle */}
       <div className="sidebar-foot">
         <div className="sidebar-foot-row">
           {/* Clicking anywhere on the pill goes to /profile */}

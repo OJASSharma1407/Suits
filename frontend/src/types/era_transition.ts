@@ -61,3 +61,18 @@ export interface ConcordanceLookupResponse {
   match_count: number;
   pairs: StatuteConcordancePair[];
 }
+
+/**
+ * Zero-LLM instant concordance snapshot — served from static Python dictionary.
+ * This is what's loaded on every criminal case page mount (0 tokens consumed).
+ */
+export interface EraTransitionInstant {
+  target_cnr: string;
+  active_era: 'NEW_BNS_ERA' | 'LEGACY_IPC_ERA' | 'HYBRID_TRANSITION_ERA';
+  era_explanation: string;
+  concordance_mappings: StatuteConcordancePair[];
+  statutory_deltas: StatutoryDelta[];
+  procedural_risks: string[];
+  /** Always 'STATIC_CONCORDANCE_DICT' — confirms no LLM was called */
+  source: string;
+}

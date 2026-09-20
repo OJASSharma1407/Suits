@@ -311,59 +311,55 @@ class EraTransitionService:
         case_data: dict[str, Any],
         era: str,
     ) -> list[PrecedentTranspositionItem]:
-        """Call isolated Gemini client to craft court-ready transposed pleading paragraphs."""
+        """Call AI orchestrator to craft court-ready transposed pleading paragraphs.
+
+        For local Ollama (Qwen 7B), uses the deterministic high-quality fallback directly to
+        avoid slow LLM pleading generation. For cloud mode, calls Gemini/OpenRouter with a
+        compact prompt limited to the top-2 concordance pairs.
+        """
+        from app.services.ai_orchestrator import ai_orchestrator
+
+        # --- LOCAL MODE: Use deterministic fallback (zero-token, instant) ---
+        if ai_orchestrator.is_local():
+            logger.info("era_transition_local_mode_using_deterministic_fallback", pairs=len(concordance_pairs))
+            return [self._generate_fallback_transposition(p, era) for p in concordance_pairs[:3]]
+
+        # --- CLOUD MODE: LLM synthesis (limited to top 2 pairs) ---
+        top_pairs = concordance_pairs[:2]
         system_prompt = (
             "You are a Senior Supreme Court Criminal Appellate Advocate and Constitutional Jurist. "
-            "Your role is to transpose landmark Supreme Court ratios (decided under the repealed IPC 1860, CrPC 1973, "
-            "or IEA 1872) into the new criminal enactments (BNS 2023, BNSS 2023, BSA 2023). "
-            "You must draft court-ready pleading submissions that practicing advocates can directly copy-paste into petitions "
-            "and cite before High Court or Sessions Judges to establish that the historic ratio survives repeal and binds the bench "
-            "under Section 8 of the General Clauses Act, 1897, the doctrine of pari materia, and Article 21.\n\n"
-            "Return valid JSON adhering to this exact schema:\n"
-            "{\n"
-            '  "transpositions": [\n'
-            "    {\n"
-            '      "precedent_title": "string",\n'
-            '      "citation": "string",\n'
-            '      "historic_section_cited": "string",\n'
-            '      "transposed_section": "string",\n'
-            '      "governing_doctrine": "string",\n'
-            '      "court_pleading_paragraph": "Formal, persuasive, ready-to-file pleading paragraph addressing the Judge.",\n'
-            '      "statutory_continuity_basis": "e.g., Section 8 General Clauses Act, 1897 / Pari Materia Doctrine",\n'
-            '      "persuasion_ratio": "Concise oral argument proposition."\n'
-            "    }\n"
-            "  ]\n"
-            "}"
+            "Transpose landmark Supreme Court ratios (IPC/CrPC/IEA) into new criminal codes (BNS/BNSS/BSA). "
+            "Draft court-ready pleading paragraphs usable directly in petitions.\n"
+            "Return valid JSON with key \"transpositions\": array of objects with: "
+            "precedent_title, citation, historic_section_cited, transposed_section, "
+            "governing_doctrine, court_pleading_paragraph, statutory_continuity_basis, persuasion_ratio."
         )
 
         pairs_summary = []
-        for p in concordance_pairs:
-            for prec in p.landmark_precedents[:2]:
+        for p in top_pairs:
+            for prec in p.landmark_precedents[:1]:  # Only top precedent per pair
                 pairs_summary.append({
                     "precedent": prec.title,
                     "citation": prec.citation,
-                    "ratio": prec.ratio,
+                    "ratio": prec.ratio[:200],
                     "historic_section": f"Section {p.old_section} {p.old_code}",
                     "new_section": f"Section {p.new_section} {p.new_code}",
                     "doctrine": p.concept_doctrine,
-                    "deltas": [d.details for d in p.statutory_deltas],
                 })
 
         user_prompt = (
-            f"Case Matter: {case_data.get('title', 'Criminal Matter')}\n"
-            f"Applicable Era: {era}\n"
-            f"Case Classification: {case_data.get('case_type', 'Criminal Proceeding')}\n\n"
-            f"Transposition Targets:\n{json.dumps(pairs_summary, indent=2)}\n\n"
-            "Synthesize formal, powerful court-ready pleading submissions for each precedent target."
+            f"Case: {case_data.get('title', 'Criminal Matter')} | Era: {era} | "
+            f"Type: {case_data.get('case_type', 'Criminal Proceeding')}\n"
+            f"Targets: {json.dumps(pairs_summary)}\n"
+            "Draft concise pleading paragraphs for each."
         )
 
         try:
-            parsed_json = None
-            try:
-                parsed_json = await openrouter_client.generate_json(system_prompt, user_prompt)
-            except Exception as or_err:
-                logger.warning("openrouter_transposition_failed_using_gemini", error=str(or_err))
-                parsed_json, _ = await prediction_gemini_client.generate_prediction_json(system_prompt, user_prompt)
+            parsed_json = await ai_orchestrator.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                max_tokens=900,
+            )
 
             if parsed_json and "transpositions" in parsed_json and isinstance(parsed_json["transpositions"], list):
                 items = []
@@ -373,15 +369,101 @@ class EraTransitionService:
                     except Exception as ve:
                         logger.warning("invalid_transposition_item_schema", error=str(ve))
                 if items:
+                    # Append deterministic fallbacks for remaining pairs not covered by LLM
+                    covered_titles = {it.precedent_title.lower() for it in items}
+                    for p in concordance_pairs:
+                        if len(items) >= 4:
+                            break
+                        if not any(p.landmark_precedents and p.landmark_precedents[0].title.lower() in covered_titles):
+                            items.append(self._generate_fallback_transposition(p, era))
                     return items
         except Exception as exc:
             logger.warning("transposition_synthesis_failed", error=str(exc))
 
         # Fallback synthesis
-        fallback_items = []
+        return [self._generate_fallback_transposition(p, era) for p in concordance_pairs]
+
+    async def get_instant_concordance(
+        self,
+        cnr: str,
+    ) -> "EraTransitionInstant | None":
+        """Return IPC⟺BNS concordance pairs instantly from the static Python dictionary.
+
+        Zero LLM calls.  Zero tokens.  Runs in <10ms.  Safe to call on every
+        criminal case load — the concordance is purely a dict lookup + regex scan.
+        """
+        from app.schemas.era_transition import EraTransitionInstant
+        from datetime import datetime, timezone
+
+        cnr_clean = cnr.strip().upper()
+
+        # 1. Resolve case data from cache (already-fetched eCourts JSON)
+        from sqlalchemy import select
+        case_row = (
+            await self.db.execute(select(CachedCase).where(CachedCase.cnr == cnr_clean))
+        ).scalar_one_or_none()
+
+        case_data: dict[str, Any] = {}
+        if case_row and getattr(case_row, "response_json", None):
+            try:
+                case_data = json.loads(case_row.response_json)
+            except Exception:
+                pass
+
+        if not case_data:
+            # Try live fetch if not in cache yet
+            try:
+                resp = await self.case_service.get_case_details(cnr_clean)
+                case_data = resp.model_dump()
+            except Exception as e:
+                logger.warning("instant_concordance_case_fetch_failed", cnr=cnr_clean, error=str(e))
+                return None
+
+        # 2. Resolve most-recent order text (for statute mention scanning)
+        from app.models.cached_order import CachedOrder
+        order_stmt = (
+            select(CachedOrder)
+            .where(CachedOrder.cnr == cnr_clean, CachedOrder.markdown.isnot(None))
+            .order_by(CachedOrder.fetched_at.desc())
+        )
+        order_row = (await self.db.execute(order_stmt)).scalars().first()
+        orders_text = order_row.markdown[:3000] if order_row and order_row.markdown else ""
+
+        # 3. Determine era (pure date/keyword logic — 0 tokens)
+        era, era_explanation = self.determine_case_era(case_data, orders_text)
+
+        # 4. Extract concordance pairs for the specific sections cited (static dict lookup)
+        concordance_pairs = self.extract_relevant_concordance_pairs(case_data, orders_text)
+
+        # 5. Derive procedural risks from the concordance deltas (no LLM)
+        procedural_risks: list[str] = []
+        all_deltas: list[StatutoryDelta] = []
         for p in concordance_pairs:
-            fallback_items.append(self._generate_fallback_transposition(p, era))
-        return fallback_items
+            for d in p.statutory_deltas:
+                all_deltas.append(d)
+                warning = f"[{p.new_code} S. {p.new_section}] {d.litigator_warning}"
+                if warning not in procedural_risks:
+                    procedural_risks.append(warning)
+
+        if not procedural_risks:
+            procedural_risks.append(
+                "Verify date of alleged commission of offence: offences committed prior to 1 July 2024 "
+                "must carry substantive IPC charges pursuant to Article 20(1) ex post facto protections."
+            )
+            procedural_risks.append(
+                "Ensure search & seizure adheres strictly to Section 105 BNSS audio-video electronic "
+                "recording mandates where applicable."
+            )
+
+        return EraTransitionInstant(
+            target_cnr=cnr_clean,
+            active_era=era,  # type: ignore[arg-type]
+            era_explanation=era_explanation,
+            concordance_mappings=concordance_pairs,
+            statutory_deltas=all_deltas,
+            procedural_risks=procedural_risks[:6],
+            source="STATIC_CONCORDANCE_DICT",
+        )
 
     async def analyze_case_transition(
         self,

@@ -176,7 +176,9 @@ class PredictionService:
             scored_candidates.append((cand, effective_score))
 
         scored_candidates.sort(key=lambda x: x[1], reverse=True)
-        top_precedents = scored_candidates[: settings.prediction_max_precedents]
+        from app.services.ai_orchestrator import ai_orchestrator
+        max_prec = 2 if ai_orchestrator.is_local() else settings.prediction_max_precedents
+        top_precedents = scored_candidates[:max_prec]
 
         # 5. Resolve Matter Type Taxonomy and Era
         matter_type, era = self.resolve_matter_type_and_era(category, acts_and_sections, filing_date, case_title)
@@ -198,7 +200,37 @@ class PredictionService:
                 f"- Distinguishing Nuance: {cand.distinguishing_factors or 'None noted.'}\n"
             )
 
-        system_prompt = f"""You are the SUITS Judicial Reasoning Engine, an elite appellate legal analyst for the Indian Court System.
+        if ai_orchestrator.is_local():
+            # --- LOCAL MODE: Compact prompt optimised for Qwen 7B ---
+            # Truncate facts to keep total prompt under ~3000 chars
+            local_facts = active_facts[:800]
+            prec_lines = []
+            for idx, (cand, score) in enumerate(top_precedents, 1):
+                prec_lines.append(
+                    f"{idx}. {cand.case_title} | Score:{score:.2f} | "
+                    f"Ratio: {(cand.key_ratio or 'General doctrine.')[:120]}"
+                )
+
+            system_prompt = (
+                "You are an Indian appellate legal analyst. "
+                f"Era: {era.upper()}. Valid outcome labels: {valid_outcomes}. "
+                "Reply ONLY with valid raw JSON — no markdown fences."
+            )
+            user_prompt = (
+                f"Case: {case_title} | Court: {court_name} | Type: {matter_type}\n"
+                f"Facts: {local_facts}\n"
+                f"Precedents:\n" + "\n".join(prec_lines) + "\n\n"
+                "Return JSON with ONLY these keys:\n"
+                '{"outcome_distribution":[{"label":"<label>","weight":0.0,"rationale":"<1 sentence>"}],'
+                '"comparisons":[{"precedent_title":"<exact>","similarities":["<1 item>"],'
+                '"differences":["<1 item>"],"directional_effect":"neutral","effect_rationale":"<1 sentence>"}],'
+                '"explanation":{"governing_doctrine":"<1 sentence>","statutory_thresholds":[],'
+                '"critical_vulnerabilities":["<1 risk>"],"judicial_deduction_summary":"<2 sentences>"}}'
+            )
+            target_max_tokens = 800
+        else:
+            # --- CLOUD MODE: Full detailed prompt ---
+            system_prompt = f"""You are the SUITS Judicial Reasoning Engine, an elite appellate legal analyst for the Indian Court System.
 Your role is to perform a rigorous, objective precedent analogy and deduce judicial outcome probabilities.
 
 RULES:
@@ -212,7 +244,7 @@ RULES:
 Active Case Statute Era: {era.upper()} (Apply the appropriate statutes for this timeline).
 """
 
-        user_prompt = f"""
+            user_prompt = f"""
 ACTIVE MATTER TO ANALYZE:
 - Case Title: {case_title}
 - Court: {court_name}
@@ -249,12 +281,15 @@ Generate a structured JSON response matching the following structure:
   }}
 }}
 """
+            target_max_tokens = 4096
 
-        # 7. Call Isolated Gemini Client
-        raw_json, reasoning_summary = await prediction_gemini_client.generate_prediction_json(
+        # 7. Call AI Orchestrator (Local Ollama Qwen 7B if local/offline, else Gemini)
+        raw_json = await ai_orchestrator.generate_json(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
+            max_tokens=target_max_tokens,
         )
+        reasoning_summary = "Synthesized via Local Ollama (Qwen 7B)" if ai_orchestrator.is_local() else "Synthesized via Gemini Judicial Outcome Engine"
 
         if not raw_json or not isinstance(raw_json, dict):
             logger.warning("prediction_gemini_returned_invalid_json", cnr=cnr_clean)

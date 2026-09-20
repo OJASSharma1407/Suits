@@ -43,6 +43,12 @@ class Settings(BaseSettings):
     groq_api_key: str = Field(default="")
     groq_model: str = Field(default="openai/gpt-oss-120b")
 
+    # Local Ollama AI (Offline / Manual Local AI Mode — Qwen 7B)
+    ollama_base_url: str = Field(default="http://localhost:11434")
+    ollama_model: str = Field(default="qwen2.5:7b")
+    ollama_timeout_seconds: int = Field(default=120)
+    ollama_temperature: float = Field(default=0.2)
+
     # Judicial Outcome Prediction Engine (shares gemini_api_key)
     prediction_gemini_model: str = Field(default="gemini-3.1-pro-preview")
     prediction_thinking_level: str = Field(default="high")          # low | medium | high

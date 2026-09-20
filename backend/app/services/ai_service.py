@@ -209,26 +209,15 @@ class AIService:
         except Exception:
             pass
 
-        # Generate response via OpenRouter Nemotron 3 Ultra (with Gemini fallback)
-        try:
-            ai_response = await openrouter_client.generate_with_context(
-                system_prompt=MASTER_SYSTEM_PROMPT,
-                conversation_history=history,
-                user_message=user_message,
-                case_context=case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available."),
-                order_context=order_context,
-            )
-            if not ai_response or not ai_response.strip():
-                raise RuntimeError("Empty response from OpenRouter")
-        except Exception as or_err:
-            logger.warning("openrouter_generate_failed_using_gemini", error=str(or_err))
-            ai_response = await gemini_client.generate_with_context(
-                system_prompt=MASTER_SYSTEM_PROMPT,
-                conversation_history=history,
-                user_message=user_message,
-                case_context=case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available."),
-                order_context=order_context,
-            )
+        # Generate response via AI Orchestrator (Ollama Qwen 7B if local/offline, else Cloud AI)
+        from app.services.ai_orchestrator import ai_orchestrator
+        ai_response = await ai_orchestrator.generate_with_context(
+            system_prompt=MASTER_SYSTEM_PROMPT,
+            conversation_history=history,
+            user_message=user_message,
+            case_context=case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available."),
+            order_context=order_context,
+        )
 
         assistant_msg = Message(
             conversation_id=conversation_id,
@@ -279,35 +268,20 @@ class AIService:
             is_general = not cnr or cnr.upper() == "GENERAL"
             effective_context = case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available.")
 
-            # Stream tokens via OpenRouter (gpt-oss-120b) with Gemini fallback
+            # Stream tokens via AI Orchestrator (Ollama Qwen 7B if local/offline, else Cloud AI)
+            from app.services.ai_orchestrator import ai_orchestrator
             full_response: list[str] = []
-            try:
-                async for token in openrouter_client.generate_with_context_stream(
-                    system_prompt=MASTER_SYSTEM_PROMPT,
-                    conversation_history=history,
-                    user_message=user_message,
-                    case_context=effective_context,
-                    order_context=order_context,
-                ):
-                    if token:
-                        full_response.append(token)
-                        chunk_json = json.dumps({"token": token})
-                        yield f"data: {chunk_json}\n\n"
-                if not full_response:
-                    raise RuntimeError("OpenRouter produced empty stream")
-            except Exception as stream_err:
-                logger.warning("openrouter_stream_failed_using_gemini", error=str(stream_err))
-                async for token in gemini_client.generate_with_context_stream(
-                    system_prompt=MASTER_SYSTEM_PROMPT,
-                    conversation_history=history,
-                    user_message=user_message,
-                    case_context=effective_context,
-                    order_context=order_context,
-                ):
-                    if token:
-                        full_response.append(token)
-                        chunk_json = json.dumps({"token": token})
-                        yield f"data: {chunk_json}\n\n"
+            async for token in ai_orchestrator.generate_with_context_stream(
+                system_prompt=MASTER_SYSTEM_PROMPT,
+                conversation_history=history,
+                user_message=user_message,
+                case_context=effective_context,
+                order_context=order_context,
+            ):
+                if token:
+                    full_response.append(token)
+                    chunk_json = json.dumps({"token": token})
+                    yield f"data: {chunk_json}\n\n"
 
             # Save completed assistant message
             ai_response = "".join(full_response)

@@ -477,23 +477,16 @@ class SimilarCasesService:
         )
 
         ai_results: list[dict[str, Any]] = []
+        from app.services.ai_orchestrator import ai_orchestrator
         raw_json = None
         try:
-            raw_json = await openrouter_client.generate_json(
+            raw_json = await ai_orchestrator.generate_json(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 temperature=0.2,
             )
-        except Exception as or_err:
-            logger.warning("openrouter_nexus_failed_using_gemini", error=str(or_err))
-            try:
-                raw_json = await gemini_client.generate_json(
-                    system_prompt=system_prompt,
-                    user_prompt=user_prompt,
-                    temperature=0.2,
-                )
-            except Exception as exc:
-                logger.warning("gemini_synthesis_failed_using_fallback", error=str(exc))
+        except Exception as exc:
+            logger.warning("nexus_synthesis_failed_using_fallback", error=str(exc))
 
         if isinstance(raw_json, list):
             ai_results = raw_json

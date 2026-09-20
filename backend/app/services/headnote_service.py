@@ -346,7 +346,8 @@ Generate the publisher-grade headnote in JSON adhering to this structure:
 }}
 """
 
-        raw_json, _ = await prediction_gemini_client.generate_prediction_json(
+        from app.services.ai_orchestrator import ai_orchestrator
+        raw_json = await ai_orchestrator.generate_json(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )
@@ -355,19 +356,29 @@ Generate the publisher-grade headnote in JSON adhering to this structure:
             logger.error("gemini_headnote_synthesis_failed", cnr=cnr_clean)
             return None
 
-        # Fallback fields if LLM omitted keys
+        # Fallback fields if LLM omitted keys or used alternate case
         catchwords = raw_json.get("catchwords") or [f"Judicial Proceedings — {cnr_clean}"]
-        held_points = raw_json.get("held_points") or [
+        held_points = raw_json.get("held_points") or raw_json.get("heldPoints") or [
             "Court examined the statutory record and adjudicated the rights of the parties as per law."
         ]
         ratio_summary = (
             raw_json.get("ratio_decidendi_summary")
+            or raw_json.get("ratioDecidendi")
+            or raw_json.get("ratio_decidendi")
+            or raw_json.get("courtReasoning")
+            or raw_json.get("court_reasoning")
             or "The court resolved the dispute based on established statutory principles and judicial precedents."
         )
-        obiter_dicta = raw_json.get("obiter_dicta") or []
-        citator_raw = raw_json.get("precedent_citator_table") or []
-        statutory_raw = raw_json.get("statutory_provisions_considered") or []
-        operative_disp = raw_json.get("operative_disposition") or "Disposed"
+        obiter_dicta = raw_json.get("obiter_dicta") or raw_json.get("obiterDicta") or []
+        citator_raw = raw_json.get("precedent_citator_table") or raw_json.get("precedentCitatorTable") or []
+        statutory_raw = raw_json.get("statutory_provisions_considered") or raw_json.get("statutoryProvisionsConsidered") or []
+        operative_disp = (
+            raw_json.get("operative_disposition")
+            or raw_json.get("operativeDisposition")
+            or raw_json.get("outcome")
+            or raw_json.get("dispositionStatus")
+            or "Disposed"
+        )
 
         # Validate citator items defensively
         citator_items: list[PrecedentTreatmentItem] = []

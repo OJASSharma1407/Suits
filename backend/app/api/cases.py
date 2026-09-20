@@ -156,6 +156,30 @@ async def refresh_case_headnote(
     return APIResponse(data=headnote_resp.model_dump(), message="Headnote refreshed.")
 
 
+@router.get("/{cnr}/era-transition/instant")
+async def get_case_era_transition_instant(
+    cnr: str,
+    user: CurrentUser,
+    db: DbSession,
+):
+    """Zero-LLM concordance snapshot: IPC/CrPC/IEA ↔ BNS/BNSS/BSA section mapping.
+
+    Resolves applicable statutory era and extracts all relevant IPC↔BNS concordance
+    pairs for the case entirely from the static Python dictionary — no LLM call, no
+    token consumption, returns in <10ms.  Call this on case load.  Only call the full
+    /era-transition endpoint when the user explicitly requests 'Draft Transition Arguments'.
+    """
+    from fastapi.responses import Response
+    from app.services.era_transition_service import EraTransitionService
+
+    cnr = _validate_cnr(cnr)
+    service = EraTransitionService(db)
+    instant = await service.get_instant_concordance(cnr)
+    if instant is None:
+        return Response(status_code=204)
+    return APIResponse(data=instant.model_dump())
+
+
 @router.get("/{cnr}/era-transition")
 async def get_case_era_transition_cases(
     cnr: str,

@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import { TopSearchBar } from "./TopSearchBar";
 import { CommandPalette } from "@/components/common/CommandPalette";
 import { GlobalVoiceDictation } from "@/components/chat/GlobalVoiceDictation";
+import { SwitchToOllamaModal } from "@/components/common/SwitchToOllamaModal";
 import { useThemeStore } from "@/store/theme-store";
 
 
@@ -37,8 +38,7 @@ export default function AppLayout() {
 
       <CommandPalette />
       <GlobalVoiceDictation />
-
-
+      <SwitchToOllamaModal />
     </div>
   );
 }

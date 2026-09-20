@@ -113,3 +113,18 @@ class RateLimitError(SuitsBaseException):
             detail=detail,
             error_code="RATE_LIMITED",
         )
+
+
+class OnlineAILimitReachedError(SuitsBaseException):
+    """Raised when Online AI (Gemini / OpenRouter) API credits, quota, or rate limits are exhausted."""
+
+    def __init__(
+        self,
+        detail: str = "Online AI API quota or rate limit reached. Switch to Local Ollama (Qwen 7B) for offline zero-cost analysis.",
+    ):
+        super().__init__(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail=detail,
+            error_code="ONLINE_AI_LIMIT_REACHED",
+        )
+

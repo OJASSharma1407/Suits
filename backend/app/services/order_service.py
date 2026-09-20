@@ -69,6 +69,170 @@ Court Document Text:
 """
 
 
+# --- Local AI Prompts (Optimized for Qwen 7B: bounded arrays, anti-looping, low-latency) ---
+_ORDER_AI_LOCAL_SYSTEM_PROMPT = """You are an elite Indian court judicial analyst.
+Your task is to analyze the provided court order/judgment text and extract key structured intelligence.
+
+CRITICAL RULES:
+1. Respond ONLY with valid, raw RFC-8259 JSON. Do not include markdown fences (```json) or outside commentary.
+2. For all list fields, provide AT MOST 3 concise, distinct items.
+3. NEVER repeat phrases or loop. Keep the summary precise, informative, and professional.
+"""
+
+_ORDER_AI_LOCAL_PROMPT = """Analyze this Indian court judgment and extract the essential judicial data into JSON:
+
+Schema:
+{{
+  "caseNumber": "<case number or title from document>",
+  "courtName": "<full court name>",
+  "judgeNames": ["<presiding judge 1>"],
+  "orderDate": "<YYYY-MM-DD or date as written>",
+  "petitioners": [{"name": "<main petitioner/appellant>", "role": "Petitioner"}],
+  "respondents": [{"name": "<main respondent>", "role": "Respondent"}],
+  "counselPetitioner": ["<petitioner advocate>"],
+  "counselRespondent": ["<respondent advocate>"],
+  "orderNature": "<e.g. Interim Order, Final Judgment, Bail Order, Writ Order>",
+  "dispositionStatus": "<e.g. Allowed, Dismissed, Disposed, Stay Granted>",
+  "outcome": "<one concise sentence stating the direct result of the order>",
+  "courtDirections": ["<specific direction 1 (max 3 items)>"],
+  "primaryIssues": ["<key legal issue 1 (max 3 items)>"],
+  "statutesCited": ["<act or statute 1 (max 3 items)>"],
+  "sectionsApplied": ["<section applied 1 (max 3 items)>"],
+  "caseLawsReferenced": ["<cited precedent 1 (max 3 items)>"],
+  "courtReasoning": "<3-4 sentences summarizing why the court ruled as it did>",
+  "ratioDecidendi": "<the core legal principle or rule of law established>",
+  "heldPoints": ["<numbered holding 1 (max 3 items)>"],
+  "executiveSummary": "<2 clear paragraphs detailing: (1) parties and dispute background, (2) findings, legal reasoning, and final disposition>",
+  "plainLanguageSummary": "<2 sentences in simple language explaining what this means practically for the client/parties>",
+  "litigantFriendlyExplanation": "<1-2 practical next action steps for compliance or next hearing>",
+  "complianceDirections": ["<immediate deadline or compliance step (max 3 items)>"],
+  "extractionConfidence": 0.85
+}}
+
+Court Document:
+{order_text}
+"""
+
+
+def _sanitize_keys(d: Any) -> Any:
+    """Recursively strip literal quote characters from dict keys produced by misbehaving local models.
+
+    Some Qwen outputs emit keys like '"name"' (with embedded double-quotes) instead of 'name'.
+    This walks the structure and strips leading/trailing quote chars from every key.
+    """
+    if isinstance(d, dict):
+        cleaned: dict[str, Any] = {}
+        for k, v in d.items():
+            clean_key = k.strip().strip('"').strip("'").strip()
+            cleaned[clean_key] = _sanitize_keys(v)
+        return cleaned
+    if isinstance(d, list):
+        return [_sanitize_keys(item) for item in d]
+    return d
+
+
+def _normalize_order_ai_dict(raw: Any) -> dict[str, Any]:
+    """Defensively unwrap, normalize snake_case / camelCase keys, and ensure essential fields exist."""
+    if not isinstance(raw, dict):
+        return {}
+
+    # Sanitize keys that may have embedded quote characters (e.g. '"name"' -> 'name')
+    raw = _sanitize_keys(raw)
+
+    # Unwrap single container key if present (e.g. {"analysis": {...}} or {"data": {...}})
+    if len(raw) == 1:
+        single_val = next(iter(raw.values()))
+        if isinstance(single_val, dict):
+            raw = single_val
+
+    # Normalize summary fields
+    summary = (
+        raw.get("executiveSummary")
+        or raw.get("executive_summary")
+        or raw.get("summary")
+        or raw.get("case_summary")
+        or raw.get("caseSummary")
+        or raw.get("overview")
+        or raw.get("plainLanguageSummary")
+        or raw.get("plain_language_summary")
+        or raw.get("courtReasoning")
+        or raw.get("court_reasoning")
+    )
+    if summary:
+        raw["executiveSummary"] = str(summary).strip()
+        raw["executive_summary"] = raw["executiveSummary"]
+
+    plain_summary = (
+        raw.get("plainLanguageSummary")
+        or raw.get("plain_language_summary")
+        or raw.get("litigantFriendlyExplanation")
+        or raw.get("litigant_friendly_explanation")
+        or raw.get("executiveSummary")
+    )
+    if plain_summary:
+        raw["plainLanguageSummary"] = str(plain_summary).strip()
+        raw["plain_language_summary"] = raw["plainLanguageSummary"]
+
+    # Normalize confidence
+    conf = raw.get("extractionConfidence") or raw.get("extraction_confidence") or raw.get("confidence")
+    try:
+        conf_float = float(conf) if conf is not None else (0.85 if summary else 0.0)
+    except (ValueError, TypeError):
+        conf_float = 0.85 if summary else 0.0
+    if conf_float <= 0.0 and summary:
+        conf_float = 0.85
+    raw["extractionConfidence"] = conf_float
+    raw["extraction_confidence"] = conf_float
+
+    # Normalize disposition / outcome
+    outcome = (
+        raw.get("outcome")
+        or raw.get("operativeDisposition")
+        or raw.get("operative_disposition")
+        or raw.get("dispositionStatus")
+        or raw.get("disposition_status")
+        or "Disposed"
+    )
+    raw["outcome"] = outcome
+    raw["dispositionStatus"] = raw.get("dispositionStatus") or raw.get("disposition_status") or outcome
+    raw["operativeDisposition"] = raw.get("operativeDisposition") or raw.get("operative_disposition") or outcome
+
+    # Normalize lists (if string or None was provided, wrap into list)
+    for list_key in (
+        "petitioners", "respondents", "courtDirections", "primaryIssues",
+        "statutesCited", "sectionsApplied", "caseLawsReferenced",
+        "petitionerArguments", "respondentArguments", "complianceDirections",
+        "risks", "implications", "catchwords", "heldPoints", "obiterDicta"
+    ):
+        snake_k = re.sub(r'(?<!^)(?=[A-Z])', '_', list_key).lower()
+        val = raw.get(list_key) or raw.get(snake_k)
+        if isinstance(val, str):
+            val = [val]
+        elif not isinstance(val, list):
+            val = []
+        raw[list_key] = val
+        raw[snake_k] = val
+
+    # Ensure parties are always lists of dicts
+    def _clean_parties(items: Any, default_role: str) -> list[dict[str, Any]]:
+        res: list[dict[str, Any]] = []
+        if not isinstance(items, list):
+            items = [items] if items else []
+        for it in items:
+            if isinstance(it, dict):
+                n = it.get("name") or it.get("party_name") or str(it)
+                r = it.get("role") or default_role
+                res.append({"name": str(n).strip(), "role": str(r).strip()})
+            elif isinstance(it, str) and it.strip():
+                res.append({"name": it.strip(), "role": default_role})
+        return res
+
+    raw["petitioners"] = _clean_parties(raw.get("petitioners"), "Petitioner")
+    raw["respondents"] = _clean_parties(raw.get("respondents"), "Respondent")
+
+    return raw
+
+
 class OrderService:
     def __init__(self, db: AsyncSession) -> None:
         self.cache_repo = CacheRepository(db)
@@ -268,18 +432,44 @@ class OrderService:
             }
             return self._transform_ai_response(cnr, filename, raw)
 
-        # 4. Generate structured analysis via Gemini (with Groq Cloud fallback)
-        logger.info("ORDER_AI_CALLING_LLM", cnr=cnr, filename=filename, text_length=len(order_text))
-        extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.format(order_text=order_text[:16000])
+        # 4. Generate structured analysis via AI Orchestrator (Local Ollama or Cloud)
+        from app.services.ai_orchestrator import ai_orchestrator
+        is_local = ai_orchestrator.is_local()
+
+        if is_local:
+            # For Local Ollama (Qwen 7B): Condense judgment text to avoid quadratic attention prefill latency
+            # and context-window degradation. Head (3500 chars) + Tail (3500 chars) captures parties, facts,
+            # substantive reasoning, and operative disposition without choking local compute.
+            if len(order_text) > 7000:
+                head_txt = order_text[:3500]
+                tail_txt = order_text[-3500:]
+                condensed_text = f"{head_txt}\n\n[... intermediate procedural narration omitted for concise processing ...]\n\n{tail_txt}"
+            else:
+                condensed_text = order_text
+
+            extraction_prompt = _ORDER_AI_LOCAL_PROMPT.replace("{order_text}", condensed_text)
+            system_prompt = _ORDER_AI_LOCAL_SYSTEM_PROMPT
+            target_max_tokens = 1500
+        else:
+            condensed_text = order_text[:16000]
+            extraction_prompt = _ORDER_AI_EXTRACTION_PROMPT.replace("{order_text}", condensed_text)
+            system_prompt = _ORDER_AI_SYSTEM_PROMPT
+            target_max_tokens = 4096
+
+        logger.info("ORDER_AI_CALLING_LLM", cnr=cnr, filename=filename, text_length=len(condensed_text), is_local=is_local)
 
         raw = None
         try:
-            raw = await gemini_client.generate_json(
-                system_prompt=_ORDER_AI_SYSTEM_PROMPT,
+            raw = await ai_orchestrator.generate_json(
+                system_prompt=system_prompt,
                 user_prompt=extraction_prompt,
+                max_tokens=target_max_tokens,
             )
         except Exception as exc:
-            logger.warning("gemini_order_ai_failed", error=str(exc))
+            logger.warning("order_ai_failed", error=str(exc))
+
+        if isinstance(raw, dict):
+            raw = _normalize_order_ai_dict(raw)
 
         if not raw or not raw.get("executiveSummary"):
             raw = {
@@ -335,7 +525,7 @@ class OrderService:
                         "statutory_provisions_considered": raw.get("statutoryProvisionsConsidered") or raw.get("statutory_provisions_considered", []),
                         "operative_disposition": raw.get("operativeDisposition") or raw.get("outcome") or raw.get("dispositionStatus") or "Disposed",
                     },
-                    "model_attribution": "Unified Case Intelligence · InLegalBERT & Gemini/Groq",
+                    "model_attribution": "Unified Case Intelligence · InLegalBERT & Local Ollama" if ai_orchestrator.is_local() else "Unified Case Intelligence · InLegalBERT & Gemini/Groq",
                     "order_hash": order_hash,
                     "is_cached": True,
                     "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -344,7 +534,7 @@ class OrderService:
                     cnr=cnr,
                     order_hash=order_hash,
                     headnote_json=json.dumps(headnote_payload, default=str),
-                    fetched_at=datetime.now(timezone.utc),
+                    generated_at=datetime.now(timezone.utc),
                 ))
                 await cache_service.set(f"headnote:{cnr}:{order_hash}", headnote_payload)
                 await cache_service.set(f"headnote:{cnr}:latest", headnote_payload)
@@ -393,6 +583,21 @@ class OrderService:
         """Transform AI extraction JSON into internal OrderAIResponse DTO."""
         if not isinstance(raw, dict):
             raw = {}
+
+        # Sanitize any keys with embedded quote characters coming from cached/local data
+        raw = _sanitize_keys(raw)
+
+        def _ensure_party_dicts(items: Any, default_role: str) -> list[dict[str, Any]]:
+            res: list[dict[str, Any]] = []
+            if not isinstance(items, list):
+                items = [items] if items else []
+            for it in items:
+                if isinstance(it, dict):
+                    res.append(it)
+                elif isinstance(it, str) and it.strip():
+                    res.append({"name": it.strip(), "role": default_role})
+            return res
+
         return OrderAIResponse(
             cnr=cnr,
             filename=filename,
@@ -400,8 +605,8 @@ class OrderService:
             court_name=raw.get("courtName") or raw.get("court_name"),
             judge_names=raw.get("judgeNames") or raw.get("judge_names", []),
             order_date=raw.get("orderDate") or raw.get("order_date"),
-            petitioners=raw.get("petitioners", []),
-            respondents=raw.get("respondents", []),
+            petitioners=_ensure_party_dicts(raw.get("petitioners"), "Petitioner"),
+            respondents=_ensure_party_dicts(raw.get("respondents"), "Respondent"),
             counsel_petitioner=raw.get("counselPetitioner") or raw.get("counsel_petitioner", []),
             counsel_respondent=raw.get("counselRespondent") or raw.get("counsel_respondent", []),
             order_nature=raw.get("orderNature") or raw.get("order_nature"),

@@ -23,8 +23,8 @@ class OrderAIResponse(BaseModel):
     order_date: str | None = None
 
     # Parties
-    petitioners: list[dict[str, Any]] = []
-    respondents: list[dict[str, Any]] = []
+    petitioners: list[dict[str, Any] | str] = []
+    respondents: list[dict[str, Any] | str] = []
 
     # Legal representation
     counsel_petitioner: list[str] = []
@@ -63,8 +63,8 @@ class OrderAIResponse(BaseModel):
     catchwords: list[str] = []
     held_points: list[str] = []
     obiter_dicta: list[str] = []
-    precedent_citator_table: list[dict[str, Any]] = []
-    statutory_provisions_considered: list[dict[str, Any]] = []
+    precedent_citator_table: list[dict[str, Any] | str] = []
+    statutory_provisions_considered: list[dict[str, Any] | str] = []
 
     # Quality metadata
     extraction_confidence: float | None = None
