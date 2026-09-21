@@ -196,48 +196,7 @@ export function OrderIntelligenceCard({
 
   // ─── Empty / On-Demand State ────────────────────────────────────────────────
   if (!data && !loading) {
-    return (
-      <div
-        id="order-intelligence-section"
-        className="card-float p-6 sm:p-8 space-y-4 relative overflow-hidden"
-        style={{ borderRadius: "var(--radius-md)" }}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <div
-              className="w-10 h-10 rounded-lg flex items-center justify-center flex-shrink-0"
-              style={{ background: "var(--brass-soft)", color: "var(--brass-bright)", border: "1px solid var(--hairline)" }}
-            >
-              <Scale size={18} />
-            </div>
-            <div>
-              <h3 className="text-base font-semibold tracking-tight" style={{ color: "var(--ink)" }}>
-                Order Intelligence & Editorial Headnote
-              </h3>
-              <p className="text-xs mt-0.5" style={{ color: "var(--ink-faint)" }}>
-                Executive summary, legal issues, ratio decidendi, and publisher-grade headnote — one unified pass.
-              </p>
-            </div>
-          </div>
-
-          <button
-            onClick={() => handleGenerate(false)}
-            disabled={!targetFile}
-            className="inline-flex items-center gap-2 text-xs font-semibold cursor-pointer transition-all disabled:opacity-40"
-            style={{
-              background: "var(--brass-soft)",
-              color: "var(--brass-bright)",
-              border: "1px solid var(--hairline)",
-              padding: "8px 18px",
-              borderRadius: "var(--radius-sm)",
-            }}
-          >
-            <Sparkles size={14} />
-            <span>Generate Case Intelligence</span>
-          </button>
-        </div>
-      </div>
-    );
+    return null;
   }
 
   // ─── Loading Skeleton ────────────────────────────────────────────────────────
@@ -372,18 +331,6 @@ export function OrderIntelligenceCard({
               A++
             </button>
           </div>
-
-          {onReadDocument && (
-            <button
-              onClick={() => onReadDocument(targetFile)}
-              className="btn btn-ghost flex items-center gap-1.5 text-xs sm:text-sm font-medium cursor-pointer transition-all"
-              style={{ border: "1px solid var(--hairline)", padding: "7px 14px", color: "var(--ink-dim)" }}
-              title="Open in document reader"
-            >
-              <FileText size={14} style={{ color: "var(--brass)" }} />
-              <span>Read Order</span>
-            </button>
-          )}
 
           <button
             onClick={copyHeadnote}

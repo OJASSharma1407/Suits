@@ -1177,3 +1177,89 @@ input, button, select, textarea {
     transform: rotate(1turn);
   }
 }
+
+/* ============================================================
+   INDIAN LEGAL DOCUMENT EDITOR & COURT PRINT RULES
+   ============================================================ */
+.legal-document-sheet {
+  box-sizing: border-box;
+}
+
+/* High-contrast text selection for legal document sheet in all modes */
+.legal-document-sheet ::selection {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+.legal-document-sheet ::-moz-selection {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] ::selection {
+  background: rgba(62, 124, 166, 0.55);
+  color: #ffffff;
+}
+
+.court-block-wrapper {
+  margin: 1.25em 0;
+  display: block;
+}
+
+.legal-editor-content p {
+  margin: 0 0 0.85em 0;
+  line-height: inherit;
+  text-align: inherit;
+}
+
+.court-page-break {
+  page-break-after: always;
+}
+
+.legal-editor-content:empty:before {
+  content: attr(placeholder);
+  color: var(--ink-faint);
+  opacity: 0.5;
+  pointer-events: none;
+  display: block;
+}
+
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+  }
+
+  /* Hide app shell, sidebar, topbar, toolbars, buttons during court print */
+  .sidebar,
+  .topbar,
+  .btn,
+  button,
+  select,
+  .legal-document-sheet > div:first-child,
+  .legal-document-sheet > div:nth-child(2) {
+    display: none !important;
+  }
+
+  .dashboard-layout {
+    margin: 0 !important;
+    padding: 0 !important;
+    max-width: 100% !important;
+    width: 100% !important;
+  }
+
+  .legal-document-sheet {
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+    padding: 1.0in !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+  }
+
+  @page {
+    size: A4;
+    margin: 0;
+  }
+}

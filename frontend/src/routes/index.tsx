@@ -14,6 +14,7 @@ const CaseDashboardPage = lazy(() => import("@/pages/CaseDashboardPage"));
 const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const BookmarksPage = lazy(() => import("@/pages/BookmarksPage"));
 const FilesPage = lazy(() => import("@/pages/FilesPage"));
+const DocumentPage = lazy(() => import("@/pages/DocumentPage"));
 const ResearchPage = lazy(() => import("@/pages/ResearchPage"));
 const TransitionPage = lazy(() => import("@/pages/TransitionPage"));
 const HistoryPage = lazy(() => import("@/pages/HistoryPage"));
@@ -96,6 +97,7 @@ const router = createBrowserRouter([
           { path: "/chat/:conversationId", element: <Suspense fallback={<PageLoader />}><ChatPage /></Suspense> },
           { path: "/bookmarks", element: <Suspense fallback={<PageLoader />}><BookmarksPage /></Suspense> },
           { path: "/files", element: <Suspense fallback={<PageLoader />}><FilesPage /></Suspense> },
+          { path: "/document", element: <Suspense fallback={<PageLoader />}><DocumentPage /></Suspense> },
           { path: "/research", element: <Suspense fallback={<PageLoader />}><ResearchPage /></Suspense> },
           { path: "/transition", element: <Suspense fallback={<PageLoader />}><TransitionPage /></Suspense> },
           { path: "/history", element: <Suspense fallback={<PageLoader />}><HistoryPage /></Suspense> },

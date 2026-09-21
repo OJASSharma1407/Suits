@@ -41,8 +41,6 @@ export function CitationNetworkView({
     try {
       const res = await citationService.getGraph(cnr);
       setData(res);
-      const rootNode = res.nodes.find((n) => n.node_type === "target") || res.nodes[0];
-      if (rootNode) setSelectedNode(rootNode);
     } catch {
       setError("Unable to generate citation network. Please try refreshing.");
     } finally {
@@ -65,8 +63,7 @@ export function CitationNetworkView({
   const handleResetView = () => {
     setZoomLevel(1.0);
     setPanOffset({ x: 0, y: 0 });
-    const rootNode = data?.nodes.find((n) => n.node_type === "target") || data?.nodes[0];
-    if (rootNode) setSelectedNode(rootNode);
+    setSelectedNode(null);
     toast.info("Network view reset to center.");
   };
 
