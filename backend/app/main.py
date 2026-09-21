@@ -11,7 +11,7 @@ from app.core.config import settings
 from app.core.exceptions import SuitsBaseException
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics, files, documents, statutes
+from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics, files, documents, statutes, counter_pleading
 from app.clients.ecourts_client import ecourts_client
 from app.services.cache_service import cache_service
 from app.database.session import engine, init_db
@@ -145,6 +145,7 @@ app.include_router(analytics.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
 app.include_router(statutes.router, prefix="/api")
+app.include_router(counter_pleading.router, prefix="/api")
 
 
 @app.get("/api/health")

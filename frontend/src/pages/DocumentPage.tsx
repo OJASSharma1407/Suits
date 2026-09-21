@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { LegalEditor } from "@/components/document/LegalEditor";
 import { DocumentChatDrawer } from "@/components/document/DocumentChatDrawer";
+import { CounterPleadingModal } from "@/components/defense/CounterPleadingModal";
 import {
   FileText,
   Plus,
@@ -10,6 +11,7 @@ import {
   Clock,
   ChevronRight,
   BookOpen,
+  ShieldAlert,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -124,6 +126,7 @@ export default function DocumentPage() {
   const [lastSavedAt, setLastSavedAt] = useState<Date | null>(new Date());
   const [showDraftsDrawer, setShowDraftsDrawer] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showDefenseModal, setShowDefenseModal] = useState(false);
 
   const activeDraft = drafts.find((d) => d.id === activeDraftId) || drafts[0];
 
@@ -170,6 +173,18 @@ export default function DocumentPage() {
     setActiveDraftId(newId);
     setShowDraftsDrawer(false);
     toast.success("Created new legal document");
+  };
+
+  const handleOpenDefenseDraft = (newDraft: { title: string; content: string }) => {
+    const newId = `draft-${Date.now()}`;
+    const draftItem: DraftItem = {
+      id: newId,
+      title: newDraft.title,
+      content: newDraft.content,
+      updatedAt: new Date().toISOString(),
+    };
+    setDrafts((prev) => [draftItem, ...prev]);
+    setActiveDraftId(newId);
   };
 
   const handleDeleteDraft = (id: string, e: React.MouseEvent) => {
@@ -233,6 +248,20 @@ export default function DocumentPage() {
           >
             <Plus size={14} />
             <span>New Document</span>
+          </button>
+
+          <button
+            onClick={() => setShowDefenseModal(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm hover:opacity-95 cursor-pointer"
+            style={{
+              background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
+              color: "#ffffff",
+              border: "1px solid rgba(99, 102, 241, 0.4)",
+            }}
+            title="Synthesize court-ready Written Statement under Order VIII CPC"
+          >
+            <ShieldAlert size={14} />
+            <span>Draft Defense / WS</span>
           </button>
         </div>
       </div>
@@ -336,6 +365,13 @@ export default function DocumentPage() {
       <DocumentChatDrawer
         documentTitle={activeDraft?.title}
         isFullscreen={isFullscreen}
+      />
+
+      {/* ── Adversarial Defense Engine Modal (Order VIII CPC) ── */}
+      <CounterPleadingModal
+        isOpen={showDefenseModal}
+        onClose={() => setShowDefenseModal(false)}
+        onOpenInEditor={handleOpenDefenseDraft}
       />
     </div>
   );

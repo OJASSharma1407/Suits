@@ -18,10 +18,13 @@ import {
   FileCheck,
   Sparkles,
   ArrowRight,
+  ShieldAlert,
 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { documentService } from "@/services/document";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
+import { CounterPleadingModal } from "@/components/defense/CounterPleadingModal";
 import type { UserDocument, DocumentTag, DocumentFilters, DocumentStats } from "@/types/document";
 import { DOCUMENT_TAG_LABELS, DOCUMENT_STATUS_LABELS } from "@/types/document";
 
@@ -233,16 +236,37 @@ function UploadModal({ onClose, onSuccess }: UploadModalProps) {
 
 // ─────────────────────────────────────────────────── Main Page ──
 export default function FilesPage() {
+  const navigate = useNavigate();
   const [documents, setDocuments] = useState<UserDocument[]>([]);
   const [stats, setStats] = useState<DocumentStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [showUpload, setShowUpload] = useState(false);
   const [selectedDoc, setSelectedDoc] = useState<UserDocument | null>(null);
+  const [defenseDocId, setDefenseDocId] = useState<string | null>(null);
   const [readerInitialMode, setReaderInitialMode] = useState<"pdf" | "text" | "ai">("pdf");
   const [filters, setFilters] = useState<DocumentFilters>({});
   const [searchInput, setSearchInput] = useState("");
   const [filterTag, setFilterTag] = useState<string>("");
   const [filterStatus, setFilterStatus] = useState<string>("");
+
+  const handleOpenDefenseDraftInEditor = (newDraft: { title: string; content: string }) => {
+    const STORAGE_KEY = "suits_legal_drafts_v1";
+    try {
+      const saved = localStorage.getItem(STORAGE_KEY);
+      const existing = saved ? JSON.parse(saved) : [];
+      const newId = `draft-${Date.now()}`;
+      const draftItem = {
+        id: newId,
+        title: newDraft.title,
+        content: newDraft.content,
+        updatedAt: new Date().toISOString(),
+      };
+      localStorage.setItem(STORAGE_KEY, JSON.stringify([draftItem, ...existing]));
+    } catch {
+      // storage quota
+    }
+    navigate("/document");
+  };
 
   const loadData = useCallback(async () => {
     try {
@@ -480,8 +504,20 @@ export default function FilesPage() {
                 </div>
               </div>
 
-              {/* Right Column: Actions */}
-              <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDefenseDocId(doc.id);
+                  }}
+                  className="btn btn-ghost flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1.5 rounded-lg border hover:bg-indigo-500/10 cursor-pointer"
+                  style={{ borderColor: "rgba(99, 102, 241, 0.3)", color: "#6366f1" }}
+                  title="Draft Written Statement / Counter-Pleading under Order VIII CPC"
+                >
+                  <ShieldAlert size={13} />
+                  <span>Draft Defense</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={(e) => {
@@ -538,6 +574,16 @@ export default function FilesPage() {
           userDoc={selectedDoc}
           userDocumentId={selectedDoc.id}
           initialMode={readerInitialMode}
+        />
+      )}
+
+      {/* Counter-Pleading / Written Statement Modal */}
+      {defenseDocId && (
+        <CounterPleadingModal
+          isOpen={!!defenseDocId}
+          preselectedDocId={defenseDocId}
+          onClose={() => setDefenseDocId(null)}
+          onOpenInEditor={handleOpenDefenseDraftInEditor}
         />
       )}
     </div>

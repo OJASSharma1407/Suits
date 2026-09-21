@@ -24,8 +24,7 @@ import {
   Minimize2,
   Trash2,
   CheckCircle2,
-  Scissors,
-  CornerDownLeft,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -87,6 +86,21 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
   const [selectedSpacing, setSelectedSpacing] = useState("1.5");
   const [selectedTheme, setSelectedTheme] = useState(PAPER_THEMES[0].id);
 
+  // Helper to parse content into discrete pages
+  const parsePagesFromContent = (html: string): string[] => {
+    if (!html || !html.trim()) return ["<p><br></p>"];
+    // Split by court page break markers
+    const parts = html.split(/<div[^>]*class="[^"]*court-page-break[^"]*"[^>]*>.*?<\/div>/gi);
+    if (parts.length > 1) {
+      return parts.map((p) => p.trim() || "<p><br></p>");
+    }
+    return [html];
+  };
+
+  const [pages, setPages] = useState<string[]>(() => parsePagesFromContent(initialContent));
+  const [activePageIndex, setActivePageIndex] = useState(0);
+  const pageRefs = useRef<(HTMLDivElement | null)[]>([]);
+
   const [wordCount, setWordCount] = useState(0);
   const [charCount, setCharCount] = useState(0);
   const [isCopied, setIsCopied] = useState(false);
@@ -124,16 +138,20 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Handle ESC key to exit fullscreen
+  // Handle ESC key to exit fullscreen & Ctrl+Enter for new page
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape" && isFullscreen) {
         setIsFullscreen(false);
       }
+      if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        handleAddNewPage();
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isFullscreen]);
+  }, [isFullscreen, pages.length]);
 
   // Lock body scroll in fullscreen
   useEffect(() => {
@@ -147,73 +165,135 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
     };
   }, [isFullscreen]);
 
-  // Initialize content and set paragraph separator
+  // Initialize and synchronize content into pageRefs
   useEffect(() => {
-    if (editorRef.current && initialContent && !editorRef.current.innerHTML.trim()) {
-      editorRef.current.innerHTML = initialContent;
-      updateMetrics();
-    }
-    // Set standard paragraph separator to <p>
-    try {
-      document.execCommand("defaultParagraphSeparator", false, "p");
-    } catch {
-      // ignore
-    }
-  }, [initialContent]);
+    pages.forEach((html, i) => {
+      const el = pageRefs.current[i];
+      if (el && el.innerHTML !== html) {
+        el.innerHTML = html;
+      }
+    });
+    updateMetrics();
+  }, [pages.length]);
 
   useEffect(() => {
     setTitleInput(documentTitle);
   }, [documentTitle]);
 
   const updateMetrics = useCallback(() => {
-    if (!editorRef.current) return;
-    const text = editorRef.current.innerText || "";
-    const words = text.trim() ? text.trim().split(/\s+/).length : 0;
-    setWordCount(words);
-    setCharCount(text.length);
+    let totalWords = 0;
+    let totalChars = 0;
+    const currentPagesHtml: string[] = [];
+
+    pages.forEach((_, i) => {
+      const el = pageRefs.current[i];
+      if (el) {
+        const text = el.innerText || "";
+        const words = text.trim() ? text.trim().split(/\s+/).length : 0;
+        totalWords += words;
+        totalChars += text.length;
+        currentPagesHtml.push(el.innerHTML);
+      } else {
+        currentPagesHtml.push(pages[i] || "");
+      }
+    });
+
+    setWordCount(totalWords);
+    setCharCount(totalChars);
 
     if (onSave) {
-      onSave(editorRef.current.innerHTML);
+      const combined = currentPagesHtml.join(
+        '<div class="court-page-break" style="page-break-after: always; margin: 36px 0;"></div>'
+      );
+      onSave(combined);
     }
-  }, [onSave]);
+  }, [pages, onSave]);
+
+  const handlePageInput = (index: number) => {
+    const el = pageRefs.current[index];
+    if (!el) return;
+    const newHtml = el.innerHTML;
+    setPages((prev) => {
+      const next = [...prev];
+      next[index] = newHtml;
+      return next;
+    });
+    updateMetrics();
+
+    // Automatic page addition: if the user reaches capacity on the last page (~950px content height)
+    if (el.scrollHeight > 950 && index === pages.length - 1) {
+      handleAddNewPage();
+    }
+  };
+
+  const handleAddNewPage = () => {
+    setPages((prev) => [...prev, "<p><br></p>"]);
+    const nextIndex = pages.length;
+    setActivePageIndex(nextIndex);
+
+    setTimeout(() => {
+      const newEl = pageRefs.current[nextIndex];
+      if (newEl) {
+        newEl.focus();
+        newEl.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 100);
+
+    toast.success(`Added Court Page ${pages.length + 1}`);
+  };
+
+  const handleDeletePage = (index: number) => {
+    if (pages.length <= 1) {
+      toast.error("Cannot delete the only page");
+      return;
+    }
+    if (confirm(`Delete Court Page ${index + 1}?`)) {
+      setPages((prev) => prev.filter((_, i) => i !== index));
+      const nextActive = Math.max(0, index - 1);
+      setActivePageIndex(nextActive);
+      toast.info(`Deleted Court Page ${index + 1}`);
+    }
+  };
 
   const exec = (command: string, value: string | undefined = undefined) => {
-    document.execCommand(command, false, value);
-    if (editorRef.current) {
-      editorRef.current.focus();
+    const targetEl = pageRefs.current[activePageIndex] || pageRefs.current[0];
+    if (targetEl) {
+      targetEl.focus();
     }
-    updateMetrics();
+    document.execCommand(command, false, value);
+    handlePageInput(activePageIndex);
   };
 
   // ─── ROBUST BLOCK INSERTION ──────────────────────────────────────────────
   // Inserts a clean, top-level block without breaking or corrupting existing paragraphs
   const insertCourtBlock = (html: string) => {
-    if (!editorRef.current) return;
-    editorRef.current.focus();
+    const targetEl = pageRefs.current[activePageIndex] || pageRefs.current[0];
+    if (!targetEl) return;
+    targetEl.focus();
 
     const selection = window.getSelection();
 
     // If editor is empty, set directly
-    if (!editorRef.current.innerHTML.trim() || editorRef.current.innerText.trim() === "") {
-      editorRef.current.innerHTML = html + `<p><br></p>`;
+    if (!targetEl.innerHTML.trim() || targetEl.innerText.trim() === "") {
+      targetEl.innerHTML = html + `<p><br></p>`;
       setShowInserts(false);
-      updateMetrics();
+      handlePageInput(activePageIndex);
       return;
     }
 
     if (!selection || selection.rangeCount === 0) {
       // Append to the end
-      editorRef.current.innerHTML += `<div class="court-block-wrapper my-4">${html}</div><p><br></p>`;
+      targetEl.innerHTML += `<div class="court-block-wrapper my-4">${html}</div><p><br></p>`;
       setShowInserts(false);
-      updateMetrics();
+      handlePageInput(activePageIndex);
       return;
     }
 
     const range = selection.getRangeAt(0);
 
-    // Find the closest block container inside editorRef
+    // Find the closest block container inside targetEl
     let node: Node | null = range.startContainer;
-    while (node && node.parentNode !== editorRef.current && node !== editorRef.current) {
+    while (node && node.parentNode !== targetEl && node !== targetEl) {
       node = node.parentNode;
     }
 
@@ -224,19 +304,19 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
     const trailingP = document.createElement("p");
     trailingP.innerHTML = "<br>";
 
-    if (node && node !== editorRef.current && node.parentNode === editorRef.current) {
+    if (node && node !== targetEl && node.parentNode === targetEl) {
       // Insert right after the current top-level block
       if (node.nextSibling) {
-        editorRef.current.insertBefore(blockWrapper, node.nextSibling);
-        editorRef.current.insertBefore(trailingP, blockWrapper.nextSibling);
+        targetEl.insertBefore(blockWrapper, node.nextSibling);
+        targetEl.insertBefore(trailingP, blockWrapper.nextSibling);
       } else {
-        editorRef.current.appendChild(blockWrapper);
-        editorRef.current.appendChild(trailingP);
+        targetEl.appendChild(blockWrapper);
+        targetEl.appendChild(trailingP);
       }
     } else {
       // Append to end of editor
-      editorRef.current.appendChild(blockWrapper);
-      editorRef.current.appendChild(trailingP);
+      targetEl.appendChild(blockWrapper);
+      targetEl.appendChild(trailingP);
     }
 
     // Set selection in the trailing paragraph
@@ -247,7 +327,7 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
     selection.addRange(newRange);
 
     setShowInserts(false);
-    updateMetrics();
+    handlePageInput(activePageIndex);
   };
 
   // ─── TYPOGRAPHY CHANGE HANDLERS ──────────────────────────────────────────
@@ -462,8 +542,9 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
   };
 
   const handleDownloadDoc = () => {
-    if (!editorRef.current) return;
-    const content = editorRef.current.innerHTML;
+    const content = pages
+      .map((_, i) => pageRefs.current[i]?.innerHTML || pages[i] || "")
+      .join('<br clear="all" style="page-break-before:always; mso-break-type:section-break" />');
     const header = `
       <html xmlns:o='urn:schemas-microsoft-com:office:office' xmlns:w='urn:schemas-microsoft-com:office:word' xmlns='http://www.w3.org/TR/REC-html40'>
       <head>
@@ -481,10 +562,6 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
             font-size: ${selectedSize};
             line-height: ${selectedSpacing};
             text-align: justify;
-          }
-          .court-page-break {
-            page-break-after: always;
-            display: none;
           }
         </style>
       </head>
@@ -508,24 +585,28 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
   };
 
   const handleCopyText = () => {
-    if (!editorRef.current) return;
-    navigator.clipboard.writeText(editorRef.current.innerText);
+    const fullText = pages
+      .map((_, i) => pageRefs.current[i]?.innerText || "")
+      .filter(Boolean)
+      .join("\n\n——— COURT PAGE BREAK ———\n\n");
+    navigator.clipboard.writeText(fullText);
     setIsCopied(true);
     toast.success("Pleading text copied to clipboard");
     setTimeout(() => setIsCopied(false), 2000);
   };
 
   const handleClear = () => {
-    if (!editorRef.current) return;
     if (confirm("Are you sure you want to clear the editor?")) {
-      editorRef.current.innerHTML = "<p><br></p>";
-      updateMetrics();
+      setPages(["<p><br></p>"]);
+      if (pageRefs.current[0]) {
+        pageRefs.current[0].innerHTML = "<p><br></p>";
+      }
+      setActivePageIndex(0);
       toast.info("Editor cleared");
     }
   };
 
   const activeTheme = PAPER_THEMES.find((t) => t.id === selectedTheme) || PAPER_THEMES[0];
-  const pagesCount = Math.max(1, Math.ceil(wordCount / 320));
 
   return (
     <div
@@ -601,7 +682,7 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
               <span className="font-mono">{charCount} chars</span>
               <span>•</span>
               <span className="font-mono">
-                ~{pagesCount} {pagesCount === 1 ? "Court Page" : "Court Pages"}
+                ~{pages.length} {pages.length === 1 ? "Court Page" : "Court Pages"}
               </span>
             </div>
           </div>
@@ -687,6 +768,23 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
       >
         {/* Formatting Tools */}
         <div className="flex items-center gap-1 flex-wrap">
+          {/* Add Page Button */}
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={handleAddNewPage}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-medium text-xs transition-all cursor-pointer hover:opacity-90 active:scale-95"
+            style={{
+              background: "var(--brass-soft)",
+              color: "var(--brass-bright)",
+              border: "1px solid var(--hairline)",
+            }}
+            title="Add a new blank court page"
+          >
+            <Plus size={13} />
+            <span>Add Page</span>
+          </button>
+
           {/* Indian Legal Quick Inserts Dropdown */}
           <div className="relative editor-dropdown-container">
             <button
@@ -1098,49 +1196,99 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
         </div>
       </div>
 
-      {/* ── Document Canvas: Physical Legal Page ── */}
+      {/* ── Document Canvas: Physical Legal Pages (Word-like Gap Layout) ── */}
       <div
-        className={`flex justify-center p-4 sm:p-8 bg-muted/25 rounded-2xl border border-border/40 ${
+        className={`flex flex-col items-center p-4 sm:p-8 bg-muted/25 rounded-2xl border border-border/40 overflow-x-auto ${
           isFullscreen
-            ? "flex-1 min-h-0 overflow-y-auto overflow-x-auto"
-            : "overflow-x-auto min-h-[850px]"
+            ? "flex-1 min-h-0 overflow-y-auto"
+            : "min-h-[850px]"
         }`}
       >
-        {/* Physical A4 / Legal Page Representation */}
-        <div
-          className="legal-document-sheet relative shadow-2xl transition-all"
-          style={{
-            width: "816px", // standard A4/Legal width proportion at 96 DPI
-            minHeight: "1120px",
-            backgroundColor: activeTheme.bg,
-            color: activeTheme.text,
-            fontFamily: selectedFont,
-            fontSize: selectedSize,
-            lineHeight: selectedSpacing,
-            paddingTop: "1.0in",
-            paddingBottom: "1.0in",
-            paddingLeft: "1.0in",
-            paddingRight: "1.0in",
-            borderRadius: "4px",
-            boxShadow: "0 10px 40px -10px rgba(0,0,0,0.28), 0 0 0 1px rgba(0,0,0,0.06)",
-            marginBottom: isFullscreen ? "2.5rem" : undefined,
-          }}
-        >
+        <div className="flex flex-col items-center gap-8 py-4 w-full max-w-[816px]">
+          {pages.map((pageHtml, index) => (
+            <div
+              key={index}
+              className="legal-document-sheet relative shadow-2xl transition-all"
+              style={{
+                width: "816px",
+                minHeight: "1120px",
+                backgroundColor: activeTheme.bg,
+                color: activeTheme.text,
+                fontFamily: selectedFont,
+                fontSize: selectedSize,
+                lineHeight: selectedSpacing,
+                paddingTop: "1.0in",
+                paddingBottom: "1.0in",
+                paddingLeft: "1.0in",
+                paddingRight: "1.0in",
+                borderRadius: "4px",
+                boxShadow: "0 10px 40px -10px rgba(0,0,0,0.35), 0 0 0 1px rgba(0,0,0,0.08)",
+                position: "relative",
+              }}
+              onClick={() => setActivePageIndex(index)}
+            >
+              {/* Page Header (Page N of Total & Delete Option) */}
+              <div className="legal-page-header absolute top-4 right-8 text-[10px] font-mono opacity-40 select-none flex items-center gap-2">
+                <span>Page {index + 1} of {pages.length}</span>
+                {pages.length > 1 && (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleDeletePage(index);
+                    }}
+                    className="p-1 rounded hover:bg-red-500/10 hover:text-red-500 text-muted-foreground transition-colors cursor-pointer"
+                    title={`Delete Page ${index + 1}`}
+                  >
+                    <Trash2 size={11} />
+                  </button>
+                )}
+              </div>
 
-          {/* Editable Content Canvas */}
-          <div
-            ref={editorRef}
-            contentEditable
-            onInput={updateMetrics}
-            className="legal-editor-content outline-none min-h-[950px]"
+              {/* Page Footer (— N —) */}
+              <div className="legal-page-footer absolute bottom-4 left-1/2 -translate-x-1/2 text-[10px] font-mono opacity-40 select-none">
+                — {index + 1} —
+              </div>
+
+              {/* Editable Content Canvas for this Page */}
+              <div
+                ref={(el) => (pageRefs.current[index] = el)}
+                contentEditable
+                onFocus={() => setActivePageIndex(index)}
+                onInput={() => handlePageInput(index)}
+                className="legal-editor-content outline-none min-h-[928px]"
+                style={{
+                  textAlign: "justify",
+                  fontFamily: "inherit",
+                  fontSize: "inherit",
+                  lineHeight: "inherit",
+                }}
+                placeholder={
+                  index === 0
+                    ? "Start drafting your petition or pleading here... Use 'Indian Court Formats' above to insert Cause Title, Memo of Parties, Grounds, and Prayer."
+                    : `Continue drafting Court Page ${index + 1}...`
+                }
+              />
+            </div>
+          ))}
+
+          {/* "+ Add New Court Page" Button Between / Below Pages */}
+          <button
+            type="button"
+            onClick={handleAddNewPage}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer my-4 group"
             style={{
-              textAlign: "justify",
-              fontFamily: "inherit",
-              fontSize: "inherit",
-              lineHeight: "inherit",
+              background: "var(--surface)",
+              color: "var(--brass)",
+              border: "1px dashed var(--brass)",
+              boxShadow: "0 4px 20px rgba(0,0,0,0.15)",
             }}
-            placeholder="Start drafting your petition or pleading here... Use 'Indian Court Formats' above to insert Cause Title, Memo of Parties, Grounds, and Prayer."
-          />
+            title="Add a new blank court page (Ctrl+Enter)"
+          >
+            <Plus size={14} className="group-hover:rotate-90 transition-transform" />
+            <span>Add New Court Page (Page {pages.length + 1})</span>
+            <span className="text-[10px] opacity-60 font-mono ml-1 border px-1.5 py-0.5 rounded">Ctrl+Enter</span>
+          </button>
         </div>
       </div>
     </div>

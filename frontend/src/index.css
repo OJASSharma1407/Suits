@@ -1235,6 +1235,10 @@ input, button, select, textarea {
   .btn,
   button,
   select,
+  .court-page-guide,
+  .court-page-footer,
+  .legal-page-header,
+  .legal-page-footer,
   .legal-document-sheet > div:first-child,
   .legal-document-sheet > div:nth-child(2) {
     display: none !important;
@@ -1256,6 +1260,9 @@ input, button, select, textarea {
     background: #ffffff !important;
     color: #000000 !important;
     border: none !important;
+    page-break-after: always !important;
+    break-after: page !important;
+    margin: 0 !important;
   }
 
   @page {
