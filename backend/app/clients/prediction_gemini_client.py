@@ -51,8 +51,8 @@ class PredictionGeminiClient:
 
     def _model_candidates(self) -> list[str]:
         """Return ordered list of verified healthy models, prioritizing active models."""
-        primary = settings.prediction_gemini_model or "gemini-3.6-flash"
-        candidates = [primary, "gemini-3.6-flash", "gemini-3-flash-preview"]
+        primary = settings.prediction_gemini_model or "gemini-3.5-flash"
+        candidates = [primary, "gemini-3.5-flash"]
         seen: set[str] = set()
         return [m for m in candidates if not (m in seen or seen.add(m))]
 
@@ -125,8 +125,8 @@ class PredictionGeminiClient:
                         contents=user_prompt,
                         config=config,
                     )
-                    # Enforce a 25s timeout to prevent hanging connections
-                    response = await asyncio.wait_for(coro, timeout=25.0)
+                    # Enforce a 40s timeout for comprehensive judicial reasoning
+                    response = await asyncio.wait_for(coro, timeout=40.0)
 
                     if not response or not response.text:
                         logger.warning("empty_prediction_response", model=model_name, attempt=attempt)
@@ -171,7 +171,7 @@ class PredictionGeminiClient:
                     if "402" in last_error or "prepayment credits are depleted" in last_error.lower():
                         logger.warning("prediction_gemini_credits_depleted", error="Prepayment credits depleted on Gemini API key. Diverting to Groq.")
                         break
-                    is_503 = "503" in last_error or "UNAVAILABLE" in last_error or isinstance(exc, asyncio.TimeoutError)
+                    is_503 = "503" in last_error or "UNAVAILABLE" in last_error
                     logger.warning(
                         "prediction_gemini_model_failed",
                         model=model_name,

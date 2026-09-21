@@ -307,7 +307,7 @@ class DocumentProcessor:
             )
             try:
                 from app.services.ai_orchestrator import ai_orchestrator
-                summary = await ai_orchestrator.generate_text(
+                summary = await ai_orchestrator.generate_text_gemini_first(
                     prompt=prompt,
                     system_prompt="You are a legal document analyst. Provide concise, accurate summaries.",
                     temperature=0.2,
@@ -398,7 +398,7 @@ class DocumentProcessor:
             logger.info("DOCUMENT_AI_EXTRACTION_START", filename=filename, text_length=len(condensed_text), is_local=is_local)
             raw = None
             try:
-                raw = await ai_orchestrator.generate_json(
+                raw = await ai_orchestrator.generate_json_gemini_first(
                     system_prompt=system_prompt,
                     user_prompt=extraction_prompt,
                     max_tokens=target_max_tokens,

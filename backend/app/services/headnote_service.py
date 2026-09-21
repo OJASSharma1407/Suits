@@ -347,7 +347,7 @@ Generate the publisher-grade headnote in JSON adhering to this structure:
 """
 
         from app.services.ai_orchestrator import ai_orchestrator
-        raw_json = await ai_orchestrator.generate_json(
+        raw_json = await ai_orchestrator.generate_json_gemini_first(
             system_prompt=system_prompt,
             user_prompt=user_prompt,
         )

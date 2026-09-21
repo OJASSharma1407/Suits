@@ -52,6 +52,14 @@ class AIOrchestrator:
                 max_tokens=max_tokens or 2048,
             )
 
+        if force_provider == "gemini":
+            return await self.generate_json_gemini_first(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens,
+            )
+
         # Cloud AI execution path
         logger.info("ai_orchestrator_routing_to_cloud", task="generate_json")
         try:
@@ -83,6 +91,65 @@ class AIOrchestrator:
         # If both cloud providers returned empty/failed, raise limit or general error
         raise OnlineAILimitReachedError("Online AI services unavailable or quota exhausted.")
 
+    async def generate_json_gemini_first(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        temperature: float = 0.1,
+        max_tokens: int | None = None,
+        force_provider: str | None = None,
+    ) -> dict[str, Any]:
+        """Generate structured JSON routing Gemini (gemini-3.5-flash) -> Groq fallback.
+
+        Bypasses OpenRouter entirely.
+        Preserves local Ollama routing when local AI mode is active.
+        """
+        use_local = (force_provider == "ollama") or (force_provider is None and self.is_local())
+
+        if use_local:
+            logger.info("ai_orchestrator_routing_to_local_ollama", task="generate_json_gemini_first")
+            return await ollama_client.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_tokens=max_tokens or 2048,
+            )
+
+        # Cloud AI execution path: Gemini (gemini-3.5-flash) primary -> Groq fallback
+        logger.info("ai_orchestrator_routing_to_gemini_primary", task="generate_json_gemini_first")
+        try:
+            # 1. Try Gemini (gemini-3.5-flash) via prediction_gemini_client
+            # Note: prediction_gemini_client internally handles Gemini -> Groq fallback as well
+            gemini_raw, _ = await prediction_gemini_client.generate_prediction_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+            )
+            if gemini_raw and isinstance(gemini_raw, dict):
+                return gemini_raw
+        except Exception as g_err:
+            g_err_str = str(g_err).lower()
+            logger.warning("orchestrator_gemini_first_failed_trying_groq", error=str(g_err))
+
+        # 2. Direct Groq fallback if prediction_gemini_client did not return valid dict
+        try:
+            from app.clients.groq_client import groq_client
+            groq_raw = await groq_client.generate_json(
+                system_prompt=system_prompt,
+                user_prompt=user_prompt,
+                temperature=temperature,
+                max_output_tokens=max_tokens or 8192,
+            )
+            if groq_raw and isinstance(groq_raw, dict):
+                logger.info("orchestrator_groq_fallback_success", task="generate_json_gemini_first")
+                return groq_raw
+        except Exception as gr_err:
+            gr_err_str = str(gr_err).lower()
+            logger.error("orchestrator_groq_fallback_failed", error=str(gr_err))
+            if "429" in gr_err_str or "quota" in gr_err_str or "rate limit" in gr_err_str:
+                raise OnlineAILimitReachedError() from gr_err
+
+        raise OnlineAILimitReachedError("Online AI services (Gemini & Groq) unavailable or quota exhausted.")
+
     async def generate_text(
         self,
         prompt: str,
@@ -96,6 +163,13 @@ class AIOrchestrator:
         if use_local:
             logger.info("ai_orchestrator_routing_to_local_ollama", task="generate_text")
             return await ollama_client.generate(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=temperature,
+            )
+
+        if force_provider == "gemini":
+            return await self.generate_text_gemini_first(
                 prompt=prompt,
                 system_prompt=system_prompt,
                 temperature=temperature,
@@ -120,6 +194,62 @@ class AIOrchestrator:
             raise
 
         raise OnlineAILimitReachedError("Online AI services unavailable or quota exhausted.")
+
+    async def generate_text_gemini_first(
+        self,
+        prompt: str,
+        system_prompt: str = "",
+        temperature: float | None = None,
+        force_provider: str | None = None,
+    ) -> str:
+        """Generate text routing Gemini (gemini-3.5-flash) -> Groq fallback.
+
+        Bypasses OpenRouter entirely.
+        Preserves local Ollama routing when local AI mode is active.
+        """
+        use_local = (force_provider == "ollama") or (force_provider is None and self.is_local())
+
+        if use_local:
+            logger.info("ai_orchestrator_routing_to_local_ollama", task="generate_text_gemini_first")
+            return await ollama_client.generate(
+                prompt=prompt,
+                system_prompt=system_prompt,
+                temperature=temperature,
+            )
+
+        # Cloud AI execution path: Gemini (gemini-3.5-flash) primary -> Groq fallback
+        logger.info("ai_orchestrator_routing_to_gemini_text_primary", task="generate_text_gemini_first")
+        try:
+            # gemini_client.generate internally attempts Gemini and falls back to _groq_fallback_generate
+            result = await gemini_client.generate(
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                temperature=temperature if temperature is not None else 0.3,
+            )
+            if result and result.strip() and not result.startswith("### AI Case Analysis Unavailable"):
+                return result
+        except Exception as g_err:
+            g_err_str = str(g_err).lower()
+            logger.warning("orchestrator_gemini_text_failed_trying_groq", error=str(g_err))
+
+        # Direct Groq fallback if gemini_client didn't succeed
+        try:
+            from app.clients.groq_client import groq_client
+            groq_text = await groq_client.generate(
+                system_prompt=system_prompt,
+                user_prompt=prompt,
+                temperature=temperature if temperature is not None else 0.3,
+            )
+            if groq_text and groq_text.strip():
+                logger.info("orchestrator_groq_text_fallback_success")
+                return groq_text
+        except Exception as gr_err:
+            gr_err_str = str(gr_err).lower()
+            logger.error("orchestrator_groq_text_fallback_failed", error=str(gr_err))
+            if "429" in gr_err_str or "quota" in gr_err_str or "rate limit" in gr_err_str:
+                raise OnlineAILimitReachedError() from gr_err
+
+        raise OnlineAILimitReachedError("Online AI services (Gemini & Groq) unavailable or quota exhausted.")
 
     async def generate_with_context(
         self,

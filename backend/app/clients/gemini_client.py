@@ -66,8 +66,8 @@ class GeminiClient:
 
     def _model_candidates(self) -> list[str]:
         """Return ordered list of verified healthy models to try."""
-        primary = settings.gemini_model or "gemini-3.6-flash"
-        candidates = [primary, "gemini-3.6-flash", "gemini-3-flash-preview"]
+        primary = settings.gemini_model or "gemini-3.5-flash"
+        candidates = [primary, "gemini-3.5-flash"]
         seen: set[str] = set()
         return [m for m in candidates if not (m in seen or seen.add(m))]
 
@@ -153,7 +153,7 @@ class GeminiClient:
                             max_output_tokens=max_output_tokens,
                         ),
                     )
-                    response = await asyncio.wait_for(coro, timeout=25.0)
+                    response = await asyncio.wait_for(coro, timeout=40.0)
                     if response and response.text:
                         logger.info("gemini_success", model=model_name, attempt=attempt)
                         return response.text
@@ -164,7 +164,7 @@ class GeminiClient:
                         self._mark_credits_depleted()
                         should_break_candidates = True
                         break
-                    if ("503" in last_error or "UNAVAILABLE" in last_error or isinstance(exc, asyncio.TimeoutError)) and attempt == 0:
+                    if ("503" in last_error or "UNAVAILABLE" in last_error) and attempt == 0:
                         await asyncio.sleep(1.0)
                         continue
                     break
@@ -210,7 +210,7 @@ class GeminiClient:
                             response_mime_type="application/json",
                         ),
                     )
-                    response = await asyncio.wait_for(coro, timeout=25.0)
+                    response = await asyncio.wait_for(coro, timeout=40.0)
                     if response and response.text:
                         logger.info("gemini_json_success", model=model_name, attempt=attempt)
                         raw = response.text.strip()
@@ -225,7 +225,7 @@ class GeminiClient:
                         self._mark_credits_depleted()
                         should_break_candidates = True
                         break
-                    if ("503" in last_error or "UNAVAILABLE" in last_error or isinstance(exc, asyncio.TimeoutError)) and attempt == 0:
+                    if ("503" in last_error or "UNAVAILABLE" in last_error) and attempt == 0:
                         await asyncio.sleep(1.0)
                         continue
                     break

@@ -460,7 +460,7 @@ class OrderService:
 
         raw = None
         try:
-            raw = await ai_orchestrator.generate_json(
+            raw = await ai_orchestrator.generate_json_gemini_first(
                 system_prompt=system_prompt,
                 user_prompt=extraction_prompt,
                 max_tokens=target_max_tokens,

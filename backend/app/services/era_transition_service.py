@@ -355,7 +355,7 @@ class EraTransitionService:
         )
 
         try:
-            parsed_json = await ai_orchestrator.generate_json(
+            parsed_json = await ai_orchestrator.generate_json_gemini_first(
                 system_prompt=system_prompt,
                 user_prompt=user_prompt,
                 max_tokens=900,
@@ -374,7 +374,11 @@ class EraTransitionService:
                     for p in concordance_pairs:
                         if len(items) >= 4:
                             break
-                        if not any(p.landmark_precedents and p.landmark_precedents[0].title.lower() in covered_titles):
+                        has_covered = any(
+                            prec.title.lower() in covered_titles
+                            for prec in (p.landmark_precedents or [])
+                        )
+                        if not has_covered:
                             items.append(self._generate_fallback_transposition(p, era))
                     return items
         except Exception as exc:
