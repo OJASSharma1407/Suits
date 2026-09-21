@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import { Link } from "react-router-dom";
 import {
   Trash2,
   Printer,
@@ -7,7 +6,6 @@ import {
   BookOpen,
   Highlighter,
   ArrowRight,
-  ArrowLeftRight,
   Hash,
   FolderLock,
 } from "lucide-react";
@@ -17,11 +15,9 @@ import { SkeletonLoader } from "@/components/common/SkeletonLoader";
 import { EmptyState } from "@/components/common/EmptyState";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
 import { ResearchBriefModal } from "@/components/files/ResearchBriefModal";
-import { EraTransitionExplorer } from "@/components/research/EraTransitionExplorer";
 import { toast } from "sonner";
 
 export default function ResearchPage() {
-  const [activeTab, setActiveTab] = useState<"era_transition" | "vault">("era_transition");
   const [files, setFiles] = useState<SavedFile[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -76,36 +72,48 @@ export default function ResearchPage() {
 
   return (
     <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36 }}>
-      {/* Top Page Tabs */}
-      <div className="flex items-center gap-3 border-b border-border/40 pb-3 mb-6">
-        <button
-          onClick={() => setActiveTab("era_transition")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === "era_transition"
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-          }`}
-        >
-          <ArrowLeftRight className="h-4 w-4" />
-          <span>Criminal Law Era Transition Hub (IPC/CrPC ⇄ BNS/BNSS)</span>
-        </button>
+      {/* Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-8 pb-4 border-b border-border/40">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0"
+              style={{
+                background: "var(--brass-soft)",
+                color: "var(--brass-bright)",
+                border: "1px solid var(--hairline)",
+              }}
+            >
+              <FolderLock size={18} />
+            </div>
+            <h1
+              className="text-2xl font-medium"
+              style={{ color: "var(--ink)", fontFamily: "var(--font-display)" }}
+            >
+              Research Vault
+            </h1>
+          </div>
+          <p className="text-xs text-muted-foreground pl-11">
+            Saved case dossiers, annotated judgments, and synthesized legal research briefs.
+          </p>
+        </div>
 
-        <button
-          onClick={() => setActiveTab("vault")}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            activeTab === "vault"
-              ? "bg-primary text-primary-foreground shadow-sm"
-              : "text-muted-foreground hover:text-foreground hover:bg-muted/40"
-          }`}
-        >
-          <FolderLock className="h-4 w-4" />
-          <span>Research Vault & Saved Dossiers ({files.length})</span>
-        </button>
+        <div className="flex items-center gap-2 self-start sm:self-auto pl-11 sm:pl-0">
+          <span
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-mono"
+            style={{
+              background: "var(--surface-container)",
+              color: "var(--ink-dim)",
+              border: "1px solid var(--hairline)",
+            }}
+          >
+            <BookOpen size={12} style={{ color: "var(--brass)" }} />
+            {files.length} {files.length === 1 ? "Dossier" : "Dossiers"}
+          </span>
+        </div>
       </div>
 
-      {activeTab === "era_transition" ? (
-        <EraTransitionExplorer />
-      ) : loading ? (
+      {loading ? (
         <SkeletonLoader count={3} height="76px" />
       ) : files.length === 0 ? (
         <EmptyState

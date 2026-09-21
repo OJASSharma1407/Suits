@@ -15,6 +15,7 @@ const ChatPage = lazy(() => import("@/pages/ChatPage"));
 const BookmarksPage = lazy(() => import("@/pages/BookmarksPage"));
 const FilesPage = lazy(() => import("@/pages/FilesPage"));
 const ResearchPage = lazy(() => import("@/pages/ResearchPage"));
+const TransitionPage = lazy(() => import("@/pages/TransitionPage"));
 const HistoryPage = lazy(() => import("@/pages/HistoryPage"));
 const AnalyticsPage = lazy(() => import("@/pages/AnalyticsPage"));
 const ProfilePage = lazy(() => import("@/pages/ProfilePage"));
@@ -96,6 +97,7 @@ const router = createBrowserRouter([
           { path: "/bookmarks", element: <Suspense fallback={<PageLoader />}><BookmarksPage /></Suspense> },
           { path: "/files", element: <Suspense fallback={<PageLoader />}><FilesPage /></Suspense> },
           { path: "/research", element: <Suspense fallback={<PageLoader />}><ResearchPage /></Suspense> },
+          { path: "/transition", element: <Suspense fallback={<PageLoader />}><TransitionPage /></Suspense> },
           { path: "/history", element: <Suspense fallback={<PageLoader />}><HistoryPage /></Suspense> },
           { path: "/analytics", element: <Suspense fallback={<PageLoader />}><AnalyticsPage /></Suspense> },
           { path: "/profile", element: <Suspense fallback={<PageLoader />}><ProfilePage /></Suspense> },
