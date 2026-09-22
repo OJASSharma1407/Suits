@@ -13,6 +13,7 @@ import {
   ChevronRight,
   ShieldAlert,
   History,
+  Users,
 } from "lucide-react";
 import type { CaseDetails, OrderAI } from "@/types/case";
 

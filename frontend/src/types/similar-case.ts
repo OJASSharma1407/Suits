@@ -5,6 +5,7 @@ export interface SimilarCaseItem {
   court_name?: string | null;
   court_tier: "sc" | "hc" | "tribunal" | "district" | string;
   decision_date?: string | null;
+  decision_year?: string | number | null;
   similarity_score: number; // 0 - 100
   semantic_score: number; // 0.0 - 1.0
   precedent_type: "Binding Precedent" | "Persuasive Authority" | "Distinguishable Precedent" | string;

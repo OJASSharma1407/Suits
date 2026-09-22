@@ -504,6 +504,8 @@ export default function FilesPage() {
                 </div>
               </div>
 
+              {/* Right Column: Actions */}
+              <div className="flex items-center gap-2 flex-shrink-0 self-end sm:self-center">
                 <button
                   type="button"
                   onClick={(e) => {

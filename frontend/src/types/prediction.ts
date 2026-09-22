@@ -41,6 +41,7 @@ export interface PredictionExplanation {
   statutory_thresholds: ThresholdCheck[];
   critical_vulnerabilities: string[];
   judicial_deduction_summary: string;
+  reasoning?: string | null;
 }
 
 export interface CasePredictionResponse {

@@ -25,6 +25,7 @@ import {
   Trash2,
   CheckCircle2,
   Plus,
+  Scissors,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -1252,7 +1253,9 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
 
               {/* Editable Content Canvas for this Page */}
               <div
-                ref={(el) => (pageRefs.current[index] = el)}
+                ref={(el) => {
+                  pageRefs.current[index] = el;
+                }}
                 contentEditable
                 onFocus={() => setActivePageIndex(index)}
                 onInput={() => handlePageInput(index)}
@@ -1263,7 +1266,7 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
                   fontSize: "inherit",
                   lineHeight: "inherit",
                 }}
-                placeholder={
+                data-placeholder={
                   index === 0
                     ? "Start drafting your petition or pleading here... Use 'Indian Court Formats' above to insert Cause Title, Memo of Parties, Grounds, and Prayer."
                     : `Continue drafting Court Page ${index + 1}...`

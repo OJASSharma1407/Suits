@@ -642,7 +642,7 @@ export function PrecedentsPredictionCard({
           )}
 
           {/* Reasoning Summary Toggle */}
-          {predictionData.explanation?.reasoning && (
+          {(predictionData.reasoning_summary || predictionData.explanation?.reasoning || predictionData.explanation?.judicial_deduction_summary) && (
             <div className="rounded-lg border overflow-hidden" style={{ borderColor: "var(--hairline)", background: "var(--surface)" }}>
               <button
                 onClick={() => setIsReasoningOpen(!isReasoningOpen)}
@@ -657,7 +657,7 @@ export function PrecedentsPredictionCard({
               </button>
               {isReasoningOpen && (
                 <div className="p-4 border-t text-xs leading-relaxed whitespace-pre-line" style={{ borderColor: "var(--hairline)", color: "var(--ink-dim)" }}>
-                  {predictionData.explanation.reasoning}
+                  {predictionData.reasoning_summary || predictionData.explanation?.reasoning || predictionData.explanation?.judicial_deduction_summary}
                 </div>
               )}
             </div>
@@ -776,9 +776,9 @@ export function PrecedentsPredictionCard({
 
                         <StrategicPill alignment={alignment} />
 
-                        {cand.decision_year && (
+                        {(cand.decision_year || cand.decision_date) && (
                           <span className="text-[11px] font-mono ml-auto" style={{ color: "var(--ink-faint)" }}>
-                            {cand.decision_year}
+                            {cand.decision_year || cand.decision_date}
                           </span>
                         )}
                       </div>
