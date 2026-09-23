@@ -11,13 +11,16 @@ export const eraTransitionService = {
    * Fast search across statutory concordance by section number or legal doctrine.
    */
   lookupConcordance: async (
-    query: string,
-    limit: number = 12
+    query: string = "",
+    limit: number = 24,
+    category?: string
   ): Promise<ConcordanceLookupResponse | null> => {
     try {
-      const res = await api.get<APIResponse<ConcordanceLookupResponse>>(
-        `/statutes/era-transition/lookup?query=${encodeURIComponent(query)}&limit=${limit}`
-      );
+      let url = `/statutes/era-transition/lookup?query=${encodeURIComponent(query)}&limit=${limit}`;
+      if (category && category !== "ALL") {
+        url += `&category=${encodeURIComponent(category)}`;
+      }
+      const res = await api.get<APIResponse<ConcordanceLookupResponse>>(url);
       if (res.status === 204 || !res.data || !res.data.data) {
         return null;
       }

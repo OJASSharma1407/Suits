@@ -4,7 +4,7 @@ import re
 from fastapi import APIRouter, Query, Response
 import structlog
 
-from app.dependencies.auth import CurrentUser, DbSession
+from app.dependencies.auth import CurrentUser, OptionalUser, DbSession
 from app.schemas.common import APIResponse
 from app.schemas.era_transition import (
     ConcordanceLookupResponse,
@@ -28,15 +28,16 @@ def _validate_cnr(cnr: str) -> str:
 
 
 @router.get("/era-transition/lookup", response_model=APIResponse[ConcordanceLookupResponse])
-async def lookup_era_concordance(
-    query: str = Query(..., min_length=1, description="Section number, statute name, or legal doctrine"),
-    limit: int = Query(12, ge=1, le=50),
-    user: CurrentUser = None,
+def lookup_era_concordance(
+    query: str = Query("", description="Section number, statute name, or legal doctrine"),
+    limit: int = Query(24, ge=1, le=100),
+    category: str | None = Query(None, description="Optional category filter (PROCEDURAL, SUBSTANTIVE, EVIDENTIARY)"),
+    user: OptionalUser = None,
     db: DbSession = None,
 ):
     """Search criminal statutes concordance by section, statute, or InLegalBERT semantic doctrine."""
     service = EraTransitionService(db)
-    pairs = service.lookup_concordance(query=query, limit=limit)
+    pairs = service.lookup_concordance(query=query, limit=limit, category=category)
     response_data = ConcordanceLookupResponse(
         query=query,
         match_count=len(pairs),

@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import json
+import os
 import re
 from datetime import datetime, timezone
 from typing import Any
@@ -49,18 +50,37 @@ logger = structlog.get_logger()
 BNS_ENACTMENT_DATE = datetime(2024, 7, 1, tzinfo=timezone.utc)
 
 
+DOCTRINE_EMBEDDINGS_PATH = os.path.join(
+    os.path.dirname(__file__), "..", "data", "doctrine_embeddings.npz"
+)
+
+_GLOBAL_DOCTRINE_EMBEDDINGS: dict[str, list[float]] | None = None
+
+
 class EraTransitionService:
     """Orchestrates criminal statutes concordance, doctrine matching, and pleading transposition."""
 
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
         self.case_service = CaseService(db)
-        self._doctrine_embeddings: dict[str, list[float]] | None = None
 
     def _get_doctrine_embeddings(self) -> dict[str, list[float]]:
-        """Precompute or lazy-load InLegalBERT embeddings for all concordance doctrines."""
-        if self._doctrine_embeddings is not None:
-            return self._doctrine_embeddings
+        """Precompute or load cached InLegalBERT embeddings for all concordance doctrines."""
+        global _GLOBAL_DOCTRINE_EMBEDDINGS
+        if _GLOBAL_DOCTRINE_EMBEDDINGS is not None:
+            return _GLOBAL_DOCTRINE_EMBEDDINGS
+
+        # Fast loading from disk (< 2ms)
+        if os.path.exists(DOCTRINE_EMBEDDINGS_PATH):
+            try:
+                npz = np.load(DOCTRINE_EMBEDDINGS_PATH)
+                cids = npz["cids"].tolist()
+                vectors = npz["vectors"].tolist()
+                _GLOBAL_DOCTRINE_EMBEDDINGS = dict(zip(cids, vectors))
+                logger.info("loaded_cached_doctrine_embeddings", count=len(_GLOBAL_DOCTRINE_EMBEDDINGS))
+                return _GLOBAL_DOCTRINE_EMBEDDINGS
+            except Exception as exc:
+                logger.warning("failed_loading_cached_doctrine_embeddings", error=str(exc))
 
         embeddings: dict[str, list[float]] = {}
         for item in CRIMINAL_CONCORDANCE_DATA:
@@ -68,104 +88,185 @@ class EraTransitionService:
             text_to_embed = f"{item['concept_doctrine']} {item['doctrine_summary']}"
             embeddings[cid] = inlegal_bert_service.embed_text(text_to_embed)
 
-        self._doctrine_embeddings = embeddings
-        return self._doctrine_embeddings
+        _GLOBAL_DOCTRINE_EMBEDDINGS = embeddings
+        return _GLOBAL_DOCTRINE_EMBEDDINGS
 
-    def lookup_concordance(self, query: str, limit: int = 12) -> list[StatuteConcordancePair]:
+    def lookup_concordance(
+        self,
+        query: str,
+        limit: int = 24,
+        category: str | None = None,
+    ) -> list[StatuteConcordancePair]:
         """Search concordance pairs using exact section matching + InLegalBERT semantic matching."""
+        dataset = CRIMINAL_CONCORDANCE_DATA
+        if category and category.upper() != "ALL":
+            dataset = [p for p in dataset if p.get("category") == category.upper()]
+
         if not query or not query.strip():
-            # Return top core procedural & substantive pairs
-            return [
-                StatuteConcordancePair.model_validate(p)
-                for p in CRIMINAL_CONCORDANCE_DATA[:limit]
-            ]
+            # Return balanced landmark provisions across categories
+            procedural = [p for p in dataset if p.get("category") == "PROCEDURAL"]
+            substantive = [p for p in dataset if p.get("category") == "SUBSTANTIVE"]
+            evidentiary = [p for p in dataset if p.get("category") == "EVIDENTIARY"]
+            balanced: list[dict[str, Any]] = []
+            max_cat = max(len(procedural), len(substantive), len(evidentiary))
+            for i in range(max_cat):
+                if i < len(procedural):
+                    balanced.append(procedural[i])
+                if i < len(substantive):
+                    balanced.append(substantive[i])
+                if i < len(evidentiary):
+                    balanced.append(evidentiary[i])
+                if len(balanced) >= limit:
+                    break
+            return [StatuteConcordancePair.model_validate(p) for p in balanced[:limit]]
 
         query_clean = query.strip()
         query_lower = query_clean.lower()
-        # Extract alphanumeric section tokens (e.g., '438', '41A', '173', '302', '65B')
-        section_tokens = re.findall(r"\b\d+[A-Za-z]*(?:\(\d+\))?\b", query_clean)
 
-        exact_matches: list[tuple[dict[str, Any], float]] = []
+        # Statute hints
+        ipc_hint = bool(re.search(r"\b(ipc|indian penal|penal code)\b", query_lower))
+        crpc_hint = bool(re.search(r"\b(crpc|code of criminal procedure|criminal procedure)\b", query_lower))
+        iea_hint = bool(re.search(r"\b(iea|evidence act|indian evidence)\b", query_lower))
+        bns_hint = bool(re.search(r"\b(bns|bharatiya nyaya|nyaya sanhita)\b", query_lower))
+        bnss_hint = bool(re.search(r"\b(bnss|bharatiya nagarik|nagarik suraksha)\b", query_lower))
+        bsa_hint = bool(re.search(r"\b(bsa|bharatiya sakshya|sakshya adhiniyam)\b", query_lower))
+
+        # Extract section numbers
+        section_matches = re.findall(r"(?:section|sec|u/s|s\.)?\s*(\d+[A-Za-z]*(?:\(\d+[A-Za-z]*\))*)", query_clean, re.IGNORECASE)
+        section_tokens = [s.strip().lower() for s in section_matches if s.strip()]
+        base_tokens = [re.sub(r"\(\w+\)", "", t) for t in section_tokens if "(" in t]
+        all_sec_tokens = list(dict.fromkeys(section_tokens + base_tokens))
+
+        exact_section_matches: list[tuple[dict[str, Any], float]] = []
         lexical_matches: list[tuple[dict[str, Any], float]] = []
 
-        for item in CRIMINAL_CONCORDANCE_DATA:
+        for item in dataset:
             score = 0.0
             old_sec = item["old_section"].lower()
             new_sec = item["new_section"].lower()
+            old_code = item["old_code"].upper()
+            new_code = item["new_code"].upper()
 
-            # 1. Exact section token match with word boundary (avoiding '7' matching '173')
-            for token in section_tokens:
-                tok_lower = token.lower()
-                # Ignore isolated single-digit numbers like '3' or '7' from sentence context unless section is 1 digit
-                if len(tok_lower) == 1 and tok_lower.isdigit() and old_sec != tok_lower and new_sec != tok_lower:
-                    continue
+            if all_sec_tokens:
+                for tok in all_sec_tokens:
+                    # Exact section match
+                    if tok == old_sec or tok in [s.strip() for s in old_sec.split("/")]:
+                        score += 100.0
+                        if ipc_hint and old_code == "IPC":
+                            score += 50.0
+                        elif crpc_hint and old_code == "CRPC":
+                            score += 50.0
+                        elif iea_hint and old_code == "IEA":
+                            score += 50.0
+                        elif ipc_hint and old_code != "IPC":
+                            score -= 40.0
+                        elif crpc_hint and old_code != "CRPC":
+                            score -= 40.0
+                        elif iea_hint and old_code != "IEA":
+                            score -= 40.0
+                    elif tok == new_sec or tok in [s.strip() for s in new_sec.split("/")]:
+                        score += 100.0
+                        if bns_hint and new_code == "BNS":
+                            score += 50.0
+                        elif bnss_hint and new_code == "BNSS":
+                            score += 50.0
+                        elif bsa_hint and new_code == "BSA":
+                            score += 50.0
+                        elif bns_hint and new_code != "BNS":
+                            score -= 40.0
+                        elif bnss_hint and new_code != "BNSS":
+                            score -= 40.0
+                        elif bsa_hint and new_code != "BSA":
+                            score -= 40.0
+                    elif re.search(rf"\b{re.escape(tok)}\b", old_sec):
+                        score += 60.0
+                        if ipc_hint and old_code == "IPC":
+                            score += 30.0
+                        elif crpc_hint and old_code == "CRPC":
+                            score += 30.0
+                    elif re.search(rf"\b{re.escape(tok)}\b", new_sec):
+                        score += 60.0
+                        if bns_hint and new_code == "BNS":
+                            score += 30.0
+                        elif bnss_hint and new_code == "BNSS":
+                            score += 30.0
 
-                if re.search(rf"\b{re.escape(tok_lower)}\b", old_sec) or re.search(rf"\b{re.escape(tok_lower)}\b", new_sec):
-                    score += 6.0
-                elif tok_lower == item["old_code"].lower() or tok_lower == item["new_code"].lower():
-                    score += 2.0
+                if score >= 50.0:
+                    exact_section_matches.append((item, score))
+            else:
+                # Textual / conceptual query matching
+                if query_lower in item["concept_doctrine"].lower():
+                    score += 40.0
+                if query_lower in item["old_title"].lower() or query_lower in item["new_title"].lower():
+                    score += 30.0
+                if any(query_lower in p["title"].lower() for p in item.get("landmark_precedents", [])):
+                    score += 25.0
 
-            # 2. Direct string substring matches
-            if query_lower in item["concept_doctrine"].lower():
-                score += 4.0
-            if query_lower in item["old_title"].lower() or query_lower in item["new_title"].lower():
-                score += 3.0
-            if any(query_lower in p["title"].lower() for p in item.get("landmark_precedents", [])):
-                score += 4.0
+                words = [w for w in re.findall(r"[a-z]+", query_lower) if len(w) >= 3 and w not in {"and", "the", "for", "with", "law", "act"}]
+                for w in words:
+                    if w in item["concept_doctrine"].lower():
+                        score += 10.0
+                    if w in item["doctrine_summary"].lower():
+                        score += 5.0
 
-            # 3. Individual significant keyword matches
-            words = [w for w in re.findall(r"[a-z]+", query_lower) if len(w) > 3]
-            for w in words:
-                if w in item["concept_doctrine"].lower():
-                    score += 1.0
-                if w in item["doctrine_summary"].lower():
-                    score += 0.5
+                if score >= 10.0:
+                    lexical_matches.append((item, score))
 
-            if score >= 5.0:
-                exact_matches.append((item, score))
-            elif score > 0:
-                lexical_matches.append((item, score))
+        # IF section query was performed:
+        if all_sec_tokens:
+            if exact_section_matches:
+                exact_section_matches.sort(key=lambda x: x[1], reverse=True)
+                return [
+                    StatuteConcordancePair.model_validate(item)
+                    for item, _ in exact_section_matches[:limit]
+                ]
+            else:
+                # User searched a section number not present in our database.
+                # Do NOT dump unrelated bail sections.
+                return []
 
-        # If lexical matches found enough results
-        if len(exact_matches) >= 3:
-            exact_matches.sort(key=lambda x: x[1], reverse=True)
+        # If conceptual query had lexical matches, return immediately
+        if lexical_matches:
+            lexical_matches.sort(key=lambda x: x[1], reverse=True)
             return [
                 StatuteConcordancePair.model_validate(item)
-                for item, _ in exact_matches[:limit]
+                for item, _ in lexical_matches[:limit]
             ]
 
-        # 3. InLegalBERT Semantic Doctrine Matching for conceptual queries
-        # (e.g. 'custodial torture', 'delay in lodging FIR', 'undertrial bail release')
-        query_vec = inlegal_bert_service.embed_text(query_clean)
-        doctrine_vecs = self._get_doctrine_embeddings()
+        # InLegalBERT Semantic Doctrine Matching for conceptual queries
+        try:
+            query_vec = inlegal_bert_service.embed_text(query_clean)
+            doctrine_vecs = self._get_doctrine_embeddings()
+            semantic_scored: list[tuple[dict[str, Any], float]] = []
+            seen_ids = {m[0]["id"] for m in lexical_matches}
 
-        semantic_scored: list[tuple[dict[str, Any], float]] = []
-        seen_ids = {m[0]["id"] for m in exact_matches}
+            for item in dataset:
+                cid = item["id"]
+                if cid in seen_ids:
+                    continue
+                doc_vec = doctrine_vecs.get(cid)
+                if doc_vec:
+                    sim = inlegal_bert_service.compute_similarity(query_vec, doc_vec)
+                    if sim >= 0.40:
+                        semantic_scored.append((item, round(sim, 3)))
 
-        for item in CRIMINAL_CONCORDANCE_DATA:
-            cid = item["id"]
-            if cid in seen_ids:
-                continue
+            semantic_scored.sort(key=lambda x: x[1], reverse=True)
 
-            doc_vec = doctrine_vecs.get(cid)
-            if doc_vec:
-                sim = inlegal_bert_service.compute_similarity(query_vec, doc_vec)
-                semantic_scored.append((item, round(sim, 3)))
-
-        semantic_scored.sort(key=lambda x: x[1], reverse=True)
-
-        combined: list[StatuteConcordancePair] = []
-        for item, _ in exact_matches:
-            combined.append(StatuteConcordancePair.model_validate(item))
-
-        for item, sim in semantic_scored:
-            if len(combined) >= limit:
-                break
-            pair = StatuteConcordancePair.model_validate(item)
-            pair.similarity_score = sim
-            combined.append(pair)
-
-        return combined
+            combined: list[StatuteConcordancePair] = [
+                StatuteConcordancePair.model_validate(item) for item, _ in lexical_matches
+            ]
+            for item, sim in semantic_scored:
+                if len(combined) >= limit:
+                    break
+                pair = StatuteConcordancePair.model_validate(item)
+                pair.similarity_score = sim
+                combined.append(pair)
+            return combined
+        except Exception as exc:
+            logger.warning("inlegal_bert_lookup_fallback", error=str(exc))
+            return [
+                StatuteConcordancePair.model_validate(item) for item, _ in lexical_matches[:limit]
+            ]
 
     def determine_case_era(
         self,
