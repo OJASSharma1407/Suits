@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     # Application
     environment: str = Field(default="development")
     log_level: str = Field(default="INFO")
-    cors_origins: str = Field(default="http://localhost:5173,http://127.0.0.1:5173")
+    cors_origins: str = Field(default="https://suits-frontend.onrender.com")
 
     # Rate Limiting
     rate_limit_per_minute: int = Field(default=300)
