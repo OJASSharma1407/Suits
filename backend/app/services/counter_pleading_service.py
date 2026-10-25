@@ -650,11 +650,16 @@ class CounterPleadingService:
 </div>
 """
 
+        court_page_break = '<div class="court-page-break" style="page-break-after: always; margin: 36px 0;"></div>'
+
         full_draft = (
             cause_title_html
             + objections_html
+            + court_page_break
             + submissions_html
+            + court_page_break
             + reply_html
+            + court_page_break
             + prayer_html
             + verification_html
         )

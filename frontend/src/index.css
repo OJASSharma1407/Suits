@@ -1263,31 +1263,62 @@ input, button, select, textarea {
 }
 
 @media print {
-  body {
+  html, body, #root, .app-shell, .main-column, .main-content, .main-inner, .dashboard-layout {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
     background: #ffffff !important;
     color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
   }
 
-  /* Hide app shell, sidebar, topbar, toolbars, buttons during court print */
+  /* Hide app shell, sidebar, topbar, toolbars, buttons, drawers during court print */
   .sidebar,
   .topbar,
   .btn,
   button,
   select,
+  input,
   .court-page-guide,
   .court-page-footer,
-  .legal-page-header,
-  .legal-page-footer,
-  .legal-document-sheet > div:first-child,
-  .legal-document-sheet > div:nth-child(2) {
+  .legal-page-header button,
+  .legal-editor-topbar,
+  .legal-editor-toolbar,
+  .legal-add-page-btn,
+  .document-chat-drawer-container,
+  .command-palette,
+  .global-voice-dictation,
+  .switch-to-ollama-modal,
+  .editor-dropdown-container,
+  header,
+  nav,
+  .no-print {
     display: none !important;
   }
 
-  .dashboard-layout {
-    margin: 0 !important;
+  .legal-editor-canvas-container {
     padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .legal-editor-canvas-container > div {
     max-width: 100% !important;
     width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
   }
 
   .legal-document-sheet {
@@ -1299,13 +1330,28 @@ input, button, select, textarea {
     background: #ffffff !important;
     color: #000000 !important;
     border: none !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    margin: 0 !important;
+    position: relative !important;
+  }
+
+  .legal-document-sheet:not(:last-child) {
     page-break-after: always !important;
     break-after: page !important;
-    margin: 0 !important;
+  }
+
+  .legal-document-sheet:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .legal-editor-content {
+    min-height: auto !important;
   }
 
   @page {
-    size: A4;
+    size: A4 portrait;
     margin: 0;
   }
 }

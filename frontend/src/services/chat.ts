@@ -2,7 +2,7 @@ import api from "@/lib/axios";
 import type { APIResponse } from "@/types/common";
 import type { Conversation, ChatMessage, ChatResponse } from "@/types/chat";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "https://suits-tw7o.onrender.com";
+const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
 
 export const chatService = {
   getConversations: async () => {
@@ -59,6 +59,10 @@ export const chatService = {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
+            // Forward local AI provider header if active
+            ...(localStorage.getItem("ai_provider") === "local"
+              ? { "X-AI-Provider": "ollama" }
+              : {}),
           },
           body: JSON.stringify({ message, order_filename: orderFilename }),
           signal: controller.signal,

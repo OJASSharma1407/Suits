@@ -32,7 +32,7 @@ class Settings(BaseSettings):
 
     # Gemini AI API
     gemini_api_key: str = Field(default="")
-    gemini_model: str = Field(default="gemini-3.5-flash")
+    gemini_model: str = Field(default="gemini-3.1-flash-lite")
 
     # OpenRouter API (Used for Interactive AI Chatbot)
     openrouter_api_key: str = Field(default="")
@@ -41,7 +41,7 @@ class Settings(BaseSettings):
 
     # Groq Cloud API (Gemini fallback — openai/gpt-oss-120b)
     groq_api_key: str = Field(default="")
-    groq_model: str = Field(default="openai/gpt-oss-120b")
+    groq_model: str = Field(default="llama-3.3-70b-versatile")
 
     # Local Ollama AI (Offline / Manual Local AI Mode — Qwen 7B)
     ollama_base_url: str = Field(default="http://localhost:11434")
@@ -50,7 +50,7 @@ class Settings(BaseSettings):
     ollama_temperature: float = Field(default=0.2)
 
     # Judicial Outcome Prediction Engine (shares gemini_api_key)
-    prediction_gemini_model: str = Field(default="gemini-3.5-flash")
+    prediction_gemini_model: str = Field(default="gemini-3.1-flash-lite")
     prediction_thinking_level: str = Field(default="high")          # low | medium | high
     prediction_thinking_budget: int = Field(default=24576)          # budget for legacy models
     prediction_cache_ttl: int = Field(default=604800)               # 7 days (state-hash based invalidation)

@@ -199,7 +199,7 @@ export const DocumentChatDrawer: React.FC<DocumentChatDrawerProps> = ({
 
   return createPortal(
     <div
-      className={`fixed z-[100000] flex flex-col items-end gap-3 pointer-events-auto transition-all duration-200 ${
+      className={`no-print document-chat-drawer-container fixed z-[100000] flex flex-col items-end gap-3 pointer-events-auto transition-all duration-200 ${
         isFullscreen ? "bottom-8 right-8" : "bottom-8 right-6 sm:right-[76px]"
       }`}
     >

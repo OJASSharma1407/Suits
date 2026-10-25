@@ -90,8 +90,16 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
   // Helper to parse content into discrete pages
   const parsePagesFromContent = (html: string): string[] => {
     if (!html || !html.trim()) return ["<p><br></p>"];
+    let normalized = html;
+    // If no explicit court-page-break markers exist, automatically insert them before major legal sections
+    if (!/<div[^>]*class="[^"]*court-page-break[^"]*"/i.test(normalized)) {
+      normalized = normalized
+        .replace(/(<div[^>]*>\s*<u>II\.\s*PRELIMINARY SUBMISSIONS)/gi, '<div class="court-page-break" style="page-break-after: always; margin: 36px 0;"></div>$1')
+        .replace(/(<div[^>]*>\s*<u>III\.\s*PARA-WISE REPLY)/gi, '<div class="court-page-break" style="page-break-after: always; margin: 36px 0;"></div>$1')
+        .replace(/(<div[^>]*>\s*<u>PRAYER)/gi, '<div class="court-page-break" style="page-break-after: always; margin: 36px 0;"></div>$1');
+    }
     // Split by court page break markers
-    const parts = html.split(/<div[^>]*class="[^"]*court-page-break[^"]*"[^>]*>.*?<\/div>/gi);
+    const parts = normalized.split(/<div[^>]*class="[^"]*court-page-break[^"]*"[^>]*>.*?<\/div>/gi);
     if (parts.length > 1) {
       return parts.map((p) => p.trim() || "<p><br></p>");
     }
@@ -539,7 +547,155 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
 
   // ── Print & Export ──────────────────────────────────────────────────────
   const handlePrint = () => {
-    window.print();
+    // Collect HTML content of all editor pages
+    const pagesHtml: string[] = [];
+    pages.forEach((_, i) => {
+      const el = pageRefs.current[i];
+      if (el) {
+        pagesHtml.push(el.innerHTML);
+      } else {
+        pagesHtml.push(pages[i] || "");
+      }
+    });
+
+    if (pagesHtml.length === 0 || pagesHtml.every((h) => !h.trim())) {
+      toast.error("Document is empty.");
+      return;
+    }
+
+    // Create an isolated hidden iframe for clean court-grade printing
+    const iframe = document.createElement("iframe");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.visibility = "hidden";
+    iframe.setAttribute("aria-hidden", "true");
+    document.body.appendChild(iframe);
+
+    const doc = iframe.contentWindow?.document;
+    if (!doc) {
+      window.print();
+      return;
+    }
+
+    const pagesMarkup = pagesHtml
+      .map(
+        (html, idx) => `
+        <div class="court-print-page" style="${idx < pagesHtml.length - 1 ? 'page-break-after: always; break-after: page;' : ''}">
+          <div class="court-print-header">
+            <span>Page ${idx + 1} of ${pagesHtml.length}</span>
+          </div>
+          <div class="court-print-body">
+            ${html}
+          </div>
+          <div class="court-print-footer">
+            — ${idx + 1} —
+          </div>
+        </div>
+      `
+      )
+      .join("\n");
+
+    doc.open();
+    doc.write(`
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <meta charset="utf-8" />
+          <title>${documentTitle || "Court Pleading"}</title>
+          <style>
+            @page {
+              size: A4 portrait;
+              margin: 1.0in 1.0in 1.0in 1.0in;
+            }
+            @media print {
+              html, body {
+                margin: 0 !important;
+                padding: 0 !important;
+                background: #ffffff !important;
+                color: #000000 !important;
+                font-family: ${selectedFont || "'Bookman Old Style', 'Times New Roman', serif"} !important;
+                font-size: ${selectedSize || "14pt"} !important;
+                line-height: ${selectedSpacing || "1.5"} !important;
+                text-align: justify;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+              }
+              .court-print-page {
+                position: relative;
+                width: 100%;
+                box-sizing: border-box;
+                page-break-inside: auto;
+                break-inside: auto;
+              }
+              .court-print-header {
+                text-align: right;
+                font-family: monospace;
+                font-size: 10pt;
+                color: #555555;
+                margin-bottom: 18pt;
+              }
+              .court-print-footer {
+                text-align: center;
+                font-family: monospace;
+                font-size: 10pt;
+                color: #555555;
+                margin-top: 24pt;
+              }
+              .court-print-body {
+                line-height: inherit;
+                font-size: inherit;
+                font-family: inherit;
+                text-align: justify;
+              }
+              .court-print-body p {
+                margin: 0 0 0.85em 0;
+                line-height: inherit;
+                text-align: inherit;
+              }
+              .court-print-body table {
+                width: 100%;
+                border-collapse: collapse;
+              }
+              .court-block-wrapper {
+                margin: 1.25em 0;
+                display: block;
+              }
+              .court-page-break {
+                page-break-after: always !important;
+                break-after: page !important;
+                height: 0 !important;
+                margin: 0 !important;
+                border: none !important;
+              }
+            }
+          </style>
+        </head>
+        <body>
+          ${pagesMarkup}
+        </body>
+      </html>
+    `);
+    doc.close();
+
+    setTimeout(() => {
+      try {
+        iframe.contentWindow?.focus();
+        iframe.contentWindow?.print();
+      } catch (err) {
+        console.error("Print error:", err);
+        window.print();
+      } finally {
+        setTimeout(() => {
+          if (iframe.parentNode) {
+            document.body.removeChild(iframe);
+          }
+        }, 3000);
+      }
+    }, 350);
   };
 
   const handleDownloadDoc = () => {
@@ -627,7 +783,7 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
       }
     >
       {/* ── Top Bar: Title & Metadata ── */}
-      <div className="shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/40">
+      <div className="legal-editor-topbar shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-border/40">
         <div className="flex items-center gap-3">
           <div
             className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0"
@@ -761,7 +917,7 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
 
       {/* ── Secondary Toolbar: Indian Court Inserts & Typography Controls ── */}
       <div
-        className="shrink-0 p-2.5 rounded-xl border flex items-center justify-between gap-3 flex-wrap text-xs shadow-xs"
+        className="legal-editor-toolbar shrink-0 p-2.5 rounded-xl border flex items-center justify-between gap-3 flex-wrap text-xs shadow-xs"
         style={{
           background: "var(--surface)",
           borderColor: "var(--hairline)",
@@ -1199,7 +1355,7 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
 
       {/* ── Document Canvas: Physical Legal Pages (Word-like Gap Layout) ── */}
       <div
-        className={`flex flex-col items-center p-4 sm:p-8 bg-muted/25 rounded-2xl border border-border/40 overflow-x-auto ${
+        className={`legal-editor-canvas-container flex flex-col items-center p-4 sm:p-8 bg-muted/25 rounded-2xl border border-border/40 overflow-x-auto ${
           isFullscreen
             ? "flex-1 min-h-0 overflow-y-auto"
             : "min-h-[850px]"
@@ -1279,7 +1435,7 @@ export const LegalEditor: React.FC<LegalEditorProps> = ({
           <button
             type="button"
             onClick={handleAddNewPage}
-            className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer my-4 group"
+            className="legal-add-page-btn flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-semibold shadow-md transition-all hover:scale-105 active:scale-95 cursor-pointer my-4 group"
             style={{
               background: "var(--surface)",
               color: "var(--brass)",

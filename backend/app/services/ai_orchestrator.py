@@ -259,7 +259,7 @@ class AIOrchestrator:
         case_context: str = "",
         order_context: str = "",
     ) -> str:
-        """Multi-turn context chat generation."""
+        """Multi-turn context chat generation — OpenRouter only for chatbot."""
         if self.is_local():
             logger.info("ai_orchestrator_chat_routing_to_local_ollama")
             return await ollama_client.generate_with_context(
@@ -270,7 +270,8 @@ class AIOrchestrator:
                 order_context=order_context,
             )
 
-        # Cloud path: OpenRouter with Gemini fallback
+        # Chatbot uses OpenRouter exclusively — no Gemini fallback for chat
+        logger.info("ai_orchestrator_chat_routing_to_openrouter")
         try:
             ai_response = await openrouter_client.generate_with_context(
                 system_prompt=system_prompt,
@@ -282,21 +283,13 @@ class AIOrchestrator:
             if ai_response and ai_response.strip():
                 return ai_response
         except Exception as or_err:
-            logger.warning("openrouter_chat_failed_trying_gemini", error=str(or_err))
-
-        try:
-            return await gemini_client.generate_with_context(
-                system_prompt=system_prompt,
-                conversation_history=conversation_history,
-                user_message=user_message,
-                case_context=case_context,
-                order_context=order_context,
-            )
-        except Exception as g_err:
-            g_err_str = str(g_err).lower()
-            if "429" in g_err_str or "quota" in g_err_str or "rate limit" in g_err_str:
-                raise OnlineAILimitReachedError() from g_err
+            err_str = str(or_err).lower()
+            logger.error("openrouter_chat_failed", error=str(or_err))
+            if "429" in err_str or "quota" in err_str or "rate limit" in err_str or "credits" in err_str:
+                raise OnlineAILimitReachedError() from or_err
             raise
+
+        raise OnlineAILimitReachedError("OpenRouter: all models failed or returned empty response.")
 
     async def generate_with_context_stream(
         self,
@@ -306,7 +299,7 @@ class AIOrchestrator:
         case_context: str = "",
         order_context: str = "",
     ) -> AsyncGenerator[str, None]:
-        """Streaming multi-turn context chat generation."""
+        """Streaming multi-turn context chat generation — OpenRouter only for chatbot."""
         if self.is_local():
             logger.info("ai_orchestrator_chat_stream_routing_to_local_ollama")
             async for token in ollama_client.generate_with_context_stream(
@@ -319,7 +312,8 @@ class AIOrchestrator:
                 yield token
             return
 
-        # Cloud path: OpenRouter with Gemini fallback
+        # Chatbot uses OpenRouter exclusively — no Gemini fallback for streaming chat
+        logger.info("ai_orchestrator_chat_stream_routing_to_openrouter")
         has_tokens = False
         try:
             async for token in openrouter_client.generate_with_context_stream(
@@ -335,23 +329,13 @@ class AIOrchestrator:
             if has_tokens:
                 return
         except Exception as or_err:
-            logger.warning("openrouter_stream_failed_trying_gemini", error=str(or_err))
-
-        try:
-            async for token in gemini_client.generate_with_context_stream(
-                system_prompt=system_prompt,
-                conversation_history=conversation_history,
-                user_message=user_message,
-                case_context=case_context,
-                order_context=order_context,
-            ):
-                if token:
-                    yield token
-        except Exception as g_err:
-            g_err_str = str(g_err).lower()
-            if "429" in g_err_str or "quota" in g_err_str or "rate limit" in g_err_str:
-                raise OnlineAILimitReachedError() from g_err
+            err_str = str(or_err).lower()
+            logger.error("openrouter_stream_failed", error=str(or_err))
+            if "429" in err_str or "quota" in err_str or "rate limit" in err_str or "credits" in err_str:
+                raise OnlineAILimitReachedError() from or_err
             raise
+
+        raise OnlineAILimitReachedError("OpenRouter: all models failed or returned empty stream.")
 
 
 ai_orchestrator = AIOrchestrator()
