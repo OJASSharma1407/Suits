@@ -110,3 +110,22 @@ class EraTransitionInstant(BaseModel):
         default_factory=list, description="Procedural litigator risk alerts derived from concordance data"
     )
     source: str = Field(default="STATIC_CONCORDANCE_DICT", description="Data origin – confirms no LLM was called")
+
+
+class TransitionQuestionRequest(BaseModel):
+    """Request schema for asking legal questions about criminal law era transition."""
+    question: str = Field(..., description="Legal question regarding IPC/CrPC/IEA to BNS/BNSS/BSA transition")
+    category: str | None = Field(default=None, description="Optional category filter (PROCEDURAL, SUBSTANTIVE, EVIDENTIARY)")
+    active_era: str | None = Field(default=None, description="Specific era context if applicable")
+
+
+class TransitionQuestionResponse(BaseModel):
+    """Response schema for criminal law era transition Q&A."""
+    question: str = Field(description="The original legal question")
+    answer: str = Field(description="Authoritative, detailed statutory and judicial transition answer")
+    key_sections: list[StatuteConcordancePair] = Field(default_factory=list, description="Relevant statutory concordance pairs")
+    governing_principles: list[str] = Field(default_factory=list, description="Constitutional and statutory transition principles")
+    procedural_warnings: list[str] = Field(default_factory=list, description="Strategic litigator warnings and alerts")
+    draft_pleading_snippet: str | None = Field(default=None, description="Court-ready pleading paragraph for application/petition")
+    confidence: float = Field(default=0.95, description="Confidence score of statutory concordance")
+

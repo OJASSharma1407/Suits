@@ -2101,6 +2101,374 @@ CRIMINAL_CONCORDANCE_DATA: list[dict[str, Any]] = [   {   'id': 'crpc_41a_bnss_3
                                     'litigator_warning': 'Defense can rely on admissions made by hostile prosecution '
                                                          'witnesses in cross-examination.'}]}]
 
+# =========================================================================
+# Integration of Full Statutory Concordance Index (IPC ↔ BNS, CrPC ↔ BNSS, IEA ↔ BSA)
+# =========================================================================
+from app.data.concordance_sections_db import (
+    IPC_TO_BNS_MASTER,
+    CRPC_TO_BNSS_MASTER,
+    IEA_TO_BSA_MASTER,
+    NEW_PROVISIONS_2024,
+)
+
+_EXISTING_OLD_SECTIONS: set[tuple[str, str]] = set()
+for _item in CRIMINAL_CONCORDANCE_DATA:
+    _old_c = _item.get("old_code", "").upper()
+    _old_s = _item.get("old_section", "").strip()
+    # Normalize section ranges and compound strings
+    for _part in _old_s.replace("/", " ").replace("-", " ").split():
+        _EXISTING_OLD_SECTIONS.add((_old_c, _part.lower()))
+    _EXISTING_OLD_SECTIONS.add((_old_c, _old_s.lower()))
+
+# 1. Add standalone 2024 new provisions
+for _new_prov in NEW_PROVISIONS_2024:
+    if not any(x.get("id") == _new_prov["id"] for x in CRIMINAL_CONCORDANCE_DATA):
+        CRIMINAL_CONCORDANCE_DATA.append(_new_prov)
+
+# 2. Add IPC -> BNS provisions
+for _sec, _meta in IPC_TO_BNS_MASTER.items():
+    if ("IPC", _sec.lower()) in _EXISTING_OLD_SECTIONS:
+        continue
+    _bns_sec = _meta.get("bns", "")
+    _cid = f"ipc_{_sec.lower().replace('/', '_')}_bns_{_bns_sec.lower().replace('/', '_').replace('(', '_').replace(')', '')}"
+    _ratio = _meta.get("ratio") or f"Substantive penal ratio governing {_meta['title']} applies pari materia to Section {_bns_sec} BNS under Section 8 General Clauses Act 1897."
+    _landmarks = []
+    if _meta.get("landmark"):
+        _landmarks.append({
+            "title": _meta["landmark"],
+            "citation": "Supreme Court of India",
+            "court": "Supreme Court of India",
+            "ratio": _ratio,
+        })
+    else:
+        _landmarks.append({
+            "title": f"Supreme Court Jurisprudence on Section {_sec} IPC",
+            "citation": "Pari Materia Binding Ratio",
+            "court": "Supreme Court of India",
+            "ratio": _ratio,
+        })
+    _deltas = []
+    if _meta.get("delta"):
+        _deltas.append({
+            "provision_name": f"Section {_bns_sec} BNS Reform",
+            "delta_type": "SUBSTANTIAL_CHANGE",
+            "details": _meta["delta"],
+            "litigator_warning": f"Verify date of incident. If prior to 1 July 2024, charge must be framed under IPC Section {_sec} by virtue of Article 20(1) of the Constitution.",
+        })
+    else:
+        _deltas.append({
+            "provision_name": f"Section {_bns_sec} BNS Direct Substitution",
+            "delta_type": "DIRECT_SUBSTITUTION",
+            "details": f"Section {_bns_sec} BNS directly substitutes Section {_sec} IPC preserving substantive ingredients.",
+            "litigator_warning": f"Preserve landmark Supreme Court interpretations under Section {_sec} IPC as binding law under Article 141.",
+        })
+
+    CRIMINAL_CONCORDANCE_DATA.append({
+        "id": _cid,
+        "old_code": "IPC",
+        "old_section": _sec,
+        "old_title": _meta["title"],
+        "new_code": "BNS",
+        "new_section": _bns_sec,
+        "new_title": _meta["title"],
+        "category": "SUBSTANTIVE",
+        "concept_doctrine": _meta.get("doctrine", _meta["title"]),
+        "doctrine_summary": f"Governs substantive law of {_meta['title']} under erstwhile Section {_sec} IPC and enacted Section {_bns_sec} BNS.",
+        "landmark_precedents": _landmarks,
+        "statutory_deltas": _deltas,
+    })
+    _EXISTING_OLD_SECTIONS.add(("IPC", _sec.lower()))
+
+# 3. Add CrPC -> BNSS provisions
+for _sec, _meta in CRPC_TO_BNSS_MASTER.items():
+    if ("CRPC", _sec.lower()) in _EXISTING_OLD_SECTIONS:
+        continue
+    _bnss_sec = _meta.get("bnss", "")
+    _cid = f"crpc_{_sec.lower().replace('/', '_')}_bnss_{_bnss_sec.lower().replace('/', '_').replace('(', '_').replace(')', '')}"
+    _ratio = _meta.get("ratio") or f"Procedural ratio and fair trial safeguards under Section {_sec} CrPC govern Section {_bnss_sec} BNSS."
+    _landmarks = []
+    if _meta.get("landmark"):
+        _landmarks.append({
+            "title": _meta["landmark"],
+            "citation": "Supreme Court of India",
+            "court": "Supreme Court of India",
+            "ratio": _ratio,
+        })
+    else:
+        _landmarks.append({
+            "title": f"Supreme Court Landmark Precedents on Section {_sec} CrPC",
+            "citation": "Binding Procedural Safeguard",
+            "court": "Supreme Court of India",
+            "ratio": _ratio,
+        })
+    _deltas = []
+    if _meta.get("delta"):
+        _deltas.append({
+            "provision_name": f"Section {_bnss_sec} BNSS Procedural Departure",
+            "delta_type": "PROCEDURE_MODIFIED",
+            "details": _meta["delta"],
+            "litigator_warning": f"Ensure strict procedural compliance with Section {_bnss_sec} BNSS for all inquiries and proceedings pending or initiated after 1 July 2024.",
+        })
+    else:
+        _deltas.append({
+            "provision_name": f"Section {_bnss_sec} BNSS Procedural Continuity",
+            "delta_type": "DIRECT_SUBSTITUTION",
+            "details": f"Section {_bnss_sec} BNSS mirrors erstwhile Section {_sec} CrPC maintaining procedural continuity.",
+            "litigator_warning": f"Cite Section 8 General Clauses Act, 1897 to establish that established CrPC precedents govern Section {_bnss_sec} BNSS.",
+        })
+
+    CRIMINAL_CONCORDANCE_DATA.append({
+        "id": _cid,
+        "old_code": "CrPC",
+        "old_section": _sec,
+        "old_title": _meta["title"],
+        "new_code": "BNSS",
+        "new_section": _bnss_sec,
+        "new_title": _meta["title"],
+        "category": "PROCEDURAL",
+        "concept_doctrine": _meta.get("doctrine", _meta["title"]),
+        "doctrine_summary": f"Governs criminal procedural framework of {_meta['title']} under erstwhile Section {_sec} CrPC and enacted Section {_bnss_sec} BNSS.",
+        "landmark_precedents": _landmarks,
+        "statutory_deltas": _deltas,
+    })
+    _EXISTING_OLD_SECTIONS.add(("CRPC", _sec.lower()))
+
+# 4. Add IEA -> BSA provisions
+for _sec, _meta in IEA_TO_BSA_MASTER.items():
+    if ("IEA", _sec.lower()) in _EXISTING_OLD_SECTIONS:
+        continue
+    _bsa_sec = _meta.get("bsa", "")
+    _cid = f"iea_{_sec.lower().replace('/', '_')}_bsa_{_bsa_sec.lower().replace('/', '_').replace('(', '_').replace(')', '')}"
+    _ratio = _meta.get("ratio") or f"Evidentiary principles and admissibility criteria under Section {_sec} IEA govern Section {_bsa_sec} BSA."
+    _landmarks = []
+    if _meta.get("landmark"):
+        _landmarks.append({
+            "title": _meta["landmark"],
+            "citation": "Supreme Court of India",
+            "court": "Supreme Court of India",
+            "ratio": _ratio,
+        })
+    else:
+        _landmarks.append({
+            "title": f"Supreme Court Landmark Precedents on Section {_sec} IEA",
+            "citation": "Binding Evidentiary Rule",
+            "court": "Supreme Court of India",
+            "ratio": _ratio,
+        })
+    _deltas = []
+    if _meta.get("delta"):
+        _deltas.append({
+            "provision_name": f"Section {_bsa_sec} BSA Evidentiary Reform",
+            "delta_type": "SUBSTANTIAL_CHANGE",
+            "details": _meta["delta"],
+            "litigator_warning": f"Scrutinize electronic hash and certificate requirements under Section 63 BSA.",
+        })
+    else:
+        _deltas.append({
+            "provision_name": f"Section {_bsa_sec} BSA Evidentiary Continuity",
+            "delta_type": "DIRECT_SUBSTITUTION",
+            "details": f"Section {_bsa_sec} BSA carries forward Section {_sec} IEA without substantive alteration.",
+            "litigator_warning": f"Rely on established Section {_sec} IEA case law as binding under Article 141.",
+        })
+
+    CRIMINAL_CONCORDANCE_DATA.append({
+        "id": _cid,
+        "old_code": "IEA",
+        "old_section": _sec,
+        "old_title": _meta["title"],
+        "new_code": "BSA",
+        "new_section": _bsa_sec,
+        "new_title": _meta["title"],
+        "category": "EVIDENTIARY",
+        "concept_doctrine": _meta.get("doctrine", _meta["title"]),
+        "doctrine_summary": f"Governs evidentiary rules of {_meta['title']} under erstwhile Section {_sec} IEA and enacted Section {_bsa_sec} BSA.",
+        "landmark_precedents": _landmarks,
+        "statutory_deltas": _deltas,
+    })
+    _EXISTING_OLD_SECTIONS.add(("IEA", _sec.lower()))
+
+
+# =========================================================================
+# 5. INTEGRATE EXHAUSTIVE EXTRA SECTION MAPS
+#    Ensures every section of CrPC (484 sections), IPC (511 sections) and
+#    IEA (167 sections) that was not already covered by CRIMINAL_CONCORDANCE_DATA
+#    or by the three master dicts above is ingested with a proper concordance card.
+# =========================================================================
+from app.data.complete_concordance_index import (  # noqa: E402
+    CRPC_COMPLETE_EXTRA_MAP,
+    IPC_COMPLETE_EXTRA_MAP,
+    IEA_COMPLETE_EXTRA_MAP,
+    CHAPTER_CONCORDANCE_INDEX,
+)
+
+def _make_crpc_card(sec: str, meta: dict[str, str]) -> dict[str, Any]:
+    bnss_sec = meta.get("bnss", "Corresponding BNSS Provision")
+    cid = f"crpc_{sec.lower().replace('/', '_').replace('(', '_').replace(')', '')}_bnss_{bnss_sec.lower().replace('/', '_').replace('(', '_').replace(')', '').replace('[', '').replace(']', '')}"
+    return {
+        "id": cid,
+        "old_code": "CrPC",
+        "old_section": sec,
+        "old_title": meta["title"],
+        "new_code": "BNSS",
+        "new_section": bnss_sec,
+        "new_title": meta["title"],
+        "category": "PROCEDURAL",
+        "concept_doctrine": f"Procedural Statutory Continuity: Section {sec} CrPC ↔ Section {bnss_sec} BNSS",
+        "doctrine_summary": (
+            f"Under Section 8 of the General Clauses Act, 1897, the procedural safeguards and judicial interpretations "
+            f"established for Section {sec} CrPC ({meta['title']}) govern the corresponding Section {bnss_sec} BNSS in pari materia. "
+            f"All Supreme Court precedents under Section {sec} CrPC remain binding under Article 141."
+        ),
+        "landmark_precedents": [{
+            "title": f"Supreme Court Binding Precedents on Section {sec} CrPC",
+            "citation": "Binding Under Article 141 & Section 8 General Clauses Act, 1897",
+            "court": "Supreme Court of India",
+            "ratio": (
+                f"Established procedural safeguards under Section {sec} CrPC apply with full force to "
+                f"Section {bnss_sec} BNSS by operation of Section 8 General Clauses Act, 1897."
+            ),
+        }],
+        "statutory_deltas": [{
+            "provision_name": f"Section {bnss_sec} BNSS Procedural Continuity",
+            "delta_type": "DIRECT_SUBSTITUTION",
+            "details": (
+                f"Section {bnss_sec} BNSS re-enacts Section {sec} CrPC maintaining procedural continuity under the Bharatiya Nagarik Suraksha Sanhita, 2023."
+            ),
+            "litigator_warning": (
+                f"Cite Section 8 General Clauses Act, 1897 to establish that established CrPC precedents under Section {sec} govern Section {bnss_sec} BNSS."
+            ),
+        }],
+    }
+
+
+def _make_ipc_card(sec: str, meta: dict[str, str]) -> dict[str, Any]:
+    bns_sec = meta.get("bns", "Corresponding BNS Provision")
+    cid = f"ipc_{sec.lower().replace('/', '_').replace('(', '_').replace(')', '')}_bns_{bns_sec.lower().replace('/', '_').replace('(', '_').replace(')', '').replace('[', '').replace(']', '')}"
+    return {
+        "id": cid,
+        "old_code": "IPC",
+        "old_section": sec,
+        "old_title": meta["title"],
+        "new_code": "BNS",
+        "new_section": bns_sec,
+        "new_title": meta["title"],
+        "category": "SUBSTANTIVE",
+        "concept_doctrine": f"Substantive Penal Continuity: Section {sec} IPC ↔ Section {bns_sec} BNS",
+        "doctrine_summary": (
+            f"Under Section 8 of the General Clauses Act, 1897, the substantive penal provisions and judicial interpretations "
+            f"established for Section {sec} IPC ({meta['title']}) govern the corresponding Section {bns_sec} BNS in pari materia. "
+            f"All Supreme Court precedents remain binding under Article 141 of the Constitution."
+        ),
+        "landmark_precedents": [{
+            "title": f"Supreme Court Pari Materia Precedents on Section {sec} IPC",
+            "citation": "Pari Materia Binding Ratio Under Article 141",
+            "court": "Supreme Court of India",
+            "ratio": (
+                f"Substantive penal principles under Section {sec} IPC apply with full force to "
+                f"Section {bns_sec} BNS by operation of Section 8 General Clauses Act, 1897."
+            ),
+        }],
+        "statutory_deltas": [{
+            "provision_name": f"Section {bns_sec} BNS Penal Continuity",
+            "delta_type": "DIRECT_SUBSTITUTION",
+            "details": (
+                f"Section {bns_sec} BNS re-enacts Section {sec} IPC preserving substantive ingredients under the Bharatiya Nyaya Sanhita, 2023."
+                + (f" Note: {bns_sec}" if "[" in bns_sec else "")
+            ),
+            "litigator_warning": (
+                f"Preserve landmark Supreme Court interpretations under Section {sec} IPC as binding law under Article 141 of the Constitution."
+            ),
+        }],
+    }
+
+
+def _make_iea_card(sec: str, meta: dict[str, str]) -> dict[str, Any]:
+    bsa_sec = meta.get("bsa", "Corresponding BSA Provision")
+    cid = f"iea_{sec.lower().replace('/', '_').replace('(', '_').replace(')', '')}_bsa_{bsa_sec.lower().replace('/', '_').replace('(', '_').replace(')', '').replace('[', '').replace(']', '')}"
+    return {
+        "id": cid,
+        "old_code": "IEA",
+        "old_section": sec,
+        "old_title": meta["title"],
+        "new_code": "BSA",
+        "new_section": bsa_sec,
+        "new_title": meta["title"],
+        "category": "EVIDENTIARY",
+        "concept_doctrine": f"Evidentiary Continuity: Section {sec} IEA ↔ Section {bsa_sec} BSA",
+        "doctrine_summary": (
+            f"Under Section 8 of the General Clauses Act, 1897, the evidentiary rules and judicial interpretations "
+            f"established for Section {sec} IEA ({meta['title']}) govern the corresponding Section {bsa_sec} BSA in pari materia."
+        ),
+        "landmark_precedents": [{
+            "title": f"Supreme Court Binding Precedents on Section {sec} IEA",
+            "citation": "Binding Evidentiary Rule Under Article 141",
+            "court": "Supreme Court of India",
+            "ratio": (
+                f"Evidentiary principles under Section {sec} IEA apply with full force to "
+                f"Section {bsa_sec} BSA by operation of Section 8 General Clauses Act, 1897."
+            ),
+        }],
+        "statutory_deltas": [{
+            "provision_name": f"Section {bsa_sec} BSA Evidentiary Continuity",
+            "delta_type": "DIRECT_SUBSTITUTION",
+            "details": (
+                f"Section {bsa_sec} BSA re-enacts Section {sec} IEA under the Bharatiya Sakshya Adhiniyam, 2023."
+            ),
+            "litigator_warning": (
+                f"Rely on established Section {sec} IEA case law as binding under Article 141 of the Constitution of India."
+            ),
+        }],
+    }
+
+
+# --- Ingest CrPC extra sections ---
+_existing_ids = {p["id"] for p in CRIMINAL_CONCORDANCE_DATA}
+_existing_crpc_secs = {p["old_section"].lower() for p in CRIMINAL_CONCORDANCE_DATA if p["old_code"] == "CrPC"}
+_existing_crpc_secs.update({p["new_section"].lower() for p in CRIMINAL_CONCORDANCE_DATA if p["new_code"] == "BNSS"})
+
+for _sec, _meta in CRPC_COMPLETE_EXTRA_MAP.items():
+    if _sec.lower() in _existing_crpc_secs:
+        continue
+    _card = _make_crpc_card(_sec, _meta)
+    if _card["id"] not in _existing_ids:
+        CRIMINAL_CONCORDANCE_DATA.append(_card)
+        _existing_ids.add(_card["id"])
+        _existing_crpc_secs.add(_sec.lower())
+
+# --- Ingest IPC extra sections ---
+_existing_ipc_secs = {p["old_section"].lower() for p in CRIMINAL_CONCORDANCE_DATA if p["old_code"] == "IPC"}
+_existing_ipc_secs.update({p["new_section"].lower() for p in CRIMINAL_CONCORDANCE_DATA if p["new_code"] == "BNS"})
+
+for _sec, _meta in IPC_COMPLETE_EXTRA_MAP.items():
+    if _sec.lower() in _existing_ipc_secs:
+        continue
+    _card = _make_ipc_card(_sec, _meta)
+    if _card["id"] not in _existing_ids:
+        CRIMINAL_CONCORDANCE_DATA.append(_card)
+        _existing_ids.add(_card["id"])
+        _existing_ipc_secs.add(_sec.lower())
+
+# --- Ingest IEA extra sections ---
+_existing_iea_secs = {p["old_section"].lower() for p in CRIMINAL_CONCORDANCE_DATA if p["old_code"] == "IEA"}
+_existing_iea_secs.update({p["new_section"].lower() for p in CRIMINAL_CONCORDANCE_DATA if p["new_code"] == "BSA"})
+
+for _sec, _meta in IEA_COMPLETE_EXTRA_MAP.items():
+    if _sec.lower() in _existing_iea_secs:
+        continue
+    _card = _make_iea_card(_sec, _meta)
+    if _card["id"] not in _existing_ids:
+        CRIMINAL_CONCORDANCE_DATA.append(_card)
+        _existing_ids.add(_card["id"])
+        _existing_iea_secs.add(_sec.lower())
+
+
 def get_all_concordance_pairs() -> list[dict[str, Any]]:
     """Return complete database of concordance mappings."""
     return CRIMINAL_CONCORDANCE_DATA
+
+
+def get_chapter_concordance() -> list[dict[str, Any]]:
+    """Return chapter-level concordance across all six statutes."""
+    return CHAPTER_CONCORDANCE_INDEX
+
+

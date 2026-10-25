@@ -76,3 +76,14 @@ export interface EraTransitionInstant {
   /** Always 'STATIC_CONCORDANCE_DICT' — confirms no LLM was called */
   source: string;
 }
+
+export interface TransitionQuestionResponse {
+  question: string;
+  answer: string;
+  key_sections: StatuteConcordancePair[];
+  governing_principles: string[];
+  procedural_warnings: string[];
+  draft_pleading_snippet?: string | null;
+  confidence: number;
+}
+

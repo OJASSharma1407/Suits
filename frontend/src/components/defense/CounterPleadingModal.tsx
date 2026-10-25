@@ -16,7 +16,6 @@ import {
   Check,
   Loader2,
   BookOpen,
-  Info,
   CheckSquare,
   Square,
   Upload,
@@ -211,10 +210,11 @@ export function CounterPleadingModal({
         >
           <div className="flex items-center gap-3">
             <div
-              className="w-10 h-10 rounded-xl flex items-center justify-center shadow-sm"
+              className="w-10 h-10 rounded-xl flex items-center justify-center border"
               style={{
-                background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-                color: "#ffffff",
+                background: "var(--brass-soft)",
+                color: "var(--brass-bright)",
+                borderColor: "var(--hairline)",
               }}
             >
               <ShieldAlert size={20} />
@@ -346,16 +346,7 @@ export function CounterPleadingModal({
                 </div>
               )}
 
-              <div
-                className="p-3.5 rounded-xl border border-indigo-500/20 bg-indigo-500/5 flex items-start gap-3"
-              >
-                <Info size={16} className="text-indigo-500 mt-0.5 flex-shrink-0" />
-                <div className="text-xs text-[var(--ink-dim)] leading-relaxed">
-                  <strong>Zero Token Overhead:</strong> Paragraph chunking and statutory bar checks
-                  (Section 12A CCA, Limitation Act, Order VII Rule 11) run deterministically without
-                  spending AI tokens.
-                </div>
-              </div>
+
             </div>
           )}
 

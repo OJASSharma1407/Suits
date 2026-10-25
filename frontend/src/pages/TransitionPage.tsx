@@ -3,7 +3,7 @@ import { EraTransitionExplorer } from "@/components/research/EraTransitionExplor
 
 export default function TransitionPage() {
   return (
-    <div className="dashboard-layout" style={{ maxWidth: "100%", width: "100%", marginTop: 36 }}>
+    <div className="w-full pb-12 pt-2">
       <EraTransitionExplorer />
     </div>
   );

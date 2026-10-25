@@ -1,4 +1,4 @@
-"""SUITS Backend - FastAPI Application Entry Point."""
+"""SUIT Backend - FastAPI Application Entry Point."""
 
 from contextlib import asynccontextmanager
 

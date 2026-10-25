@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Scale,
@@ -6,6 +6,8 @@ import {
   RefreshCw,
   ChevronDown,
   ChevronUp,
+  ChevronLeft,
+  ChevronRight,
   ExternalLink,
   CheckCircle2,
   XCircle,
@@ -35,7 +37,7 @@ interface PrecedentsPredictionCardProps {
   onReadDocument?: (node: { tid?: string | null; title: string; court?: string | null; node_type: string }) => void;
 }
 
-type PrecedentFilter = "all" | "binding" | "petitioner" | "respondent";
+
 
 const courtTierLabel: Record<string, string> = {
   sc: "Supreme Court",
@@ -182,7 +184,7 @@ export function PrecedentsPredictionCard({
   // Precedents state (InLegalBERT + Kanoon loaded on mount)
   const [precedentsData, setPrecedentsData] = useState<SimilarCasesResponse | null>(null);
   const [loadingPrecedents, setLoadingPrecedents] = useState<boolean>(true);
-  const [filter, setFilter] = useState<PrecedentFilter>("all");
+
   const [expandedCases, setExpandedCases] = useState<Record<number, boolean>>({});
 
   // Prediction state (On-demand / cached)
@@ -190,6 +192,17 @@ export function PrecedentsPredictionCard({
   const [loadingPrediction, setLoadingPrediction] = useState<boolean>(false);
   const [activePrecedentIndex, setActivePrecedentIndex] = useState<number>(0);
   const [isReasoningOpen, setIsReasoningOpen] = useState<boolean>(false);
+  const tabsContainerRef = useRef<HTMLDivElement | null>(null);
+
+  const scrollTabs = (direction: "left" | "right") => {
+    if (tabsContainerRef.current) {
+      const scrollAmount = 260;
+      tabsContainerRef.current.scrollBy({
+        left: direction === "left" ? -scrollAmount : scrollAmount,
+        behavior: "smooth",
+      });
+    }
+  };
 
   // 1. Fetch Similar Cases on mount
   useEffect(() => {
@@ -264,19 +277,7 @@ export function PrecedentsPredictionCard({
     return matched?.directional_effect || "neutral";
   };
 
-  // Filter cases
-  const filteredCases = cases.filter((c) => {
-    if (filter === "binding") return c.court_tier === "sc" || c.precedent_type === "Binding Precedent";
-    if (filter === "petitioner") {
-      const dir = getPrecedentDirection(c.case_title);
-      return dir === "supports_relief" || c.strategic_alignment === "Supports Petitioner";
-    }
-    if (filter === "respondent") {
-      const dir = getPrecedentDirection(c.case_title);
-      return dir === "supports_denial" || c.strategic_alignment === "Supports Respondent";
-    }
-    return true;
-  });
+
 
   return (
     <div
@@ -443,17 +444,53 @@ export function PrecedentsPredictionCard({
           {/* Interactive Precedent Comparisons Selector */}
           {comparisons.length > 0 && (
             <div className="space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
                 <h4 className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
                   <Layers size={13} style={{ color: "var(--brass)" }} /> Precedent Analogy & Distinctions ({comparisons.length} Authorities)
                 </h4>
-                <span className="text-[11px]" style={{ color: "var(--ink-faint)" }}>
-                  Select authority to compare
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] hidden sm:inline" style={{ color: "var(--ink-faint)" }}>
+                    Select authority to compare
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      type="button"
+                      onClick={() => scrollTabs("left")}
+                      className="p-1 rounded border hover:bg-[var(--surface-raised)] transition-colors cursor-pointer"
+                      style={{ borderColor: "var(--hairline)", color: "var(--ink-dim)" }}
+                      title="Scroll left"
+                      aria-label="Scroll left"
+                    >
+                      <ChevronLeft size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => scrollTabs("right")}
+                      className="p-1 rounded border hover:bg-[var(--surface-raised)] transition-colors cursor-pointer"
+                      style={{ borderColor: "var(--hairline)", color: "var(--ink-dim)" }}
+                      title="Scroll right"
+                      aria-label="Scroll right"
+                    >
+                      <ChevronRight size={13} />
+                    </button>
+                  </div>
+                </div>
               </div>
 
               {/* Precedent Tabs */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              <div
+                ref={tabsContainerRef}
+                onWheel={(e) => {
+                  if (e.deltaY !== 0) {
+                    e.currentTarget.scrollLeft += e.deltaY;
+                  }
+                }}
+                className="flex items-center gap-2 overflow-x-auto pb-2 scroll-smooth"
+                style={{
+                  scrollbarWidth: "thin",
+                  scrollbarColor: "var(--hairline) transparent",
+                }}
+              >
                 {comparisons.map((comp, idx) => {
                   const isActive = activePrecedentIndex === idx;
                   const badge = directionalBadgeConfig[comp.directional_effect] || directionalBadgeConfig.neutral;
@@ -461,7 +498,7 @@ export function PrecedentsPredictionCard({
                     <button
                       key={idx}
                       onClick={() => setActivePrecedentIndex(idx)}
-                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap transition-all border"
+                      className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium cursor-pointer whitespace-nowrap transition-all border flex-shrink-0"
                       style={{
                         background: isActive ? "var(--surface-raised)" : "transparent",
                         color: isActive ? "var(--ink)" : "var(--ink-dim)",
@@ -667,49 +704,6 @@ export function PrecedentsPredictionCard({
 
       {/* ── SECTION 2: SIMILAR PRECEDENTS LIST (InLegalBERT + Kanoon) ────────── */}
       <div className="space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            <h4 className="text-xs uppercase font-semibold tracking-wider flex items-center gap-1.5" style={{ color: "var(--ink)", fontFamily: "var(--font-mono)" }}>
-              <BookOpen size={13} style={{ color: "var(--brass)" }} /> Retrieved Precedents ({cases.length})
-            </h4>
-            {precedentsData?.summary?.binding_count ? (
-              <span
-                className="px-2 py-0.5 rounded-full text-[10px] font-semibold"
-                style={{ background: "rgba(231, 185, 95, 0.15)", color: "var(--seal-pending)", border: "1px solid rgba(231, 185, 95, 0.3)" }}
-              >
-                {precedentsData.summary.binding_count} Binding SC
-              </span>
-            ) : null}
-          </div>
-
-          {/* Filter Chips */}
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {[
-              { id: "all", label: "All Precedents" },
-              { id: "binding", label: "Binding (SC)" },
-              { id: "petitioner", label: "Favors Petitioner" },
-              { id: "respondent", label: "Favors Respondent" },
-            ].map((f) => {
-              const isActive = filter === f.id;
-              return (
-                <button
-                  key={f.id}
-                  onClick={() => setFilter(f.id as PrecedentFilter)}
-                  className="px-2.5 py-1 rounded-md text-xs font-medium transition-all cursor-pointer"
-                  style={{
-                    background: isActive ? "var(--surface-raised)" : "transparent",
-                    color: isActive ? "var(--ink)" : "var(--ink-faint)",
-                    border: isActive ? "1px solid var(--brass)" : "1px solid var(--hairline)",
-                    fontWeight: isActive ? 600 : 400,
-                  }}
-                >
-                  {f.label}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
         {/* Loading skeleton for precedents */}
         {loadingPrecedents && (
           <div className="space-y-3 animate-pulse">
@@ -719,16 +713,16 @@ export function PrecedentsPredictionCard({
         )}
 
         {/* Empty state */}
-        {!loadingPrecedents && filteredCases.length === 0 && (
+        {!loadingPrecedents && cases.length === 0 && (
           <div className="p-8 text-center rounded-lg border text-xs" style={{ borderColor: "var(--hairline)", background: "var(--surface)", color: "var(--ink-faint)" }}>
-            No precedent cases matched this filter criteria.
+            No precedent cases found for this matter.
           </div>
         )}
 
         {/* Precedents Card List */}
         {!loadingPrecedents && (
           <div className="space-y-3">
-            {filteredCases.map((cand, idx) => {
+            {cases.map((cand, idx) => {
               const tier = cand.court_tier || "hc";
               const tierStyle = courtTierColor[tier] || courtTierColor.hc;
               const isExpanded = !!expandedCases[idx];

@@ -252,11 +252,11 @@ export default function DocumentPage() {
 
           <button
             onClick={() => setShowDefenseModal(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all shadow-sm hover:opacity-95 cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all cursor-pointer"
             style={{
-              background: "linear-gradient(135deg, #4f46e5 0%, #7c3aed 100%)",
-              color: "#ffffff",
-              border: "1px solid rgba(99, 102, 241, 0.4)",
+              background: "var(--brass-soft)",
+              color: "var(--brass-bright)",
+              border: "1px solid var(--hairline)",
             }}
             title="Synthesize court-ready Written Statement under Order VIII CPC"
           >

@@ -114,7 +114,7 @@ export default function VerifyOtpPage() {
       localStorage.setItem("access_token", result.tokens.access_token);
       localStorage.setItem("refresh_token", result.tokens.refresh_token);
       setUser(result.user);
-      toast.success("Email verified! Welcome to SUITS.");
+      toast.success("Email verified! Welcome to SUIT.");
       navigate("/dashboard");
     } catch (err: any) {
       toast.error(err.response?.data?.message || "Invalid or expired verification code.");

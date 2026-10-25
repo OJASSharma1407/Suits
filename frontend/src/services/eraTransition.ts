@@ -4,6 +4,7 @@ import type {
   ConcordanceLookupResponse,
   EraTransitionCaseAnalysis,
   EraTransitionInstant,
+  TransitionQuestionResponse,
 } from '@/types/era_transition';
 
 export const eraTransitionService = {
@@ -101,4 +102,27 @@ export const eraTransitionService = {
       return null;
     }
   },
+
+  /**
+   * Ask legal transition questions to the AI transition advisor.
+   */
+  askTransitionQuestion: async (
+    question: string,
+    category?: string,
+    active_era?: string
+  ): Promise<TransitionQuestionResponse | null> => {
+    try {
+      const res = await api.post<APIResponse<TransitionQuestionResponse>>(
+        `/statutes/era-transition/ask`,
+        { question, category, active_era }
+      );
+      if (res.status === 204 || !res.data || !res.data.data) {
+        return null;
+      }
+      return res.data.data;
+    } catch {
+      return null;
+    }
+  },
 };
+

@@ -9,6 +9,8 @@ from app.schemas.common import APIResponse
 from app.schemas.era_transition import (
     ConcordanceLookupResponse,
     EraTransitionCaseAnalysis,
+    TransitionQuestionRequest,
+    TransitionQuestionResponse,
 )
 from app.services.era_transition_service import EraTransitionService
 from app.core.exceptions import InvalidCNRError
@@ -36,6 +38,15 @@ def lookup_era_concordance(
     db: DbSession = None,
 ):
     """Search criminal statutes concordance by section, statute, or InLegalBERT semantic doctrine."""
+    # If the user explicitly typed a statute in their query, prioritize that over any tab filter
+    q_lower = query.lower()
+    if re.search(r"\b(crpc|code of criminal procedure|criminal procedure|bnss|bharatiya nagarik|nagarik suraksha)\b", q_lower):
+        category = "PROCEDURAL"
+    elif re.search(r"\b(ipc|indian penal|penal code|bns|bharatiya nyaya|nyaya sanhita)\b", q_lower):
+        category = "SUBSTANTIVE"
+    elif re.search(r"\b(iea|evidence act|indian evidence|bsa|bharatiya sakshya|sakshya adhiniyam)\b", q_lower):
+        category = "EVIDENTIARY"
+
     service = EraTransitionService(db)
     pairs = service.lookup_concordance(query=query, limit=limit, category=category)
     response_data = ConcordanceLookupResponse(
@@ -44,6 +55,23 @@ def lookup_era_concordance(
         pairs=pairs,
     )
     return APIResponse(data=response_data)
+
+
+@router.post("/era-transition/ask", response_model=APIResponse[TransitionQuestionResponse])
+async def ask_era_transition_question(
+    payload: TransitionQuestionRequest,
+    user: OptionalUser = None,
+    db: DbSession = None,
+):
+    """Answer legal transition questions and synthesize court-ready submissions."""
+    service = EraTransitionService(db)
+    result = await service.answer_transition_question(
+        question=payload.question,
+        category=payload.category,
+        active_era=payload.active_era,
+    )
+    return APIResponse(data=result)
+
 
 
 @router.get("/cases/{cnr}/era-transition", response_model=APIResponse[EraTransitionCaseAnalysis])
