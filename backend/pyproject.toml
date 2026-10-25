@@ -25,6 +25,7 @@ dependencies = [
     "email-validator>=2.0.0",
     "google-auth>=2.0.0",
     "resend>=2.0.0",
+    "numpy>=1.26.0",
 ]
 
 [project.optional-dependencies]
@@ -37,3 +38,12 @@ dev = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+

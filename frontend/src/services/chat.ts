@@ -2,7 +2,7 @@ import api from "@/lib/axios";
 import type { APIResponse } from "@/types/common";
 import type { Conversation, ChatMessage, ChatResponse } from "@/types/chat";
 
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api";
+const BASE_URL = import.meta.env.VITE_API_URL || "https://suits-tw7o.onrender.com";
 
 export const chatService = {
   getConversations: async () => {
