@@ -148,6 +148,21 @@ app.include_router(statutes.router, prefix="/api")
 app.include_router(counter_pleading.router, prefix="/api")
 
 
+@app.get("/")
+@app.get("/api")
+async def root():
+    return {
+        "status": "online",
+        "service": "SUITS Court Intelligence Platform",
+        "version": "1.0.0",
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/api/health",
+            "prediction": "/api/health/prediction",
+        },
+    }
+
+
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "version": "1.0.0"}

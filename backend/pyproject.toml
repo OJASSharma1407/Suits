@@ -26,6 +26,10 @@ dependencies = [
     "google-auth>=2.0.0",
     "resend>=2.0.0",
     "numpy>=1.26.0",
+    "torch>=2.3.0",
+    "transformers>=4.40.0",
+    "pypdf>=4.0.0",
+    "python-docx>=1.1.0",
 ]
 
 [project.optional-dependencies]
