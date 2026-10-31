@@ -3,8 +3,9 @@
 Loads all environment variables and provides typed access.
 """
 
+from typing import Self
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
-from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -32,12 +33,32 @@ class Settings(BaseSettings):
 
     # Gemini AI API
     gemini_api_key: str = Field(default="")
-    gemini_model: str = Field(default="gemini-3.6-flash")
+    gemini_model: str = Field(default="gemini-3.5-flash")
 
     # OpenRouter API (Used for Interactive AI Chatbot)
     openrouter_api_key: str = Field(default="")
-    openrouter_model: str = Field(default="nvidia/nemotron-3-ultra-550b-a55b:free")
-    openrouter_max_tokens: int = Field(default=4096)
+    openrouter_model: str = Field(default="openrouter/free")
+    openrouter_max_tokens: int = Field(default=2048)
+
+    # Groq Cloud API (Gemini fallback — openai/gpt-oss-120b or llama-3.3-70b-versatile)
+    groq_api_key: str = Field(default="")
+    groq_model: str = Field(default="openai/gpt-oss-120b")
+
+    # Local Ollama AI (Offline / Manual Local AI Mode — Qwen 7B)
+    ollama_base_url: str = Field(default="http://localhost:11434")
+    ollama_model: str = Field(default="qwen2.5:7b")
+    ollama_timeout_seconds: int = Field(default=120)
+    ollama_temperature: float = Field(default=0.2)
+
+    # Judicial Outcome Prediction Engine (shares gemini_api_key)
+    prediction_gemini_model: str = Field(default="gemini-3.5-flash")
+    prediction_thinking_level: str = Field(default="high")          # low | medium | high
+    prediction_thinking_budget: int = Field(default=24576)          # budget for legacy models
+    prediction_cache_ttl: int = Field(default=604800)               # 7 days (state-hash based invalidation)
+    prediction_max_precedents: int = Field(default=6)
+    prediction_enabled: bool = Field(default=True)                  # Enabled for testing/demo
+    inlegalbert_scoring_mode: str = Field(default="whitened")       # "whitened" | "finetuned"
+    inlegalbert_device: str = Field(default="auto")                 # auto | cuda | cpu
 
     # Google OAuth
     google_client_id: str = Field(default="")
@@ -53,7 +74,7 @@ class Settings(BaseSettings):
     cors_origins: str = Field(default="http://localhost:5173,http://127.0.0.1:5173")
 
     # Rate Limiting
-    rate_limit_per_minute: int = Field(default=300)
+    rate_limit_per_minute: int = Field(default=120)
 
     # Cache TTLs (seconds)
     cache_ttl_search: int = Field(default=900)       # 15 minutes
@@ -65,9 +86,37 @@ class Settings(BaseSettings):
 
     @property
     def cors_origins_list(self) -> list[str]:
-        return [origin.strip() for origin in self.cors_origins.split(",")]
+        return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
 
-    model_config = {"env_file": ".env", "env_file_encoding": "utf-8", "extra": "ignore"}
+    @model_validator(mode="after")
+    def validate_production_security(self) -> Self:
+        """Enforce strict production safeguards on secrets and storage engines."""
+        if self.environment.lower() == "production":
+            insecure_defaults = {
+                "change-me",
+                "change-me-refresh",
+                "super-secret-jwt-key-replace-with-secure-random-32-chars",
+                "super-secret-refresh-key-replace-with-secure-random-32-chars",
+            }
+            if self.jwt_secret in insecure_defaults or len(self.jwt_secret) < 32:
+                raise ValueError(
+                    "CRITICAL: JWT_SECRET must be configured with a random string of at least 32 characters in production."
+                )
+            if self.jwt_refresh_secret in insecure_defaults or len(self.jwt_refresh_secret) < 32:
+                raise ValueError(
+                    "CRITICAL: JWT_REFRESH_SECRET must be configured with a random string of at least 32 characters in production."
+                )
+            if self.database_url.startswith("sqlite"):
+                raise ValueError(
+                    "CRITICAL: SQLite is not supported in production environments. Please configure a PostgreSQL DATABASE_URL."
+                )
+        return self
+
+    model_config = {
+        "env_file": [".env", "backend/.env"],
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+    }
 
 
 settings = Settings()

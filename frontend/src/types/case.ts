@@ -130,6 +130,24 @@ export interface OrderAI {
   compliance_directions?: string[];
   risks?: string[];
   implications?: string[];
+  // Editorial Headnote
+  operative_disposition?: string | null;
+  catchwords?: string[];
+  held_points?: string[];
+  obiter_dicta?: string[];
+  precedent_citator_table?: Array<{
+    precedent_name: string;
+    treatment: string;
+    bench_commentary: string;
+    overruled_specific_ratio?: string | null;
+  }>;
+  statutory_provisions_considered?: Array<{
+    act_name: string;
+    section_article: string;
+    nature_of_interpretation: string;
+    interpretation_summary: string;
+  }>;
+
   extraction_confidence?: number | null;
   raw_data?: Record<string, unknown>;
   [key: string]: unknown;

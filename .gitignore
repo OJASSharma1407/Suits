@@ -7,13 +7,15 @@ __pycache__/
 *.so
 
 # extra
-docs
+# Database files
+*.db
+*.db-shm
+*.db-wal
 backend/suits.db
 # Distribution / packaging
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -227,3 +229,12 @@ backend/app/suits.db-wal
 backend/app/suits.db
 backend/data/uploads/
 
+# Frontend artifacts
+frontend/dist/
+frontend/node_modules/
+
+# Runtime data & uploads
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+backend/data/pdf_cache/*
+!backend/data/pdf_cache/.gitkeep

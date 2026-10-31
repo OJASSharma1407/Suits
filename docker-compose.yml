@@ -1,33 +1,146 @@
+name: suits
+
 services:
+  # -------------------------------------------------------------
+  # PostgreSQL 16 Database
+  # -------------------------------------------------------------
+  postgres:
+    image: postgres:16-alpine
+    container_name: suits_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-suits}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-suits}
+      POSTGRES_DB: ${POSTGRES_DB:-suits}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-suits}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - suits_network
+
+  # -------------------------------------------------------------
+  # Redis 7 Cache & Rate Limiting
+  # -------------------------------------------------------------
   redis:
     image: redis:7-alpine
     container_name: suits_redis
-    restart: always
+    restart: unless-stopped
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+    networks:
+      - suits_network
 
-  postgres:
-    image: postgres:16-alpine
-    container_name: suits_postgres
-    restart: always
+  # -------------------------------------------------------------
+  # SUITS FastAPI Backend (Python 3.12 + PyTorch CPU + InLegalBERT)
+  # -------------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: suits_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
     environment:
-      POSTGRES_USER: suits
-      POSTGRES_PASSWORD: suits
-      POSTGRES_DB: suits
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U suits"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
+      # Database & Cache
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-suits}:${POSTGRES_PASSWORD:-suits}@postgres:5432/${POSTGRES_DB:-suits}
+      REDIS_URL: redis://redis:6379/0
 
+      # Security & JWT
+      JWT_SECRET: ${JWT_SECRET:-change-this-to-a-secure-random-key-in-production}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-change-this-to-another-secure-key}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
+
+      # External APIs
+      ECOURTS_API_KEY: ${ECOURTS_API_KEY:-}
+      ECOURTS_BASE_URL: ${ECOURTS_BASE_URL:-https://api.ecourts.gov.in/partner}
+      KANOON_API_TOKEN: ${KANOON_API_TOKEN:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      PREDICTION_GEMINI_MODEL: ${PREDICTION_GEMINI_MODEL:-gemini-3.5-flash}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
+      OPENROUTER_MAX_TOKENS: ${OPENROUTER_MAX_TOKENS:-2048}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      GROQ_MODEL: ${GROQ_MODEL:-llama-3.3-70b-versatile}
+
+      # Host Ollama Connectivity (for local Qwen 2.5 7B offline AI)
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+
+      # OAuth & Notifications
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      EMAIL_FROM: ${EMAIL_FROM:-Suits Legal <onboarding@resend.dev>}
+
+      # Application Configuration
+      ENVIRONMENT: ${ENVIRONMENT:-production}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1:5173}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${BACKEND_PORT:-8000}:8000"
+    volumes:
+      - suits_uploads:/app/data/uploads
+      - suits_pdf_cache:/app/data/pdf_cache
+    networks:
+      - suits_network
+
+  # -------------------------------------------------------------
+  # SUITS Frontend (React 19 + Vite 8 + Nginx Reverse Proxy)
+  # -------------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-/api}
+        VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    container_name: suits_frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${FRONTEND_PORT:-5173}:80"
+    networks:
+      - suits_network
+
+# ---------------------------------------------------------------
+# Named Persistent Storage Volumes
+# ---------------------------------------------------------------
 volumes:
   postgres_data:
+    name: suits_postgres_data
+  redis_data:
+    name: suits_redis_data
+  suits_uploads:
+    name: suits_uploads_data
+  suits_pdf_cache:
+    name: suits_pdf_cache_data
+
+# ---------------------------------------------------------------
+# Isolated Internal Network
+# ---------------------------------------------------------------
+networks:
+  suits_network:
+    name: suits_network
+    driver: bridge
+

@@ -216,18 +216,31 @@ class AuthService:
     async def google_auth(self, credential_jwt: str) -> dict:
         """Authenticate or register user via Google ID Token."""
         try:
-            # Verify the token against Google's public keys
-            # When GOOGLE_CLIENT_ID is set in config, verify audience matches
-            client_id = settings.google_client_id if settings.google_client_id else None
+            # Verify the token against Google's public keys.
+            # Support comma-separated client IDs in config and include known frontend client IDs.
+            audiences: list[str] = []
+            if settings.google_client_id and settings.google_client_id.strip():
+                for cid in settings.google_client_id.split(","):
+                    c = cid.strip()
+                    if c and c not in audiences:
+                        audiences.append(c)
+
+            # Known frontend client ID for Suits
+            default_frontend_cid = "971291442723-k2l3veh0365pklhsaesv087f8heohiai.apps.googleusercontent.com"
+            if default_frontend_cid not in audiences:
+                audiences.append(default_frontend_cid)
+
+            target_audience = audiences if len(audiences) > 1 else (audiences[0] if audiences else None)
+
             idinfo = id_token.verify_oauth2_token(
                 credential_jwt,
                 google_requests.Request(),
-                audience=client_id,
+                audience=target_audience,
                 clock_skew_in_seconds=60,
             )
         except Exception as e:
             logger.warning("google_token_verification_failed", error=str(e))
-            raise UnauthorizedError("Google authentication failed. Invalid token.")
+            raise UnauthorizedError(f"Google authentication failed: {str(e)}")
 
         email = idinfo.get("email")
         if not email:

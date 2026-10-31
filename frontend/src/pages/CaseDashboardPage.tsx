@@ -7,9 +7,11 @@ import { PartyCard } from "@/components/case/PartyCard";
 import { JudgeCard } from "@/components/case/JudgeCard";
 import { StatisticsCard } from "@/components/case/StatisticsCard";
 import { DocumentLiquidNavBar } from "@/components/case/DocumentLiquidNavBar";
-import { AISummaryCard } from "@/components/case/AISummaryCard";
 import { DocumentReaderModal } from "@/components/case/DocumentReaderModal";
 import { CitationNetworkView } from "@/components/case/citation/CitationNetworkView";
+import { CriminalEraTransitionCard } from "@/components/case/CriminalEraTransitionCard";
+import { OrderIntelligenceCard } from "@/components/case/OrderIntelligenceCard";
+import { PrecedentsPredictionCard } from "@/components/case/PrecedentsPredictionCard";
 import { ChatPanel } from "@/components/chat/ChatPanel";
 import { SuitsLoader } from "@/components/common/SuitsLoader";
 import { SkeletonLoader } from "@/components/common/SkeletonLoader";
@@ -25,6 +27,54 @@ import type { CitationNode } from "@/types/citation";
 import { Sparkles, MessageSquare, X, RotateCcw, Maximize2 } from "lucide-react";
 import { toast } from "sonner";
 import { useDictationStore } from "@/store/dictation-store";
+
+function isCriminalCase(caseData: CaseDetails | null): boolean {
+  if (!caseData) return false;
+  if (caseData.fir_details && (caseData.fir_details.policeStation || caseData.fir_details.caseNumber)) {
+    return true;
+  }
+  const criminalKeywords = [
+    "criminal",
+    "crl",
+    "bail",
+    "anticipatory",
+    "fir",
+    "police",
+    "ipc",
+    "crpc",
+    "bns",
+    "bnss",
+    "bsa",
+    "ndps",
+    "pocso",
+    "nia",
+    "cbi",
+    "penal code",
+    "prosecution",
+    "state of",
+    "state vs",
+    "state v.",
+    "narcotic",
+    "pmla",
+    "sc/st",
+    "quashing",
+    "section 482",
+    "sec 482",
+    "habeas corpus",
+  ];
+  const textToScan = [
+    caseData.case_type || "",
+    caseData.case_type_label || "",
+    caseData.case_category || "",
+    caseData.judicial_section || "",
+    caseData.case_title || "",
+    ...(caseData.acts_and_sections || []),
+  ]
+    .join(" ")
+    .toLowerCase();
+
+  return criminalKeywords.some((kw) => textToScan.includes(kw));
+}
 
 export default function CaseDashboardPage() {
   const { cnr } = useParams<{ cnr: string }>();
@@ -242,7 +292,7 @@ export default function CaseDashboardPage() {
       setSelectedAI(aiData);
       toast.success("Summary loaded.");
       setTimeout(() => {
-        const el = document.getElementById("ai-summary-section");
+        const el = document.getElementById("order-intelligence-section");
         el?.scrollIntoView({ behavior: "smooth", block: "start" });
       }, 100);
     } catch {
@@ -274,7 +324,7 @@ export default function CaseDashboardPage() {
     setIsReaderOpen(true);
   };
 
-  const handleOpenPrecedentReader = (node: CitationNode) => {
+  const handleOpenPrecedentReader = (node: { tid?: string | null; title: string; court?: string | null; node_type: string; year?: string | number | null }) => {
     if (node.node_type === "target") {
       handleOpenReader();
       return;
@@ -466,31 +516,35 @@ export default function CaseDashboardPage() {
       )}
 
       <div className="space-y-8">
-        {/* AI Analysis Display */}
-        <div id="ai-summary-section">
-          {aiLoading ? (
-            <SkeletonLoader count={1} height="150px" />
-          ) : (
-            selectedAI && (
-              <AISummaryCard
-                caseData={caseData}
-                aiData={selectedAI}
-                summary={selectedAI.executive_summary}
-                plainLanguage={selectedAI.plain_language_summary}
-                issues={selectedAI.primary_issues}
-                reasoning={selectedAI.court_reasoning}
-                ratioDecidendi={selectedAI.ratio_decidendi}
-                directions={selectedAI.court_directions}
-                statutesCited={selectedAI.statutes_cited}
-                onReadDocument={handleOpenReader}
-              />
-            )
-          )}
+        {/* Unified Order Intelligence & Editorial Headnote */}
+        <div id="order-intelligence-section">
+          <OrderIntelligenceCard
+            caseData={caseData}
+            selectedFilename={selectedOrderFilename}
+            aiData={selectedAI}
+            onReadDocument={(fname) => handleOpenReader(fname, "pdf")}
+          />
         </div>
+
+        {/* Criminal Law Era Transition Engine (Guarded for criminal matters only) */}
+        {isCriminalCase(caseData) && (
+          <div id="era-transition-section">
+            <CriminalEraTransitionCard cnr={caseData.cnr} />
+          </div>
+        )}
 
         {/* Interactive Citation Network Graph Section */}
         <div id="citation-network-section">
           <CitationNetworkView
+            cnr={caseData.cnr}
+            caseTitle={caseData.case_title}
+            onReadDocument={handleOpenPrecedentReader}
+          />
+        </div>
+
+        {/* Unified Precedents Analogy & Judicial Outcome Prediction */}
+        <div id="precedents-prediction-section">
+          <PrecedentsPredictionCard
             cnr={caseData.cnr}
             caseTitle={caseData.case_title}
             onReadDocument={handleOpenPrecedentReader}

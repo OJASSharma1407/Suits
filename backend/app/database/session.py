@@ -40,13 +40,24 @@ if _is_sqlite:
         cursor.close()
 
 else:
-    from sqlalchemy.pool import NullPool
+    connect_args = {}
+    db_url = settings.database_url
+    if "sslmode=require" in db_url or "ssl=require" in db_url:
+        import ssl
+        ctx = ssl.create_default_context()
+        ctx.check_hostname = False
+        ctx.verify_mode = ssl.CERT_NONE
+        connect_args["ssl"] = ctx
+        db_url = db_url.replace("?sslmode=require", "").replace("&sslmode=require", "")
+        db_url = db_url.replace("?ssl=require", "").replace("&ssl=require", "")
+
     engine = create_async_engine(
-        settings.database_url,
+        db_url,
         echo=settings.environment == "development",
         pool_pre_ping=True,
         pool_size=10,
         max_overflow=20,
+        connect_args=connect_args,
     )
 
 async_session_factory = async_sessionmaker(
@@ -95,6 +106,8 @@ async def init_db() -> None:
                         await conn.execute(text("ALTER TABLE user_documents ADD COLUMN tags_list JSON DEFAULT '[]'"))
                     if "page_count" not in doc_cols:
                         await conn.execute(text("ALTER TABLE user_documents ADD COLUMN page_count INTEGER DEFAULT 0 NOT NULL"))
+                    if "content_hash" not in doc_cols:
+                        await conn.execute(text("ALTER TABLE user_documents ADD COLUMN content_hash VARCHAR(64)"))
             except Exception:
                 pass
 

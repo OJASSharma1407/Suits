@@ -1,0 +1,1928 @@
+================================================================================
+                    SUITS - COMPREHENSIVE SYSTEM DOCUMENTATION
+              AI-Powered Court Intelligence & Legal Research Platform
+                           Full Technical Reference Guide
+================================================================================
+
+Version      : 1.0.0
+Backend      : Python 3.12 / FastAPI / Uvicorn ASGI
+Frontend     : React 19.2 / TypeScript ~6.0 / Vite 8.2 / TailwindCSS v4
+AI Stack     : Google Gemini 3.5 Flash - OpenRouter - Groq - Ollama (Qwen 2.5 7B) - InLegalBERT
+Database     : SQLite (dev) / PostgreSQL (prod) via SQLAlchemy 2.0 Async
+Cache        : Redis 7 (optional, two-tier cache with graceful degradation)
+External APIs: eCourts Partner API - Indian Kanoon API
+Jurisdiction : Indian Judicial System (Supreme Court of India, High Courts, District Courts)
+Documentation: Comprehensive Deep Dive (All Architectures, Modules, Flows, Schemas)
+
+================================================================================
+TABLE OF CONTENTS
+================================================================================
+
+  1.  Executive Overview & Mission Statement
+  2.  Why SUITS is Needed (Comprehensive Pain Point & Industry Analysis)
+  3.  User Personas & Real-World Use Cases
+  4.  System Architecture & Design Philosophy
+  5.  Comprehensive Architecture Diagrams & ASCII Flowcharts
+      5.1  High-Level System Architecture Diagram
+      5.2  Dual-Mode AI Provider Routing Architecture
+      5.3  End-to-End Data Flow Architecture
+      5.4  Two-Tier Caching Architecture
+  6.  Backend Deep Dive
+      6.1  Entry Point & Application Lifecycle (main.py)
+      6.2  Directory Structure & Code Organization
+      6.3  Configuration & Environment Management (config.py)
+      6.4  Database Layer & Asynchronous Session Management (session.py, base.py)
+      6.5  Middleware Stack (LIFO Execution Chain)
+      6.6  API Router Architecture (12 Modular Routers)
+      6.7  Services Layer - Exhaustive Functional Breakdown (14 Services)
+      6.8  AI & External Clients Layer (7 Clients)
+      6.9  Repository Pattern & Data Access Layer
+      6.10 Caching Strategy (Redis + Relational Store)
+      6.11 Prompt Engineering Architecture (Prompts Repository)
+  7.  Frontend Deep Dive
+      7.1  Technology Stack & Architecture Rationale
+      7.2  Directory Structure & Component Organization
+      7.3  Routing Architecture & Authentication Guards (React Router 7)
+      7.4  State Management Layer (Zustand Stores)
+      7.5  HTTP Client, Interceptor State Machine & Token Refresh (lib/axios.ts)
+      7.6  Pages - Complete Inventory, Purpose & Logic (18 Pages)
+      7.7  Components - Exhaustive Inventory & Behavioral Breakdown (40+ Components)
+      7.8  UI/UX Design System, Visual Principles & Micro-Interactions
+      7.9  Design Tokens, Color Geometry & CSS Architecture (index.css)
+      7.10 Word-Style Multi-Page Legal Editor Architecture (LegalEditor.tsx)
+  8.  External API Integrations
+      8.1  eCourts Partner API Integration
+      8.2  Indian Kanoon API Integration & HTML-to-Markdown Parser
+  9.  AI Pipeline Architecture & Specialized Models
+      9.1  AI Orchestrator & Multi-Provider Strategy
+      9.2  law-ai/InLegalBERT - Domain-Specific Legal NLP Engine
+      9.3  Mathematical Formulations (Whitening Transformation & RRF Fusion)
+      9.4  Rhetorical Role Segmentation (RRS)
+      9.5  Era Statutory Guide & Prompt Enforcements
+ 10.  Exhaustive Feature Deep Dives (15 Core Features)
+      10.1  Case Intelligence Dashboard
+      10.2  Legal Research Search Engine (CNR & Keyword)
+      10.3  AI Order Intelligence & 60-Field Extraction
+      10.4  Judicial Outcome Prediction Engine
+      10.5  Criminal Law Era Transition Analyzer (BNS / BNSS / BSA)
+      10.6  Publisher-Grade Headnote & Ratio Decidendi Extraction
+      10.7  Hybrid RAG Precedent & Similar Cases Discovery
+      10.8  Interactive D3 Force-Directed Citation Network Graph
+      10.9  Context-Aware AI Legal Chatbot
+      10.10 Document Management, Chunking & OCR Pipeline
+      10.11 Multi-Page Word-Style Legal Drafting Editor
+      10.12 Adversarial Defense Engine (Written Statement Generator - Order VIII CPC)
+      10.13 Real-Time Practice Analytics & Heatmap Dashboard
+      10.14 Research Vault & Case Bookmarking System
+      10.15 Case View History & Navigation Tracking
+ 11.  Complete Database Schema & Entity-Relationship (ER) Architecture
+      11.1  Entity-Relationship Diagram (ASCII)
+      11.2  Table Definitions, Data Types, Constraints & Indices (17 Tables)
+ 12.  Authentication, Authorization & Security Architecture
+      12.1  Email/Password Registration & Resend OTP Verification Flow
+      12.2  Google OAuth2 Credential Verification Flow
+      12.3  Dual-Secret JWT Architecture & Token Refresh Flow
+      12.4  Data Confidentiality, Privilege & Client-Side Privacy
+ 13.  Complete API Endpoint Reference Manual (40+ Endpoints)
+ 14.  Detailed Sequence Diagrams & Request/Response Flows
+      14.1  Flow 1: Case Lookup & AI Synthesis Sequence
+      14.2  Flow 2: Adversarial Defense Engine (Written Statement Generation)
+      14.3  Flow 3: Streaming AI Legal Chatbot Sequence
+      14.4  Flow 4: Document Ingestion, OCR, Chunking & Vector Search
+ 15.  Complete Project File Tree with Explanations
+ 16.  Technology Stack Matrix (What, Where, Why & Alternatives Considered)
+ 17.  Deployment, Infrastructure & DevOps Architecture
+ 18.  Troubleshooting & Operational Runbook
+
+================================================================================
+1. EXECUTIVE OVERVIEW & MISSION STATEMENT
+================================================================================
+
+SUITS is an enterprise-grade AI-powered Court Intelligence, Case Analytics, and
+Legal Research Platform purpose-built for the Indian Legal System. 
+
+The Indian judiciary represents one of the largest and most complex legal ecosystems
+in the world, operating under a common law framework governed by Article 141 of the
+Constitution of India (stare decisis: Supreme Court rulings are binding law of the
+land). With over 50 million pending cases across the Supreme Court of India, 25 High
+Courts, and thousands of District and Subordinate Courts, legal practitioners face
+an unprecedented cognitive and operational bottleneck.
+
+SUITS bridges the gap between massive, fragmented judicial repositories and daily
+advocacy workflows. It transforms raw court dockets, unstructured judgment texts,
+and complex statutory shifts into actionable legal intelligence, publisher-grade
+headnotes, predictive case analytics, and automated court-ready pleadings.
+
+KEY DIFFERENTIATORS VS GENERIC LEGAL TECH:
+--------------------------------------------------------------------------------
+Dimension            | Generic Legal Tools             | SUITS Platform
+---------------------|---------------------------------|------------------------
+Judgment Processing  | Raw text viewer or simple regex | Neuro-Symbolic AI pipeline
+                     | keyword matching.               | (InLegalBERT + Gemini) 
+                     |                                 | extracting ratio, held 
+                     |                                 | points, and citator table.
+---------------------|---------------------------------|------------------------
+Statutory Awareness  | Static text of legacy acts; no  | Automatic era detection
+                     | contextual understanding of the | (Pre vs Post July 2024),
+                     | July 2024 legislative overhaul. | bidirectional concordance
+                     |                                 | mapping (IPC <-> BNS, etc.),
+                     |                                 | and procedural delta alerts.
+---------------------|---------------------------------|------------------------
+Precedent Discovery  | Keyword search returning        | Hybrid RAG combining 
+                     | thousands of unranked results.  | citation graph topology,
+                     |                                 | dense vector similarity, and
+                     |                                 | InLegalBERT reranking with
+                     |                                 | Supreme Court authority boost.
+---------------------|---------------------------------|------------------------
+Case Outcome         | None; purely descriptive       | Multi-class probability
+Prediction           | historical records.             | distribution based on factual
+                     |                                 | nexus to binding precedents.
+---------------------|---------------------------------|------------------------
+Pleading Generation  | Static Word templates with blank| Adversarial Defense Engine:
+                     | placeholders.                   | paragraph-by-paragraph plaint
+                     |                                 | traversal & statutory bars.
+---------------------|---------------------------------|------------------------
+Privacy & AI Hosting | 100% cloud-dependent; sensitive | Dual-mode AI: Seamlessly 
+                     | client data sent to 3rd parties.| switches to local Ollama
+                     |                                 | (Qwen 7B) for 100% offline,
+                     |                                 | confidential drafting.
+---------------------|---------------------------------|------------------------
+
+================================================================================
+2. WHY SUITS IS NEEDED (COMPREHENSIVE PAIN POINT & INDUSTRY ANALYSIS)
+================================================================================
+
+2.1 PAIN POINT 1: DOCKET TRACKING & DATA FRAGMENTATION
+  - Context: The eCourts portal houses case details across 3,000+ court complexes.
+    Lawyers managing 50-100 active matters must manually input 16-character Case
+    Number Record (CNR) strings repeatedly, solve CAPTCHAs, and navigate cryptic
+    cause lists.
+  - The SUITS Solution: Single-click CNR lookup, persistent caching, automated
+    timeline generation with staggered hearing date extrapolation, and one-click
+    case refreshing.
+
+2.2 PAIN POINT 2: COMPREHENDING 100-PAGE JUDGMENTS UNDER TIME PRESSURE
+  - Context: An advocate appearing before a High Court bench often has under 5
+    minutes to distill a 70-page judgment cited unexpectedly by opposing counsel.
+    Judgments intermingle counsel submissions, trial court factual records, obiter
+    dicta, and operative holdings.
+  - The SUITS Solution: The Headnote & Order Intelligence Engine performs Rhetorical
+    Role Segmentation (RRS) using InLegalBERT to mathematically isolate the ratio
+    decidendi from party arguments, producing SCC/AIR-style publisher headnotes with
+    hierarchical catchwords, numbered held points, and plain-language summaries.
+
+2.3 PAIN POINT 3: THE JULY 2024 STATUTORY TRANSITION CRISIS
+  - Context: On 1 July 2024, the Parliament of India repealed and replaced the three
+    foundational criminal law codes:
+      1. Indian Penal Code, 1860 (IPC) -> Bharatiya Nyaya Sanhita, 2023 (BNS)
+      2. Code of Criminal Procedure, 1973 (CrPC) -> Bharatiya Nagarik Suraksha Sanhita, 2023 (BNSS)
+      3. Indian Evidence Act, 1872 (IEA) -> Bharatiya Sakshya Adhiniyam, 2023 (BSA)
+    Under Section 531 BNSS and Section 358 BNS, offences committed prior to 1 July 2024
+    must be tried under the old IPC/CrPC, while offences committed thereafter fall
+    under BNS/BNSS. Thousands of pleadings are currently being dismissed or returned
+    with objections due to improper section references and failure to comply with
+    new procedural mandates (e.g., mandatory videography under S. 105 BNSS).
+  - The SUITS Solution: The Era Transition Analyzer detects the filing era, maps all
+    cited sections across eras using a curated concordance database, issues procedural
+    delta alerts, and generates court-ready transition clauses.
+
+2.4 PAIN POINT 4: PRECEDENT SEARCH & THE BINDING AUTHORITY HIERARCHY
+  - Context: Finding a precedent that is "on all fours" requires evaluating judicial
+    hierarchy (Supreme Court 3-judge bench > 2-judge bench > High Court full bench >
+    High Court division bench). Generic search engines fail to distinguish whether a
+    case was followed, distinguished, or overruled.
+  - The SUITS Solution: Hybrid RAG fuses Kanoon citation graphs with InLegalBERT dense
+    embeddings, applies a 1.5x stare decisis multiplier for Supreme Court judgments,
+    and constructs an interactive D3 citation network graph.
+
+2.5 PAIN POINT 5: DRUDGERY OF OPPOSING PLEADING DRAFTING (ORDER VIII CPC)
+  - Context: When served with a 40-page Plaint or Writ Petition, advocates must draft
+    a Written Statement adhering to Order VIII Rules 3-5 CPC (mandating that every
+    allegation not specifically denied is deemed to be admitted). Drafting 50+
+    paragraph-by-paragraph denials and identifying legal bars consumes 6-10 hours.
+  - The SUITS Solution: The Adversarial Defense Engine ingests the plaint, extracts
+    numbered paragraphs via deterministic regex, flags statutory bars (Order VII
+    Rule 11, Section 12A Commercial Courts Act, Limitation Act), and drafts a
+    complete Written Statement ready for insertion into the built-in Legal Editor.
+
+================================================================================
+3. USER PERSONAS & REAL-WORLD USE CASES
+================================================================================
+
+3.1 ADVOCATES & LITIGATION COUNSEL
+  - Primary Use: Morning cause-list preparation, CNR case tracking, instant order
+    analysis before court appearances, and automated Written Statement drafting.
+  - Workflow: Advocate opens Case Dashboard, reviews previous order holding, checks
+    predicted likelihood of bail/interim relief, and uses the AI Chatbot to find
+    binding High Court counter-precedents.
+
+3.2 SENIOR ADVOCATES & ARGUING COUNSEL
+  - Primary Use: Strategic argument formulation, ratio decidendi extraction, and
+    distinguishing adverse precedents cited by opponents.
+  - Workflow: Reads the AI-generated Publisher Headnote and Citator Table to identify
+    whether opposing citations are distinguishable on facts or overruled by larger
+    benches.
+
+3.3 CORPORATE IN-HOUSE LEGAL TEAMS
+  - Primary Use: Litigation portfolio monitoring, tracking matters across multiple
+    High Courts, assessing litigation risk and outcome probabilities.
+  - Workflow: Searches matters by CNR, reviews practice analytics, saves Kanoon
+    orders in the Files Vault, and generates AI Research Briefs for board memos.
+
+3.4 LAW CLERKS & RESEARCH ASSISTANTS
+  - Primary Use: Judgment research, compiling legal memos, tracking statutory era
+    transitions for pending criminal appeals.
+  - Workflow: Compiles precedent lists using Hybrid RAG, inspects citation network
+    graphs to evaluate case authority, and exports findings to Word/PDF.
+
+3.5 LAW STUDENTS & ACADEMICS
+  - Primary Use: Studying Indian jurisprudence, understanding rhetorical roles in
+    landmark judgments, and mastering BNS/BNSS statutory concordance.
+
+3.6 LAW REPORT PUBLISHERS & LEGAL EDITORS
+  - Primary Use: Automated draft headnote generation, catchword indexing, and
+    citator cross-referencing for law reports (SCC, AIR, DLT style).
+
+================================================================================
+4. SYSTEM ARCHITECTURE & DESIGN PHILOSOPHY
+================================================================================
+
+SUITS is engineered with a modern, high-performance, two-tier decoupled architecture:
+  1. Frontend: Single Page Application (SPA) built on React 19, TypeScript, and Vite.
+  2. Backend: Asynchronous REST API built on Python 3.12, FastAPI, and Uvicorn.
+
+CORE ARCHITECTURAL PRINCIPLES:
+  1. Local-First AI & Dual-Mode Flexibility:
+     - Cloud Mode: Uses Google Gemini 3.5 Flash for high-speed reasoning and
+       OpenRouter for SSE streaming chat.
+     - Local Mode: Uses Ollama (Qwen 2.5 7B) running entirely on localhost:11434.
+       Zero bytes of sensitive case text leave the lawyer's machine.
+     - Automatic Failover: When cloud API quotas (HTTP 429) are exhausted, the
+       system prompts the user to switch seamlessly to the local model.
+  2. Neuro-Symbolic Legal Processing:
+     - Combines symbolic deterministic rules (regex parsing, statutory bar logic,
+       era concordance tables) with neural AI models (InLegalBERT embeddings,
+       Gemini generative deduction). This guarantees 100% legal accuracy on
+       statutory section numbers while leveraging LLM reasoning for prose synthesis.
+  3. Two-Tier Caching with Graceful Degradation:
+     - Tier 1: In-memory Redis cache for high-frequency search and case queries.
+     - Tier 2: Relational persistence (SQLite in dev, PostgreSQL in prod) for
+       cached orders, headnotes, predictions, and analysis. If Redis is down,
+       the system transparently falls back to the database without throwing errors.
+  4. Stateless API Design:
+     - All user state is conveyed via cryptographically signed JWT Bearer tokens
+       (HS256). Backend instances can be horizontally scaled behind a load balancer.
+
+================================================================================
+5. COMPREHENSIVE ARCHITECTURE DIAGRAMS & ASCII FLOWCHARTS
+================================================================================
+
+5.1 HIGH-LEVEL SYSTEM ARCHITECTURE DIAGRAM
+--------------------------------------------------------------------------------
+
++------------------------------------------------------------------------------+
+|                              CLIENT BROWSER (SPA)                            |
+|                                                                              |
+|  +-------------------+  +--------------------+  +-------------------------+  |
+|  | LandingPage (53K) |  | CaseDashboard(24K) |  | LegalEditor (Multi-Page)|  |
+|  | SearchPage        |  | FilesPage (Vault)  |  | CounterPleadingModal    |  |
+|  +-------------------+  +--------------------+  +-------------------------+  |
+|                                                                              |
+|  State Stores (Zustand): [ai-mode-store] [theme-store] [dictation-store]     |
+|  HTTP Client: Axios Interceptors -> Bearer JWT + 'X-AI-Provider' Header      |
++---------------------------------------+--------------------------------------+
+                                        |
+                                        | HTTPS / REST (JSON + SSE Streams)
+                                        v
++------------------------------------------------------------------------------+
+|                         FASTAPI ASYNC BACKEND (PORT 8000)                    |
+|                                                                              |
+|  MIDDLEWARE PIPELINE (LIFO Execution Order):                                 |
+|  [1. AIProviderMiddleware] -> [2. RateLimitMiddleware] ->                    |
+|  [3. RequestLoggingMiddleware] -> [4. CORSMiddleware]                        |
+|                                                                              |
+|  ROUTER LAYER (/api prefix, 12 Modular Routers):                             |
+|  /auth, /search, /cases, /orders, /chat, /bookmarks, /history,               |
+|  /analytics, /files, /documents, /statutes, /defense                         |
+|                                                                              |
+|  SERVICES LAYER (14 Specialized Business Logic Modules):                     |
+|  +------------------------+-------------------------+---------------------+  |
+|  | CaseService            | OrderService            | PredictionService   |  |
+|  | HeadnoteService        | SimilarCasesService     | CitationService     |  |
+|  | EraTransitionService   | CounterPleadingService  | DocumentProcessor   |  |
+|  | AnalyticsService       | ChatService             | HistoryService      |  |
+|  | BookmarkService        | FileService             |                     |  |
+|  +------------------------+-------------------------+---------------------+  |
+|                                                                              |
+|  AI ORCHESTRATOR -> Evaluates X-AI-Provider -> Routes to Cloud / Local Client|
+|                                                                              |
+|  DATA ACCESS LAYER: CacheRepository | DocumentRepository                     |
+|  DATABASE ENGINE: SQLAlchemy 2.0 AsyncSession (SQLite WAL / PostgreSQL)      |
++--------------------+----------------------------------+----------------------+
+                     |                                  |
+         +-----------v----------+            +----------v-----------+
+         |   EXTERNAL COURT     |            |  AI PROVIDER MATRIX  |
+         |   & LEGAL DATA       |            |                      |
+         |                      |            | CLOUD:               |
+         | eCourts Partner API  |            | - Gemini 3.5 Flash   |
+         | (Status, Parties,    |            | - OpenRouter (Chat)  |
+         |  Judges, Timeline)   |            | - Groq (Fallback)    |
+         |                      |            |                      |
+         | Indian Kanoon API    |            | LOCAL (OFFLINE):     |
+         | (30M+ Judgments,     |            | - Ollama Qwen 7B     |
+         |  Citations, HTML)    |            |                      |
+         +----------------------+            | IN-PROCESS NLP:      |
+                                             | - law-ai/InLegalBERT |
+                                             |   (Whitened Bi-Enc.) |
+                                             +----------------------+
+
+5.2 DUAL-MODE AI PROVIDER ROUTING ARCHITECTURE
+--------------------------------------------------------------------------------
+
+                [ User Request from Frontend Component ]
+                                  |
+                                  v
+              [ Axios Request Interceptor in lib/axios.ts ]
+                                  |
+              Is AIMode == 'local' OR Browser Offline?
+                     /                         \
+                   YES                          NO
+                   /                             \
+        Add Header:                        Default Header:
+   'X-AI-Provider: ollama'             'X-AI-Provider: cloud'
+                   \                             /
+                    +-------------+-------------+
+                                  |
+                                  v
+                   [ FastAPI AIProviderMiddleware ]
+                request.state.ai_provider = 'ollama' | 'cloud'
+                                  |
+                                  v
+                       [ AIOrchestrator Module ]
+                                  |
+                 Check request.state.ai_provider
+                     /                         \
+               'ollama'                      'cloud'
+                 /                             \
+     [ OllamaClient ]                [ GeminiClient (Primary) ]
+  http://localhost:11434                       |
+  qwen2.5:7b (Local GPU/CPU)        Success?   |   HTTP 429 Quota Exceeded?
+                                   /           |            \
+                                 YES           |            YES
+                                 /             |              \
+                       [ Return Response ]     |        [ GroqClient Fallback ]
+                                               |                 |
+                                               |         Still failing?
+                                               |                 |
+                                               |                YES
+                                               |                 |
+                                               v                 v
+                                         [ HTTP 429: ONLINE_AI_LIMIT_REACHED ]
+                                                                 |
+                                                                 v
+                                                 [ Axios Response Interceptor ]
+                                                                 |
+                                                                 v
+                                                    [ Show SwitchToOllamaModal ]
+
+5.3 END-TO-END DATA FLOW ARCHITECTURE
+--------------------------------------------------------------------------------
+
+  [User Enters CNR] -> [Frontend: SearchPage]
+          |
+          v (HTTP GET /api/search/cnr/{cnr})
+  [Backend: CaseService.get_case_details()]
+          |
+          +---> [Check Redis Cache (TTL: 30m)] ----(HIT)----> [Return Cached Case]
+          |
+          +---> [Check SQLite CachedCase Table] --(HIT)----> [Return DB Case]
+          |
+          +---> [MISS: Call ECourtsClient.get_case_by_cnr(cnr)]
+          |               | (Returns Court, Parties, Judges, Next Date)
+          |               v
+          +---> [Call KanoonClient.search(cnr)]
+          |               | (Returns Full Judgment Text, Citations)
+          |               v
+          +---> [Execute Date Normalizer & Timeline Builder]
+          |               | (Converts DD-MM-YYYY to ISO-8601, builds chronological sequence)
+          |               v
+          +---> [Execute Criminal Case Classifier]
+          |               | (Regex scan: bail, fir, ipc, bns, ndps, crpc)
+          |               v
+          +---> [Save to SQLite CachedCase & Redis]
+          |
+          v (HTTP 200 OK: CaseDetailsResponse)
+  [Frontend: CaseDashboardPage Renders]
+          |
+          +---> Render Immediate Cards: CaseHeader, Timeline, PartyCard, JudgeCard
+          |
+          +---> Parallel Lazy AI Invocations:
+                  |---> GET /api/cases/{cnr}/prediction    -> CasePredictionCard
+                  |---> GET /api/cases/{cnr}/headnote      -> CaseHeadnoteCard
+                  |---> GET /api/cases/{cnr}/era-analysis  -> CriminalEraTransitionCard
+                  |---> GET /api/cases/{cnr}/citations     -> CitationNetworkView
+                  |---> GET /api/orders/{doc_id}/analysis  -> OrderIntelligenceCard
+
+5.4 TWO-TIER CACHING ARCHITECTURE
+--------------------------------------------------------------------------------
+
+                   [ Inbound Read Request ]
+                              |
+                              v
+                +----------------------------+
+                |   TIER 1: REDIS CACHE      |
+                |   Key: suits:{op}:{hash}   |
+                |   TTL: Search=15m, Case=30m|
+                +--------------+-------------+
+                               |
+                        Cache Hit?
+                       /          \
+                     YES           NO
+                     /              \
+           [ Return 1-3ms ]          v
+                         +----------------------------+
+                         |   TIER 2: RELATIONAL DB    |
+                         |   Tables: cached_cases,    |
+                         |   cached_orders, etc.      |
+                         +-------------+--------------+
+                                       |
+                                Database Hit?
+                               /             \
+                             YES              NO
+                             /                 \
+                   [ Populate Redis ]           v
+                   [ Return 10-25ms ]   +----------------------------+
+                                        |   EXTERNAL INFERENCE /     |
+                                        |   API FETCH                |
+                                        |   eCourts / Kanoon / AI    |
+                                        +--------------+-------------+
+                                                       |
+                                            [ Write to Database ]
+                                            [ Write to Redis ]
+                                            [ Return Response ]
+
+================================================================================
+6. BACKEND DEEP DIVE
+================================================================================
+
+6.1 ENTRY POINT & APPLICATION LIFECYCLE (backend/app/main.py)
+-------------------------------------------------------------
+The application entry point is implemented in backend/app/main.py (171 lines).
+It establishes the FastAPI ASGI instance and orchestrates startup and shutdown
+lifecycle hooks using the modern async contextmanager lifespan pattern.
+
+STARTUP SEQUENCE:
+  1. Structured Logging Initialization: Configures structlog with ISO-8601
+     timestamps, log level filtering, and colored console formatting.
+  2. Async Lifespan Execution:
+     - Database Table Creation: Invokes `await init_db()`, executing
+       `Base.metadata.create_all()`.
+     - Zero-Downtime SQLite Column Migrations: Automatically inspects existing
+       tables via `PRAGMA table_info()` and executes `ALTER TABLE ADD COLUMN` for
+       newly added model attributes, avoiding manual Alembic migrations in dev.
+     - Startup Cache Sanitization: Executes raw SQL queries to purge corrupted
+       records:
+         * `DELETE FROM cached_orders WHERE markdown LIKE '%PDF extraction failed%';`
+         * `DELETE FROM cached_ai_analyses WHERE ai_json LIKE '%"confidence": 0%';`
+  3. Middleware Registration (LIFO Order):
+     - Adds CORSMiddleware, RequestLoggingMiddleware, RateLimitMiddleware, and
+       AIProviderMiddleware.
+  4. Router Registration: Registers all 12 API routers under the `/api` prefix.
+  5. Global Exception Handling: Captures `SuitsBaseException` instances and maps
+     them to structured JSON error responses with distinct `error_code` fields.
+
+SHUTDOWN SEQUENCE:
+  1. `await ecourts_client.close()`: Gracefully drains and closes the HTTP connection
+     pool maintained by `httpx.AsyncClient`.
+  2. `await cache_service.close()`: Closes the Redis connection pool.
+
+6.2 DIRECTORY STRUCTURE & CODE ORGANIZATION
+-------------------------------------------
+backend/
++-- pyproject.toml              # Project dependencies, build config & tool settings
++-- suits.db                    # Development SQLite database (WAL mode enabled)
++-- .env                        # Local secrets and configuration variables
++-- .env.example                # Template showing all required environment keys
++-- data/                       # Local data assets and precomputed matrices
+|   +-- criminal_statutes_concordance.py  # 100+ BNS/BNSS/BSA statute pairs
+|   +-- uploads/                # User document uploads organized by user UUID
+|   +-- models/
+|       +-- inlegalbert_whitening.npz     # Precomputed W and mu whitening matrices
++-- tests/                      # Automated pytest suite
+|   +-- test_counter_pleading.py # Unit tests for chunking, bars & WS assembly
++-- app/
+    +-- main.py                 # FastAPI application factory & lifespan
+    +-- api/                    # 12 HTTP Route Controllers
+    |   +-- auth.py             # User authentication, registration, OTP, OAuth
+    |   +-- search.py           # Case search by CNR and keyword
+    |   +-- cases.py            # Case details, predictions, headnotes, era analysis
+    |   +-- orders.py           # Kanoon order markdown & 60-field AI extraction
+    |   +-- chat.py             # Conversations CRUD & SSE streaming chat
+    |   +-- bookmarks.py        # Case bookmarking management
+    |   +-- history.py          # Case viewing history tracking
+    |   +-- analytics.py        # Practice insights & 365-day activity heatmap
+    |   +-- files.py            # Kanoon saved document vault
+    |   +-- documents.py        # User document uploads, OCR, semantic search
+    |   +-- statutes.py         # Statutory era concordance export
+    |   +-- counter_pleading.py # Adversarial Defense Engine (Order VIII CPC)
+    +-- clients/                # 7 External API and AI clients
+    |   +-- ecourts_client.py   # eCourts Partner API client (2s fast-fail)
+    |   +-- kanoon_client.py    # Indian Kanoon API client (POST-only design)
+    |   +-- gemini_client.py    # Google Gemini AI async client (google-genai 2.0)
+    |   +-- openrouter_client.py# OpenRouter client for SSE streaming
+    |   +-- groq_client.py      # Groq cloud client (Gemini fallback)
+    |   +-- ollama_client.py    # Local Ollama client (localhost:11434)
+    |   +-- prediction_gemini_client.py # Dedicated high-thinking Gemini client
+    +-- core/                   # Core configuration and exception hierarchies
+    |   +-- config.py           # Pydantic BaseSettings with typed env vars
+    |   +-- exceptions.py       # Custom domain exception classes
+    +-- database/               # Database engine and session factories
+    |   +-- base.py             # DeclarativeBase with common timestamp mixins
+    |   +-- session.py          # SQLite StaticPool / Postgres NullPool setup
+    +-- dependencies/           # FastAPI dependency injection providers
+    |   +-- auth.py             # get_current_user JWT validation dependency
+    +-- middleware/             # HTTP request/response middleware
+    |   +-- ai_provider.py      # X-AI-Provider header extraction
+    |   +-- logging.py          # Structured request/response logging
+    |   +-- rate_limit.py       # Token-bucket rate limiter (Redis backed)
+    +-- models/                 # 18 SQLAlchemy ORM entity definitions
+    +-- prompts/                # Centralized AI prompt repositories
+    |   +-- system.py           # MASTER_SYSTEM_PROMPT
+    |   +-- counter_pleading_prompts.py # Pleading generation prompts
+    +-- repositories/           # Abstracted data access layers
+    |   +-- cache_repository.py # Cached table operations
+    |   +-- document_repository.py # User document & chunk operations
+    +-- schemas/                # Pydantic v2 validation & serialization schemas
+    +-- services/               # 14 Business logic service implementations
+    +-- utils/                  # Helper utilities
+        +-- kanoon_formatter.py # HTML to clean Markdown converter
+
+6.3 CONFIGURATION & ENVIRONMENT MANAGEMENT (backend/app/core/config.py)
+------------------------------------------------------------------------
+Implemented using `pydantic_settings.BaseSettings`. All variables are strongly
+typed, read from `backend/.env`, and provide sensible defaults allowing the
+application to start with zero configuration in development.
+
+KEY SETTINGS REFERENCE:
+  - Database:
+    * `DATABASE_URL`: `sqlite+aiosqlite:///./suits.db` (dev) or
+      `postgresql+asyncpg://user:pass@host:5432/suits` (prod)
+  - Redis:
+    * `REDIS_URL`: `redis://localhost:6379/0`
+  - JWT Authentication:
+    * `JWT_SECRET`: Secret key for access token signing
+    * `JWT_REFRESH_SECRET`: Separate secret key for refresh token signing
+    * `JWT_ACCESS_TOKEN_EXPIRE_MINUTES`: Default 30 minutes
+    * `JWT_REFRESH_TOKEN_EXPIRE_DAYS`: Default 7 days
+    * `JWT_ALGORITHM`: `HS256`
+  - AI Engine Credentials:
+    * `GEMINI_API_KEY`: Google Cloud API Key
+    * `GEMINI_MODEL`: `gemini-3.5-flash`
+    * `OPENROUTER_API_KEY`: OpenRouter API Key
+    * `OPENROUTER_MODEL`: `openrouter/free` (or configured paid model)
+    * `GROQ_API_KEY`: Groq API Key
+    * `GROQ_MODEL`: `openai/gpt-oss-120b`
+    * `OLLAMA_BASE_URL`: `http://localhost:11434`
+    * `OLLAMA_MODEL`: `qwen2.5:7b`
+    * `OLLAMA_TIMEOUT_SECONDS`: 120
+  - Prediction Engine:
+    * `PREDICTION_GEMINI_MODEL`: `gemini-3.5-flash`
+    * `PREDICTION_THINKING_LEVEL`: `high`
+    * `PREDICTION_THINKING_BUDGET`: 24,576 tokens
+    * `PREDICTION_CACHE_TTL`: 604,800 seconds (7 days)
+    * `PREDICTION_MAX_PRECEDENTS`: 6
+  - InLegalBERT:
+    * `INLEGALBERT_SCORING_MODE`: `whitened` (or `finetuned`)
+    * `INLEGALBERT_DEVICE`: `auto` (detects CUDA, falls back to CPU)
+
+6.4 DATABASE LAYER & ASYNCHRONOUS SESSION MANAGEMENT (backend/app/database/)
+----------------------------------------------------------------------------
+SUITS implements a modern async database access layer using SQLAlchemy 2.0:
+
+SQLite Configuration (Development):
+  - Driver: `aiosqlite`
+  - Pool: `StaticPool` - ensures all async tasks within a process reuse the single
+    underlying connection, eliminating "database is locked" errors in SQLite.
+  - Connection PRAGMAs:
+    * `PRAGMA journal_mode=WAL`: Enables Write-Ahead Logging, allowing concurrent
+      readers alongside a single writer.
+    * `PRAGMA busy_timeout=30000`: Sets a 30-second lock retry timeout.
+    * `PRAGMA foreign_keys=ON`: Enforces relational integrity on delete/update.
+
+PostgreSQL Configuration (Production):
+  - Driver: `asyncpg`
+  - Pool: `NullPool` (stateless connection pool suitable for serverless or container
+    scaling) or `QueuePool` with `pool_size=10, max_overflow=20`.
+  - `pool_pre_ping=True`: Verifies connection liveness before issuing queries.
+
+Session Dependency (`get_db`):
+  Each HTTP request receives an isolated `AsyncSession`. The dependency executes:
+  ```python
+  async with async_session_factory() as session:
+      try:
+          yield session
+          await session.commit()
+      except Exception:
+          await session.rollback()
+          raise
+      finally:
+          await session.close()
+  ```
+
+6.5 MIDDLEWARE STACK (LIFO EXECUTION CHAIN)
+-------------------------------------------
+Middleware is registered in `main.py` and executes in Last-In-First-Out order:
+
+1. `AIProviderMiddleware`:
+   - Inspects the `X-AI-Provider` HTTP header on inbound requests.
+   - Sets `request.state.ai_provider = "ollama"` or `"cloud"`.
+   - Allows services to dynamically select the inference client without tight
+     coupling to HTTP headers.
+2. `RateLimitMiddleware`:
+   - Implements a distributed token-bucket algorithm using Redis.
+   - Key: `ratelimit:{client_ip}`. Default: 300 requests per minute.
+   - Graceful Degradation: If Redis is unavailable, the limiter logs a warning
+     and allows the request to pass through without blocking the user.
+3. `RequestLoggingMiddleware`:
+   - Records method, path, status code, and latency in milliseconds (`elapsed_ms`).
+   - Uses structlog for machine-readable JSON logging. Excludes `/api/health`.
+4. `CORSMiddleware`:
+   - Configured with regex to allow all local development origins (`localhost`, `127.0.0.1`).
+   - Exposes `Content-Disposition` (for file downloads) and `X-AI-Provider`.
+
+6.6 API ROUTER ARCHITECTURE (12 MODULAR ROUTERS)
+------------------------------------------------
+All routers are located in `backend/app/api/` and mounted under the `/api` prefix:
+  1. `auth.py`: `/api/auth` - Register, login, refresh, logout, Google OAuth, OTP.
+  2. `search.py`: `/api/search` - Keyword search and direct CNR lookup.
+  3. `cases.py`: `/api/cases` - Core case details, predictions, headnotes, citations.
+  4. `orders.py`: `/api/orders` - Order markdown retrieval and 60-field AI analysis.
+  5. `chat.py`: `/api/chat` - Multi-conversation management and SSE streaming chat.
+  6. `bookmarks.py`: `/api/bookmarks` - User case bookmark CRUD.
+  7. `history.py`: `/api/history` - User viewing history recording and retrieval.
+  8. `analytics.py`: `/api/analytics` - Practice metrics and 365-day heatmap data.
+  9. `files.py`: `/api/files` - Saved Kanoon document vault CRUD.
+ 10. `documents.py`: `/api/documents` - User file uploads, OCR, semantic search.
+ 11. `statutes.py`: `/api/statutes` - Criminal law era concordance table export.
+ 12. `counter_pleading.py`: `/api/defense` - Adversarial Defense Engine endpoints.
+
+6.7 SERVICES LAYER - EXHAUSTIVE FUNCTIONAL BREAKDOWN (14 SERVICES)
+------------------------------------------------------------------
+
+1. `CaseService` (case_service.py):
+   - Orchestrates case retrieval across eCourts and Indian Kanoon.
+   - Implements `_is_criminal_case()` using regex scanning for criminal keywords:
+     `bail`, `crl`, `fir`, `ipc`, `crpc`, `bns`, `bnss`, `bsa`, `ndps`, `pocso`,
+     `nia`, `cbi`, `pmla`, `quashing`, `section 482`, `habeas corpus`.
+   - Normalizes disparate date formats (e.g., `12-04-2023`, `12/04/2023`) to standard
+     ISO-8601 (`2023-04-12`).
+   - Generates synthetic staggered timeline entries if court docket records contain
+     sparse hearing data.
+
+2. `OrderService` (order_service.py):
+   - Retrieves judgment HTML from Indian Kanoon and converts it to clean Markdown
+     via `kanoon_formatter.py`.
+   - Dispatches judgment text to Gemini to extract 60 structured fields covering:
+     Parties, Counsel, Outcome, Ratio Decidendi, Obiter Dicta, Catchwords,
+     Held Points, and Precedent Citator Table.
+
+3. `PredictionService` (prediction_service.py):
+   - Computes a deterministic SHA-256 hash of the case state:
+     `hash = SHA256(decision_date + next_date + orders_count + timeline_count)`.
+   - Determines matter taxonomy (`BAIL`, `WRIT`, `NI_138`, `CRIMINAL_APPEAL`,
+     `CIVIL_APPEAL`, `INTERIM_APP`, `DEFAULT`) and legislative era.
+   - Retrieves top 6 precedents via `SimilarCasesService`.
+   - Employs `prediction_gemini_client` with high-thinking budget (24,576 tokens)
+     to generate calibrated outcome probability distributions.
+   - Caches predictions for 7 days, auto-invalidating if the state hash changes.
+
+4. `HeadnoteService` (headnote_service.py):
+   - Executes a two-stage Neuro-Symbolic extraction:
+     * Stage 1: InLegalBERT Rhetorical Role Segmentation (RRS) filters out counsel
+       arguments and retains judicial holding sentences.
+     * Stage 2: Gemini synthesizes holdings into publisher-grade headnotes with
+       hierarchical catchwords, numbered held points, and a citator matrix.
+
+5. `SimilarCasesService` (similar_cases_service.py):
+   - Implements Hybrid RAG combining:
+     * Method 1: Kanoon direct citation graph links (`cites`, `citedby`).
+     * Method 2: Dense vector similarity using Gemini `embedding-001`.
+     * Method 3: InLegalBERT whitened embeddings reranking.
+   - Merges results using Reciprocal Rank Fusion (RRF) with a 1.5x multiplier for
+     Supreme Court precedents.
+
+6. `CitationService` (citation_service.py):
+   - Traverses Kanoon citation networks to construct nodes and edges.
+   - Classifies nodes by tier: `sc` (gold), `hc` (blue), `tribunal`, `district`,
+     and `statute` (grey).
+   - Generates D3 force-directed layout compatible graph JSON.
+
+7. `EraTransitionService` (era_transition_service.py):
+   - Compares case filing dates against the 1 July 2024 boundary.
+   - Classifies cases into: `NEW_BNS_ERA`, `LEGACY_IPC_ERA`, or `HYBRID_TRANSITION_ERA`.
+   - Cross-references 100+ statute pairs in `criminal_statutes_concordance.py`.
+   - Generates procedural alerts for S. 105 (videography), S. 173(3) (preliminary
+     inquiry), S. 187 (custody split), and S. 479 (undertrial bail).
+
+8. `CounterPleadingService` (counter_pleading_service.py):
+   - Core engine for the Adversarial Defense Engine (Order VIII CPC).
+   - Chunks plaints using regex `PARA_PATTERN` into numbered paragraphs.
+   - Classifies paragraphs into `FORMAL`, `SUBSTANTIVE`, `PRAYER`, `BOILERPLATE`.
+   - Detects statutory bars: Section 12A Commercial Courts Act (mediation non-compliance),
+     Limitation Act 1963, Order VII Rule 11 CPC, jurisdiction defects.
+   - Generates hybrid traversals: boilerplate templates for formal paras, Gemini
+     synthesis for substantive allegations.
+
+9. `DocumentProcessor` (document_processor.py):
+   - Validates user uploads up to 25MB (PDF, DOCX, DOC, TXT, MD, PNG, JPG, TIFF).
+   - Extraction pipeline: `pdfplumber` for digital PDFs, `python-docx` for Word,
+     `pytesseract` OCR for scanned images/PDFs.
+   - Chunks text into 800-character segments with 150-character overlap.
+   - Generates embeddings via Gemini `embedding-001`.
+
+10. `AnalyticsService` (analytics_service.py):
+    - Scans cached case dockets using regex for 20+ Canonical Indian Acts.
+    - Aggregates top cited acts, court tier distributions, and weekly trends.
+    - Generates 365-day activity heatmap data from `CaseViewHistory`.
+
+11. `ChatService` (chat_service.py):
+    - Manages persistent conversation threads in SQLite/PostgreSQL.
+    - Injects case context (parties, acts, orders) into the system prompt.
+    - Streams tokens in real-time via Server-Sent Events (SSE) using OpenRouter.
+
+12. `HistoryService` (history_service.py):
+    - Records case views with deduplication per user per case per calendar day.
+
+13. `BookmarkService` (bookmark_service.py):
+    - Manages user case bookmarks with metadata (title, court, date).
+
+14. `FileService` (file_service.py):
+    - Manages user-saved Indian Kanoon documents in the Research Vault.
+
+6.8 AI & EXTERNAL CLIENTS LAYER (7 CLIENTS)
+--------------------------------------------
+  - `ECourtsClient`: Async HTTP client for eCourts Partner API with a strict 2-second
+    timeout for fast-fail responsiveness.
+  - `KanoonClient`: Async HTTP client for Indian Kanoon API. All requests use HTTP POST
+    with parameters in the query string (matching Kanoon's unique API convention).
+  - `GeminiClient`: Wraps `google-genai` SDK for asynchronous Gemini 3.5 Flash calls.
+    Includes 10-minute cooldown tracking on 429 quota exhaustion.
+  - `PredictionGeminiClient`: Isolated Gemini client configured with high thinking
+    budget (24,576 tokens) specifically for outcome predictions and headnotes.
+  - `OpenRouterClient`: OpenAI-compatible client connecting to OpenRouter for SSE
+    streaming chat responses.
+  - `GroqClient`: OpenAI-compatible client connecting to Groq Cloud as an automatic
+    cloud fallback when Gemini credits are depleted.
+  - `OllamaClient`: HTTP client connecting to `http://localhost:11434` for local,
+    offline inference using `qwen2.5:7b`.
+
+6.9 REPOSITORY PATTERN & DATA ACCESS LAYER
+------------------------------------------
+Data access is cleanly abstracted into repository classes:
+  - `CacheRepository`: Handles CRUD operations for `CachedCase`, `CachedOrder`,
+    `CachedAIAnalysis`, `CachedHeadnote`, and `CachedEraAnalysis`.
+  - `DocumentRepository`: Handles storage and vector retrieval for `UserDocument`
+    and `DocumentChunk`.
+
+6.10 CACHING STRATEGY (REDIS + RELATIONAL STORE)
+------------------------------------------------
+The caching architecture operates in two tiers:
+  - Tier 1 (Redis): Key format `suits:{operation}:{hash}`. TTL: Search results = 15 min,
+    Case details = 30 min.
+  - Tier 2 (Relational DB): Persistent tables ensure that judgment analyses and
+    predictions survive server restarts and Redis flushes.
+
+6.11 PROMPT ENGINEERING ARCHITECTURE
+-------------------------------------
+All AI prompts are centralized in `backend/app/prompts/`:
+  - `system.py`: Contains `MASTER_SYSTEM_PROMPT`, defining SUITS's identity as an
+    authoritative Indian legal research assistant, enforcing statutory citation
+    standards, and prohibiting hallucinations.
+  - `counter_pleading_prompts.py`: Defines prompts for plaint traversal, statutory bar
+    analysis, and Order VIII CPC Written Statement assembly.
+
+================================================================================
+7. FRONTEND DEEP DIVE
+================================================================================
+
+7.1 TECHNOLOGY STACK & ARCHITECTURE RATIONALE
+---------------------------------------------
+The frontend is built on a cutting-edge React 19 stack:
+  - React 19.2.8: Utilizes the new React compiler, concurrent rendering, and Suspense.
+  - TypeScript ~6.0.2: Enforces strict end-to-end type safety across all legal entities.
+  - Vite 8.2.0: Lightning-fast ESM development server and optimized rollup production bundles.
+  - React Router 7.18.2: Data router architecture using `createBrowserRouter`.
+  - Zustand 5.0.14: Atomic, lightweight global state stores with zero boilerplate.
+  - TanStack React Query 5.101.4: Server state management, automatic caching, and background refetching.
+  - React Hook Form 7.84.0 + Zod 4.4.3: Type-safe form validation.
+  - Lucide React 1.28.0: 300+ crisp SVG icons.
+  - Motion (Framer Motion 12.43.0): Fluid spring animations and layout transitions.
+  - Recharts 3.10.1: Interactive SVG charting (activity heatmaps, court distribution).
+  - Mozilla PDF.js (pdfjs-dist 4.10.38): High-fidelity client-side PDF rendering.
+  - React Markdown 10.1.0 + Remark GFM 4.0.1: Renders AI responses with tables and formatting.
+  - Sonner 2.0.7: Non-intrusive stacked toast notifications.
+  - i18next 26.4.0: Internationalization engine for multi-lingual legal interfaces.
+
+7.2 DIRECTORY STRUCTURE & COMPONENT ORGANIZATION
+------------------------------------------------
+frontend/src/
++-- main.tsx                # Application bootstrap & DOM root
++-- App.tsx                 # Top-level providers (Google OAuth, RouterProvider)
++-- index.css               # 31KB global design system & CSS design tokens
++-- routes/
+|   +-- index.tsx           # createBrowserRouter route definitions
+|   +-- protected-route.tsx # Authentication guard component
++-- pages/                  # 18 Lazy-loaded page components
++-- components/             # 40+ Modular UI components
+|   +-- layout/             # Shell, Sidebar, TopSearchBar
+|   +-- common/             # Loaders, Skeletons, Error/Empty states, CommandPalette
+|   +-- case/               # 16 Case intelligence cards and viewers
+|   |   +-- citation/       # D3 force-directed citation network view
+|   +-- chat/               # ChatPanel & GlobalVoiceDictation
+|   +-- document/           # LegalEditor (multi-page A4 drafting engine)
+|   +-- defense/            # CounterPleadingModal (Written Statement generator)
+|   +-- files/              # ResearchBriefModal
++-- services/               # 9 Axios API service modules
++-- types/                  # 6 TypeScript interface definitions
++-- store/                  # 3 Zustand store definitions
++-- lib/                    # Axios instance, error handlers, dictation engine
++-- hooks/                  # Custom React hooks
++-- locales/                # i18n JSON translations
+
+7.3 ROUTING ARCHITECTURE & AUTHENTICATION GUARDS (routes/)
+----------------------------------------------------------
+Configured via `createBrowserRouter`. All 18 pages are code-split using `React.lazy()`
+and wrapped in `<Suspense fallback={<PageLoader />}>`.
+
+Public Routes:
+  - `/`: LandingPage (marketing)
+  - `/login`: LoginPage (email/password & Google OAuth)
+  - `/register`: RegisterPage (account creation & OTP trigger)
+  - `/verify-otp`: VerifyOtpPage (6-digit email verification)
+
+Protected Routes (Wrapped in `<ProtectedRoute>` & `<AppLayout>`):
+  - `/dashboard`: DashboardPage (activity overview)
+  - `/search`: SearchPage (CNR and keyword search)
+  - `/case/:cnr`: CaseDashboardPage (12-card intelligence hub)
+  - `/chat` & `/chat/:id`: ChatPage (AI legal research threads)
+  - `/bookmarks`: BookmarksPage (saved case dockets)
+  - `/files`: FilesPage (saved Kanoon judgments vault)
+  - `/document`: DocumentPage (user document manager & LegalEditor)
+  - `/research`: ResearchPage (AI legal research brief generator)
+  - `/transition`: TransitionPage (statutory era concordance explorer)
+  - `/history`: HistoryPage (chronological viewing history)
+  - `/analytics`: AnalyticsPage (practice statistics & heatmap)
+  - `/profile`: ProfilePage (user profile management)
+  - `/settings`: SettingsPage (AI mode, theme, language preferences)
+
+7.4 STATE MANAGEMENT LAYER (ZUSTAND STORES)
+-------------------------------------------
+  1. `useAIModeStore` (store/ai-mode-store.ts):
+     - State: `mode` ('cloud' | 'local'), `isOffline`, `ollamaStatus`, `showLimitModal`.
+     - Actions: `setMode()`, `checkOllamaHealth()`, `triggerLimitModal()`,
+       `switchToLocalAndRetry()`.
+     - Automatic online/offline detection using `window.addEventListener('online')`.
+  2. `useThemeStore` (store/theme-store.ts):
+     - State: `theme` ('dark' | 'light').
+     - Persisted in `localStorage`. Sets `data-theme` attribute on `document.documentElement`.
+  3. `useDictationStore` (store/dictation-store.ts):
+     - State: `isListening`, `transcript`, `error`.
+     - Controls speech-to-text dictation via the Web Speech API.
+
+7.5 HTTP CLIENT, INTERCEPTOR STATE MACHINE & TOKEN REFRESH (lib/axios.ts)
+-------------------------------------------------------------------------
+Base Axios instance configured with `VITE_API_URL || http://localhost:8000/api`.
+
+Request Interceptor:
+  - Attaches `Authorization: Bearer {token}` from `localStorage`.
+  - Reads `useAIModeStore.getEffectiveProvider()`. If `'local'`, attaches
+    `X-AI-Provider: ollama`.
+
+Response Interceptor (Error Handling & State Machine):
+  - Token Refresh (HTTP 401):
+    If a request fails with 401 and has not been retried:
+    1. Pauses outbound requests.
+    2. Sends `POST /api/auth/refresh` with `refresh_token`.
+    3. On success: Updates tokens in `localStorage` and replays original request.
+    4. On failure: Purges tokens and dispatches `window.dispatchEvent(new Event("auth:logout"))`.
+  - AI Limit Interception (HTTP 429 / `ONLINE_AI_LIMIT_REACHED`):
+    1. Captures the failed request closure as `pendingRetry`.
+    2. Opens `SwitchToOllamaModal`.
+    3. When user approves: Sets mode to `'local'` and replays `pendingRetry()`.
+
+7.6 PAGES - COMPLETE INVENTORY, PURPOSE & LOGIC (18 PAGES)
+----------------------------------------------------------
+  1. `LandingPage.tsx` (53KB): Interactive marketing homepage featuring dynamic
+     hero animations, feature cards, and social proof.
+  2. `LoginPage.tsx`: Secure login supporting email/password and Google OAuth2.
+  3. `RegisterPage.tsx`: Account registration triggering 6-digit OTP emails via Resend.
+  4. `VerifyOtpPage.tsx`: OTP input with auto-focus and countdown resend timer.
+  5. `DashboardPage.tsx`: Advocate home screen with recent cases, quick search, and bookmarks.
+  6. `SearchPage.tsx`: Dual-mode search interface (CNR lookup vs Kanoon full-text).
+  7. `CaseDashboardPage.tsx` (24KB, 664 lines): Master case intelligence dashboard.
+     Conditionally renders 12 cards based on whether the case is criminal or civil.
+  8. `ChatPage.tsx` (10KB): Multi-thread AI legal chat with SSE token streaming.
+  9. `BookmarksPage.tsx`: Grid of bookmarked cases with filter and export options.
+ 10. `FilesPage.tsx` (25KB): Research Vault displaying saved Kanoon judgments with
+     actions for Read, Brief, Defense, and Delete.
+ 11. `DocumentPage.tsx` (14KB): Document manager supporting drag-and-drop uploads,
+     OCR status monitoring, and opening the Legal Editor.
+ 12. `ResearchPage.tsx` (9KB): AI research brief generator for case dossiers.
+ 13. `TransitionPage.tsx`: Interactive explorer for BNS/BNSS/BSA concordance mappings.
+ 14. `HistoryPage.tsx` (15KB): Chronological log of viewed cases with court filters.
+ 15. `AnalyticsPage.tsx` (5KB): Practice metrics, top cited acts, and 365-day heatmap.
+ 16. `ProfilePage.tsx` (9KB): User profile, bar council enrollment, and password change.
+ 17. `SettingsPage.tsx` (5KB): AI mode toggles, Ollama health check, theme, and language.
+ 18. `NotFoundPage.tsx`: Branded 404 error page.
+
+7.7 COMPONENTS - EXHAUSTIVE INVENTORY & BREAKDOWN (40+ COMPONENTS)
+------------------------------------------------------------------
+  - Layout: `AppLayout`, `Sidebar`, `TopSearchBar`.
+  - Common: `SuitsLoader`, `SkeletonLoader`, `ErrorState`, `EmptyState`,
+    `CommandPalette` (Cmd+K navigation), `SwitchToOllamaModal`.
+  - Case Intelligence (16 Components):
+    * `CaseHeader`: Case title, CNR badge, court name, filing and next hearing dates.
+    * `Timeline`: Chronological hearing history with staggered date visualization.
+    * `PartyCard`: Detailed list of petitioners, respondents, and their respective counsel.
+    * `JudgeCard`: Presiding judge names and bench composition.
+    * `DocumentLiquidNavBar`: Floating pill navigation for jumping between case sections.
+    * `AISummaryCard`: High-level AI case brief and operative facts.
+    * `OrderIntelligenceCard` (51KB - largest component): Tabbed view of judgment
+      analysis (Summary, Parties, Arguments, Statutory Analysis, Citator Table).
+    * `CriminalEraTransitionCard` (34KB): BNS/BNSS transition status, concordance
+      table, procedural delta alerts, and court-ready transition clauses.
+    * `PrecedentsPredictionCard` (39KB): Visual outcome probability bars and top
+      analogous precedents with similarity scores.
+    * `CaseHeadnoteCard` (17KB): Publisher-grade headnote with catchword hierarchy
+      and numbered held points.
+    * `CitationNetworkView.tsx`: Interactive D3 force-directed graph of citations.
+    * `CustomPDFViewer.tsx` (47KB): Canvas-based PDF viewer with zoom and text selection.
+    * `DocumentReaderModal.tsx` (41KB): Full-screen reader for Kanoon orders.
+    * `OrderCard`: Card representation of individual court orders in a docket.
+    * `StatisticsCard`: Case statistics summary.
+    * `SimilarCasesCard`: List of similar precedents surfaced by Hybrid RAG.
+  - Chat: `ChatPanel` (in-page case-aware chat drawer), `GlobalVoiceDictation`.
+  - Drafting: `LegalEditor.tsx` (A4 multi-page document editor).
+  - Defense: `CounterPleadingModal.tsx` (Written Statement generator).
+  - Files: `ResearchBriefModal.tsx` (AI research memo generator).
+
+7.8 UI/UX DESIGN SYSTEM, VISUAL PRINCIPLES & MICRO-INTERACTIONS
+---------------------------------------------------------------
+The UI/UX design is crafted around a "Dark-First Animated Legal Intelligence" aesthetic:
+  - Glassmorphism: Cards, sidebars, and modals employ `backdrop-filter: blur(12px)`
+    with semi-transparent background fills (`rgba(18, 24, 38, 0.75)`).
+  - Color Geometry & Semantics:
+    * Gold/Amber (`#d97706` / `#f59e0b`): Reserved strictly for Supreme Court of India
+      indicators, highlighting binding constitutional authority.
+    * Blue (`#2563eb` / `#3b82f6`): High Court indicators and navigation elements.
+    * Emerald/Green (`#059669` / `#10b981`): Positive outcomes (Allowed, Bail Granted).
+    * Rose/Red (`#dc2626` / `#ef4444`): Adverse outcomes (Dismissed, Denied) and high-severity bars.
+    * Purple/Violet (`#7c3aed` / `#8b5cf6`): AI-synthesized intelligence badges.
+  - Micro-Interactions:
+    * Card hover states apply subtle upward translation (`translateY(-2px)`) and
+      glow box-shadows.
+    * Interactive buttons provide tactile scale feedback (`transform: scale(0.98)` on active).
+    * Smooth shimmer sweep animations across all skeleton loading states.
+
+7.9 DESIGN TOKENS & CSS ARCHITECTURE (frontend/src/index.css)
+-------------------------------------------------------------
+`src/index.css` (31,417 bytes) defines the design tokens as CSS custom properties:
+```css
+:root {
+  --bg-primary: #0b0f17;
+  --bg-secondary: #111827;
+  --bg-tertiary: #1f2937;
+  --border-color: #374151;
+  --text-primary: #f9fafb;
+  --text-secondary: #9ca3af;
+  --text-muted: #6b7280;
+  --accent-primary: #3b82f6;
+  --accent-secondary: #60a5fa;
+  --gold-primary: #d97706;
+  --gold-light: #fbbf24;
+  --success-color: #10b981;
+  --error-color: #ef4444;
+  --warning-color: #f59e0b;
+  --sidebar-width: 240px;
+  --sidebar-collapsed-width: 72px;
+  --top-bar-height: 56px;
+}
+```
+
+7.10 WORD-STYLE MULTI-PAGE LEGAL EDITOR ARCHITECTURE (LegalEditor.tsx)
+----------------------------------------------------------------------
+The Legal Editor provides an authentic Microsoft Word-style drafting experience:
+  - Multi-Page Pagination Engine: Content flows across distinct A4 pages
+    (210mm x 297mm) separated by realistic page gaps (24px) and subtle page drop-shadows.
+  - Page Break Calculation: Utilizes a virtual container and scroll-height monitoring
+    to dynamically create new pages as text expands beyond page bounds.
+  - Legal Snippet Library: Instant insertion of standard Indian court pleading boilerplate
+    (e.g., Notice of Motion, Memo of Parties, Verification Clause, Affidavit in Support).
+  - Print & Export Optimization: Dedicated `@media print` CSS rules ensure that page
+    borders and gaps are stripped during printing or PDF export, producing clean,
+    court-ready documents adhering to High Court filing rules (margins: 1.5" left, 1" right).
+
+================================================================================
+8. EXTERNAL API INTEGRATIONS
+================================================================================
+
+8.1 ECOURTS PARTNER API INTEGRATION
+-----------------------------------
+  - Base URL: `https://webapi.ecourtsindia.com`
+  - Authentication: `Authorization: Bearer {ECOURTS_API_KEY}`
+  - Timeout: 2.0 seconds (fast-fail design to prevent blocking user requests).
+  - Endpoints Consumed:
+    * `/case/cnr/{cnr}`: Returns core case data, registration date, acts/sections,
+      party names, advocate details, and next hearing date.
+    * `/case/history/{cnr}`: Returns chronological hearing history and business on date.
+    * `/case/orders/{cnr}`: Returns order metadata and PDF download links.
+
+8.2 INDIAN KANOON API INTEGRATION & HTML-TO-MARKDOWN PARSER
+-----------------------------------------------------------
+  - Base URL: `https://api.indiankanoon.org`
+  - Authentication: `Authorization: Token {KANOON_API_TOKEN}`
+  - Protocol: All requests use HTTP POST with parameters sent as URL query strings.
+  - Endpoints Consumed:
+    * `POST /search/?formInput={query}&pagenum={page}`: Full-text legal search.
+    * `POST /doc/{docid}/`: Full judgment HTML document retrieval.
+    * `POST /docfragment/{docid}/?formInput={query}`: Best matching excerpt retrieval.
+    * `POST /cites/{docid}/`: List of precedents cited by this judgment.
+    * `POST /citedby/{docid}/`: List of subsequent judgments citing this document.
+  - HTML-to-Markdown Formatter (`kanoon_formatter.py`):
+    Transforms noisy Kanoon HTML into clean, structured Markdown:
+    * Strips inline scripts, styles, and advertising tags.
+    * Preserves judicial paragraph numbering and emphasis (bold, italic).
+    * Converts HTML tables and blockquotes into standard GitHub Flavored Markdown.
+
+================================================================================
+9. AI PIPELINE ARCHITECTURE & SPECIALIZED MODELS
+================================================================================
+
+9.1 AI ORCHESTRATOR & MULTI-PROVIDER STRATEGY
+---------------------------------------------
+The `AIOrchestrator` centralizes all model routing decisions. Services request
+inference from the orchestrator without hardcoding provider logic. The orchestrator
+evaluates:
+  1. Header Context (`request.state.ai_provider`): If set to `'ollama'`, routes
+     immediately to `OllamaClient`.
+  2. Cloud Tier Availability: Dispatches to `GeminiClient`. If Gemini reports quota
+     exhaustion (HTTP 429), fails over to `GroqClient`.
+  3. Task Specificity: Dedicated tasks like Outcome Prediction and Headnote Synthesis
+     are routed to `PredictionGeminiClient` with a dedicated thinking budget.
+
+9.2 LAW-AI/INLEGALBERT - DOMAIN-SPECIFIC LEGAL NLP ENGINE
+---------------------------------------------------------
+Generic BERT models suffer from anisotropy (representations collapse into a narrow
+cone) and lack comprehension of legal concepts (e.g., confusing "appeal dismissed"
+with "appeal allowed"). SUITS integrates `law-ai/InLegalBERT`, a transformer model
+pre-trained on 5.4 million Indian Supreme Court and High Court judgments.
+
+Key Capabilities:
+  - Understands Indian legal terminology: *ratio decidendi*, *res judicata*,
+    *locus standi*, *ad-interim injunction*, *habeas corpus*.
+  - Performs sentence-level Rhetorical Role classification.
+  - Computes semantic similarity between fact patterns and precedents.
+
+9.3 MATHEMATICAL FORMULATIONS
+-----------------------------
+
+1. Whitening Transformation for Legal Embeddings:
+   To eliminate representation collapse and ensure isotropic vector distribution,
+   InLegalBERT embeddings undergo second-order whitening:
+   
+     v_whitened = (v_raw - mu) * W
+   
+   Where:
+     - mu is the precomputed mean vector (dim: 768).
+     - W is the whitening transformation matrix (dim: 768 x 768) derived from
+       Singular Value Decomposition (SVD) of the covariance matrix:
+       Sigma = U * Lambda * U^T  =>  W = U * Lambda^(-1/2).
+   Whitened vectors are L2-normalized, making cosine similarity mathematically
+   equivalent to Euclidean distance on a unit hypersphere.
+
+2. Reciprocal Rank Fusion (RRF) with Stare Decisis Authority Multiplier:
+   When ranking precedents, the Hybrid RAG engine merges rank lists from Citation
+   Graph (r_cit), Dense Vector Search (r_vec), and InLegalBERT (r_bert):
+   
+     RRF_Score(d) = Alpha(d) * SUM_{m in M} [ 1 / (k + r_m(d)) ]
+   
+   Where:
+     - k is a smoothing constant (default: 60).
+     - M = {CitationGraph, DenseVector, InLegalBERT}.
+     - Alpha(d) is the Stare Decisis Multiplier:
+       * Alpha = 1.5 if d is a Supreme Court of India judgment (Article 141 binding law).
+       * Alpha = 1.0 if d is a High Court judgment.
+
+9.4 RHETORICAL ROLE SEGMENTATION (RRS)
+--------------------------------------
+Headnote extraction employs anchor-based Rhetorical Role Segmentation:
+  - Canonical holding anchors (_RATIO_ANCHORS): "We hold that...", "The question of
+    law is answered in the affirmative...", "In view of the settled position..."
+  - Argument anchors (_ARGUMENT_ANCHORS): "The learned counsel contended...",
+    "It was submitted on behalf of the appellant..."
+  - Each judgment sentence is embedded via InLegalBERT and projected against the
+    anchor centroids. Sentences with minimum distance to `_ARGUMENT_ANCHORS` are
+    pruned, preventing counsel arguments from being misidentified as court holdings.
+
+9.5 ERA STATUTORY GUIDE & PROMPT ENFORCEMENTS
+---------------------------------------------
+All generative prompts for prediction, headnote synthesis, and chat inject the
+`ERA_STATUTORY_GUIDE` system directive:
+  - If filing date >= 2024-07-01: Prohibits citing S. 439 CrPC (must cite S. 483 BNSS),
+    S. 438 CrPC (must cite S. 482 BNSS), S. 482 CrPC (must cite S. 528 BNSS),
+    S. 420 IPC (must cite S. 318(4) BNS), S. 65B Evidence Act (must cite S. 63 BSA).
+  - If filing date < 2024-07-01: Enforces legacy statutory references.
+
+================================================================================
+10. EXHAUSTIVE FEATURE DEEP DIVES (15 CORE FEATURES)
+================================================================================
+
+10.1 FEATURE 1: CASE INTELLIGENCE DASHBOARD
+  - Advocate Problem: Managing 50+ active litigation matters across courts requires
+    navigating disconnected cause lists and deciphering cryptic court records.
+  - Pipeline & Execution:
+    1. Ingestion: User enters 16-character CNR string.
+    2. CaseService queries eCourts Partner API for docket facts and Indian Kanoon
+       for judgment texts.
+    3. Normalization: Standardizes hearing dates, extracts FIR numbers, and identifies
+       advocate appearances.
+    4. Presentation: Renders 12 modular cards on `CaseDashboardPage.tsx`.
+
+10.2 FEATURE 2: LEGAL RESEARCH SEARCH ENGINE (CNR & KEYWORD)
+  - Advocate Problem: Keyword searches on generic engines yield thousands of
+    irrelevant results without court hierarchy ranking.
+  - Pipeline & Execution:
+    1. Query Parsing: Detects if input is a 16-char alphanumeric CNR or free text.
+    2. CNR Path: Direct docket retrieval via `ECourtsClient`.
+    3. Keyword Path: Queries Indian Kanoon with court filters (Supreme Court, High
+       Courts), date ranges, and title matching.
+    4. Analytics Tracking: Logs query to `search_history` to power user insights.
+
+10.3 FEATURE 3: AI ORDER INTELLIGENCE & 60-FIELD EXTRACTION
+  - Advocate Problem: Reading 50-page interim orders to find the operating direction
+    wastes valuable hours before morning hearings.
+  - Pipeline & Execution:
+    1. Text Extraction: Fetches raw HTML from Kanoon, converts to Markdown.
+    2. Gemini Extraction: Analyzes text across 60 structured fields:
+       - Basic: caseNumber, courtName, judgeNames, orderDate.
+       - Parties: petitioners, respondents, counselPetitioner, counselRespondent.
+       - Dispositions: orderNature, dispositionStatus, operativeDisposition.
+       - Legal Issues: primaryIssues, statutesCited, sectionsApplied.
+       - Citator Table: List of cited cases with treatments (`FOLLOWED`, `OVERRULED`,
+         `DISTINGUISHED`, `CONSIDERED`).
+       - Plain Language Summary: 2-4 sentence explanation for clients.
+    3. Caching: Persisted in `cached_orders` table.
+
+10.4 FEATURE 4: JUDICIAL OUTCOME PREDICTION ENGINE
+  - Advocate Problem: Clients constantly ask: "What are our chances of getting bail
+    or a stay?" Lawyers lack empirical precedent data to provide realistic estimates.
+  - Pipeline & Execution:
+    1. Disclaimer: Clearly marked as an AI research estimate, not legal advice.
+    2. State Hash: Generates SHA-256 hash of current case state.
+    3. Precedent Retrieval: Retrieves top 6 precedents via Hybrid RAG.
+    4. Gemini Thinking: Invokes `prediction_gemini_client` with 24,576 thinking tokens.
+    5. Output: Multi-class probability distribution across matter-specific taxonomy
+       (e.g., Bail: GRANTED 68%, DENIED 22%, ADJOURNED 10%).
+
+10.5 FEATURE 5: CRIMINAL LAW ERA TRANSITION ANALYZER (BNS / BNSS / BSA)
+  - Advocate Problem: Post July 2024, lawyers are filing bail applications and quashing
+    petitions under repealed CrPC sections, leading to dismissal with costs.
+  - Pipeline & Execution:
+    1. Date Analysis: Compares FIR / filing date with 1 July 2024.
+    2. Section Mapping: Scans petition for IPC/CrPC sections and looks up BNS/BNSS
+       equivalents in `criminal_statutes_concordance.py`.
+    3. Procedural Alerts: Checks for mandatory new procedures (e.g., S. 105 BNSS
+       videography of search/seizure; S. 173(3) BNSS preliminary enquiry).
+    4. Clause Generation: Generates court-ready pleading paragraphs stating the
+       statutory basis under both old and new acts.
+
+10.6 FEATURE 6: PUBLISHER-GRADE HEADNOTE & RATIO EXTRACTION
+  - Advocate Problem: Commercial law reports take weeks to publish headnotes for
+    newly delivered landmark rulings.
+  - Pipeline & Execution:
+    1. InLegalBERT RRS filters out counsel arguments and retains holding sentences.
+    2. Gemini formats output into publisher standards:
+       - 3-6 Hierarchical Catchwords (e.g., *Arbitration - Section 11 - Appointment of Arbitrator - Unstamped Agreement*).
+       - 2-5 Numbered Held Points with direct statutory citations.
+       - Clear, single-sentence *Ratio Decidendi*.
+
+10.7 FEATURE 7: HYBRID RAG PRECEDENT & SIMILAR CASES DISCOVERY
+  - Advocate Problem: Finding cases with identical fact patterns and legal issues.
+  - Pipeline & Execution:
+    1. Three-way retrieval: Citation Graph links + Dense Vector cosine similarity +
+       InLegalBERT semantic matching.
+    2. RRF Fusion merges rank lists with a 1.5x boost for Supreme Court rulings.
+    3. Gemini generates legal nexus explanations and distinguishing factors for
+       the top 5 precedents.
+
+10.8 FEATURE 8: INTERACTIVE D3 FORCE-DIRECTED CITATION NETWORK GRAPH
+  - Advocate Problem: Understanding whether a precedent is still good law or has been
+    diluted by subsequent decisions.
+  - Pipeline & Execution:
+    1. Builds directed graph from Kanoon `cites` and `citedby` lists.
+    2. D3 simulation computes node positions based on link forces and charge repulsion.
+    3. Node styling reflects court tier (Gold=SC, Blue=HC). Clicking a node opens
+       the corresponding judgment.
+
+10.9 FEATURE 9: CONTEXT-AWARE AI LEGAL CHATBOT
+  - Advocate Problem: Reviewing voluminous case records to answer specific queries
+    (e.g., "Did the respondent raise the defense of limitation?").
+  - Pipeline & Execution:
+    1. Attaches active CNR docket context to conversation state.
+    2. Enforces `MASTER_SYSTEM_PROMPT` (strictly cites case paragraphs, refuses
+       unsupported legal opinions).
+    3. Streams tokens via OpenRouter SSE for sub-second visual responsiveness.
+
+10.10 FEATURE 10: DOCUMENT MANAGEMENT, CHUNKING & OCR PIPELINE
+  - Advocate Problem: Managing scanned trial court records, FIRs, and contracts in PDF/image format.
+  - Pipeline & Execution:
+    1. Ingestion of PDF, Word, and image files up to 25MB.
+    2. OCR via `pytesseract` for scanned documents; `pdfplumber` for digital PDFs.
+    3. Recursive text chunking (800 chars, 150 overlap) and Gemini embedding generation.
+    4. Semantic Search: Matches natural language queries against document chunks.
+
+10.11 FEATURE 11: MULTI-PAGE WORD-STYLE LEGAL DRAFTING EDITOR
+  - Advocate Problem: Switching between research tools and Microsoft Word breaks
+    drafting focus.
+  - Pipeline & Execution:
+    1. Visual A4 page rendering with realistic margins, rulers, and page breaks.
+    2. Rich text editing (formatting, headings, lists, tables).
+    3. One-click insertion of snippets and AI-generated pleadings.
+    4. Export to court-compliant PDF and DOCX.
+
+10.12 FEATURE 12: ADVERSARIAL DEFENSE ENGINE (ORDER VIII CPC)
+  - Advocate Problem: Drafting a 40-page Written Statement paragraph-by-paragraph
+    under Order VIII CPC is tedious and time-consuming.
+  - Pipeline & Execution:
+    1. Ingests opposing plaint text.
+    2. Chunks text into numbered paragraphs using `PARA_PATTERN` regex.
+    3. Deterministic Bar Detection:
+       - Section 12A Commercial Courts Act (lack of pre-institution mediation).
+       - Limitation Act (cause of action accrued > 3 years prior).
+       - Order VII Rule 11 CPC (failure to disclose cause of action).
+    4. Hybrid Traversal: Generates standard denials for formal paras; uses Gemini
+       for substantive traverses.
+    5. Assembles complete Written Statement ready for insertion into Legal Editor.
+
+10.13 FEATURE 13: REAL-TIME PRACTICE ANALYTICS & HEATMAP DASHBOARD
+  - Advocate Problem: Lack of visibility into firm-wide research activity and statutory focus.
+  - Pipeline & Execution:
+    1. Scans user case data for 20+ Canonical Acts (CrPC, IPC, CPC, Companies Act, etc.).
+    2. Aggregates court tier distribution (SC vs HC vs District).
+    3. Renders 365-day GitHub-style activity heatmap of research actions.
+
+10.14 FEATURE 14: RESEARCH VAULT & CASE BOOKMARKING SYSTEM
+  - Advocate Problem: Losing track of important judgments found during late-night research.
+  - Pipeline & Execution:
+    1. One-click saving of Kanoon judgments and eCourts dockets.
+    2. Vault actions: Read full text, generate AI Brief, draft Counter-Pleading.
+
+10.15 FEATURE 15: CASE VIEW HISTORY & NAVIGATION TRACKING
+  - Advocate Problem: Remembering a case viewed earlier in the week without a bookmark.
+  - Pipeline & Execution:
+    1. Automatically logs case visits to `case_view_history`.
+    2. Provides searchable, filterable history timeline by court and date.
+
+================================================================================
+11. COMPLETE DATABASE SCHEMA & ENTITY-RELATIONSHIP (ER) ARCHITECTURE
+================================================================================
+
+11.1 ENTITY-RELATIONSHIP DIAGRAM (ASCII)
+--------------------------------------------------------------------------------
+
+  +-------------------+              +-------------------------+
+  |       users       | 1          * |     user_documents      |
+  |-------------------|--------------|-------------------------|
+  | id (PK)           |              | id (PK)                 |
+  | email             |              | user_id (FK -> users.id)|
+  | hashed_password   |              | filename, file_path     |
+  | full_name         |              | extracted_text, status  |
+  +---------+---------+              +------------+------------+
+            | 1                                   | 1
+            |                                     |
+            | *                                   | *
+  +---------v---------+              +------------v------------+
+  |   conversations   |              |     document_chunks     |
+  |-------------------|              |-------------------------|
+  | id (PK)           |              | id (PK)                 |
+  | user_id (FK)      |              | document_id (FK)        |
+  | title, cnr        |              | text, embedding (JSON)  |
+  +---------+---------+              +-------------------------+
+            | 1
+            |
+            | *
+  +---------v---------+              +-------------------------+
+  |     messages      |              |      cached_cases       |
+  |-------------------|              |-------------------------|
+  | id (PK)           |              | id (PK)                 |
+  | conversation_id FK|              | cnr (UNIQUE)            |
+  | role, content     |              | case_data (JSON)        |
+  +-------------------+              | last_refreshed          |
+                                     +-------------------------+
+  +-------------------+
+  |     bookmarks     |              +-------------------------+
+  |-------------------|              |      cached_orders      |
+  | id (PK)           |              |-------------------------|
+  | user_id (FK)      |              | id (PK)                 |
+  | cnr, case_title   |              | doc_id (UNIQUE)         |
+  +-------------------+              | markdown, ai_json (JSON)|
+                                     +-------------------------+
+  +-------------------+
+  |    saved_files    |              +-------------------------+
+  |-------------------|              |    cached_headnotes     |
+  | id (PK)           |              |-------------------------|
+  | user_id (FK)      |              | id (PK)                 |
+  | doc_id, filename  |              | cnr (UNIQUE)            |
+  +-------------------+              | headnote_json (JSON)    |
+                                     +-------------------------+
+  +-------------------+
+  | case_view_history |              +-------------------------+
+  |-------------------|              |   cached_era_analyses   |
+  | id (PK)           |              |-------------------------|
+  | user_id (FK)      |              | id (PK)                 |
+  | cnr, case_title   |              | cnr (UNIQUE)            |
+  +-------------------+              | analysis_json (JSON)    |
+                                     +-------------------------+
+
+11.2 TABLE DEFINITIONS, DATA TYPES, CONSTRAINTS & INDICES (17 TABLES)
+---------------------------------------------------------------------
+
+1. `users`:
+   - `id`: UUID (Primary Key, default: uuid4)
+   - `email`: VARCHAR(255) (Unique, Indexed, Non-nullable)
+   - `hashed_password`: VARCHAR(255) (Nullable for OAuth users)
+   - `full_name`: VARCHAR(255) (Non-nullable)
+   - `is_verified`: BOOLEAN (Default: False)
+   - `is_active`: BOOLEAN (Default: True)
+   - `auth_provider`: VARCHAR(50) (Default: 'local', e.g., 'google')
+   - `google_id`: VARCHAR(255) (Nullable, Indexed)
+   - `avatar_url`: VARCHAR(512) (Nullable)
+   - `created_at`: TIMESTAMP (Default: UTC now)
+
+2. `user_documents`:
+   - `id`: UUID (Primary Key)
+   - `user_id`: UUID (Foreign Key -> users.id, ondelete CASCADE, Indexed)
+   - `filename`: VARCHAR(255) (Non-nullable)
+   - `file_path`: VARCHAR(512) (Non-nullable)
+   - `content_type`: VARCHAR(100) (Non-nullable)
+   - `size_bytes`: INTEGER (Non-nullable)
+   - `status`: VARCHAR(50) (Default: 'PENDING', 'PROCESSING', 'READY', 'FAILED')
+   - `extracted_text`: TEXT (Nullable)
+   - `document_type`: VARCHAR(100) (Nullable)
+   - `ai_analysis`: JSON / JSONB (Nullable)
+   - `notes`: TEXT (Nullable)
+   - `highlights`: JSON (Nullable)
+   - `tags_list`: JSON (Nullable)
+   - `page_count`: INTEGER (Nullable)
+   - `content_hash`: VARCHAR(64) (Nullable, Indexed)
+   - `created_at`: TIMESTAMP (Default: UTC now)
+
+3. `document_chunks`:
+   - `id`: UUID (Primary Key)
+   - `document_id`: UUID (Foreign Key -> user_documents.id, ondelete CASCADE, Indexed)
+   - `chunk_index`: INTEGER (Non-nullable)
+   - `text`: TEXT (Non-nullable, ~800 chars)
+   - `embedding`: JSON (Float vector, 768 dimensions)
+   - `created_at`: TIMESTAMP (Default: UTC now)
+
+4. `cached_cases`:
+   - `id`: UUID (Primary Key)
+   - `cnr`: VARCHAR(32) (Unique, Indexed, Non-nullable)
+   - `case_data`: JSON (Full eCourts + Kanoon case payload)
+   - `source`: VARCHAR(50) ('ecourts', 'kanoon', 'merged')
+   - `last_refreshed`: TIMESTAMP (Default: UTC now, Indexed)
+
+5. `cached_orders`:
+   - `id`: UUID (Primary Key)
+   - `doc_id`: VARCHAR(64) (Unique, Indexed, Non-nullable)
+   - `markdown`: TEXT (Converted judgment markdown)
+   - `ai_json`: JSON (60-field AI extraction payload)
+   - `created_at`: TIMESTAMP (Default: UTC now)
+
+6. `cached_headnotes`:
+   - `id`: UUID (Primary Key)
+   - `cnr`: VARCHAR(32) (Unique, Indexed, Non-nullable)
+   - `headnote_json`: JSON (Catchwords, held points, ratio)
+   - `created_at`: TIMESTAMP (Default: UTC now)
+
+7. `cached_era_analyses`:
+   - `id`: UUID (Primary Key)
+   - `cnr`: VARCHAR(32) (Unique, Indexed, Non-nullable)
+   - `analysis_json`: JSON (Era classification, concordance mapping, procedural alerts)
+   - `created_at`: TIMESTAMP (Default: UTC now)
+
+8. `cached_ai_analyses`:
+   - `id`: UUID (Primary Key)
+   - `cache_key`: VARCHAR(128) (Unique, Indexed, Non-nullable)
+   - `ai_json`: JSON (General AI analysis cache)
+   - `created_at`: TIMESTAMP (Default: UTC now)
+
+9. `conversations`:
+   - `id`: UUID (Primary Key)
+   - `user_id`: UUID (Foreign Key -> users.id, ondelete CASCADE, Indexed)
+   - `title`: VARCHAR(255) (Default: 'New Legal Query')
+   - `cnr`: VARCHAR(32) (Nullable, Indexed)
+   - `created_at`: TIMESTAMP (Default: UTC now)
+
+10. `messages`:
+    - `id`: UUID (Primary Key)
+    - `conversation_id`: UUID (Foreign Key -> conversations.id, ondelete CASCADE, Indexed)
+    - `role`: VARCHAR(20) ('user', 'assistant', 'system')
+    - `content`: TEXT (Non-nullable)
+    - `created_at`: TIMESTAMP (Default: UTC now)
+
+11. `bookmarks`:
+    - `id`: UUID (Primary Key)
+    - `user_id`: UUID (Foreign Key -> users.id, ondelete CASCADE, Indexed)
+    - `cnr`: VARCHAR(32) (Non-nullable, Indexed)
+    - `case_title`: VARCHAR(512) (Non-nullable)
+    - `court`: VARCHAR(255) (Nullable)
+    - `bookmarked_at`: TIMESTAMP (Default: UTC now)
+
+12. `saved_files`:
+    - `id`: UUID (Primary Key)
+    - `user_id`: UUID (Foreign Key -> users.id, ondelete CASCADE, Indexed)
+    - `doc_id`: VARCHAR(64) (Non-nullable, Indexed)
+    - `filename`: VARCHAR(255) (Non-nullable)
+    - `url`: VARCHAR(512) (Nullable)
+    - `metadata_json`: JSON (Nullable)
+    - `saved_at`: TIMESTAMP (Default: UTC now)
+
+13. `search_history`:
+    - `id`: UUID (Primary Key)
+    - `user_id`: UUID (Foreign Key -> users.id, ondelete CASCADE, Indexed)
+    - `query`: VARCHAR(512) (Non-nullable)
+    - `results_count`: INTEGER (Default: 0)
+    - `searched_at`: TIMESTAMP (Default: UTC now)
+
+14. `case_view_history`:
+    - `id`: UUID (Primary Key)
+    - `user_id`: UUID (Foreign Key -> users.id, ondelete CASCADE, Indexed)
+    - `cnr`: VARCHAR(32) (Non-nullable, Indexed)
+    - `case_title`: VARCHAR(512) (Non-nullable)
+    - `court`: VARCHAR(255) (Nullable)
+    - `viewed_at`: TIMESTAMP (Default: UTC now, Indexed)
+
+15. `api_usage_log`:
+    - `id`: UUID (Primary Key)
+    - `user_id`: UUID (Foreign Key -> users.id, ondelete SET NULL, Nullable)
+    - `provider`: VARCHAR(50) ('gemini', 'openrouter', 'groq', 'ollama')
+    - `tokens_used`: INTEGER (Default: 0)
+    - `estimated_cost`: FLOAT (Default: 0.0)
+    - `created_at`: TIMESTAMP (Default: UTC now)
+
+16. `refresh_log`:
+    - `id`: UUID (Primary Key)
+    - `user_id`: UUID (Foreign Key -> users.id, ondelete SET NULL, Nullable)
+    - `cnr`: VARCHAR(32) (Non-nullable)
+    - `old_hash`: VARCHAR(64) (Nullable)
+    - `new_hash`: VARCHAR(64) (Nullable)
+    - `refreshed_at`: TIMESTAMP (Default: UTC now)
+
+17. `email_verification`:
+    - `id`: UUID (Primary Key)
+    - `user_id`: UUID (Foreign Key -> users.id, ondelete CASCADE, Indexed)
+    - `otp_code`: VARCHAR(6) (Non-nullable)
+    - `expires_at`: TIMESTAMP (Non-nullable, 10-minute TTL)
+    - `used`: BOOLEAN (Default: False)
+
+================================================================================
+12. AUTHENTICATION, AUTHORIZATION & SECURITY ARCHITECTURE
+================================================================================
+
+12.1 EMAIL/PASSWORD REGISTRATION & RESEND OTP VERIFICATION FLOW
+--------------------------------------------------------------
+  1. Registration (`POST /api/auth/register`):
+     - Client submits `email`, `password`, `full_name`.
+     - Validates email syntax via `email-validator`.
+     - Hashes password using `passlib.context.CryptContext` with bcrypt (12 rounds).
+     - Inserts record into `users` with `is_verified=False`.
+     - Generates cryptographically secure 6-digit OTP via `secrets.randbelow(900000) + 100000`.
+     - Stores OTP in `email_verification` table with a 10-minute expiration.
+     - Dispatches HTML verification email via Resend API (`api.resend.com`).
+  2. OTP Verification (`POST /api/auth/verify-otp`):
+     - Client submits `email` and `otp_code`.
+     - Queries `email_verification` where `otp_code == input`, `used == False`,
+       and `expires_at > UTC now`.
+     - On match: Sets `used=True`, updates `users.is_verified=True`.
+     - Returns JWT access and refresh token pair.
+
+12.2 GOOGLE OAUTH2 CREDENTIAL VERIFICATION FLOW
+-----------------------------------------------
+  1. Frontend Integration:
+     - `@react-oauth/google` renders the Google One-Tap or Sign-In button.
+     - Google client SDK returns an ID token credential.
+  2. Backend Verification (`POST /api/auth/google-auth`):
+     - Receives `{ credential: id_token }`.
+     - Invokes `google.oauth2.id_token.verify_oauth2_token(credential, requests.Request(), GOOGLE_CLIENT_ID)`.
+     - Extracts verified `email`, `name`, `sub` (Google user ID), and `picture`.
+     - Upserts `users` record: matches by email, sets `auth_provider='google'`,
+       `google_id=sub`, `avatar_url=picture`, `is_verified=True`.
+     - Generates and returns SUITS JWT token pair.
+
+12.3 DUAL-SECRET JWT ARCHITECTURE & TOKEN REFRESH FLOW
+------------------------------------------------------
+To maximize security, SUITS isolates access token signing from refresh token signing:
+  - Access Token:
+    * Signed with `JWT_SECRET` using `HS256`.
+    * Payload: `{ sub: user_id, email: email, exp: now + 30 minutes, type: 'access' }`.
+  - Refresh Token:
+    * Signed with `JWT_REFRESH_SECRET` using `HS256`.
+    * Payload: `{ sub: user_id, exp: now + 7 days, type: 'refresh' }`.
+  - Token Refresh Endpoint (`POST /api/auth/refresh`):
+    * Requires valid, unexpired refresh token.
+    * Verifies `type == 'refresh'`.
+    * Issues a fresh access token and rotatable refresh token.
+
+12.4 DATA CONFIDENTIALITY, PRIVILEGE & CLIENT-SIDE PRIVACY
+----------------------------------------------------------
+Under Section 126 of the Indian Evidence Act (and Section 132 of BSA), communications
+between an advocate and their client are privileged and confidential.
+  - Local AI Execution: Lawyers handling highly sensitive criminal, corporate, or
+    matrimonial matters can toggle AI Mode to "Local" (Ollama Qwen 7B). All
+    paragraph traversals, case summarizations, and chat inquiries run entirely in
+    local memory on `localhost:11434`. Zero prompt tokens are sent over the internet.
+  - Ephemeral Drafts: Unsaved text pasted into the Adversarial Defense Engine or
+    Legal Editor remains strictly in the client's browser memory until explicitly saved.
+
+================================================================================
+13. COMPLETE API ENDPOINT REFERENCE MANUAL (40+ ENDPOINTS)
+================================================================================
+
+Authentication Endpoints (/api/auth):
+  - `POST /api/auth/register`: Create unverified account & dispatch OTP.
+  - `POST /api/auth/login`: Authenticate email/password & receive JWT pair.
+  - `POST /api/auth/refresh`: Exchange valid refresh token for new JWT pair.
+  - `POST /api/auth/logout`: Invalidate client session.
+  - `POST /api/auth/google-auth`: Exchange Google ID token for SUITS JWT pair.
+  - `POST /api/auth/send-verification`: Re-dispatch 6-digit email OTP.
+  - `POST /api/auth/verify-otp`: Validate OTP & activate account.
+
+Search Endpoints (/api/search):
+  - `GET /api/search?q={query}&court={court}&year={year}&pagenum={page}`: Full-text legal search.
+  - `GET /api/search/cnr/{cnr}`: Direct eCourts docket lookup by CNR.
+
+Case Intelligence Endpoints (/api/cases):
+  - `GET /api/cases/{cnr}`: Retrieve complete case docket & merged data.
+  - `POST /api/cases/{cnr}/refresh`: Force-bypass cache & re-fetch from eCourts.
+  - `GET /api/cases/{cnr}/similar`: Retrieve top 5 analogous precedents via Hybrid RAG.
+  - `GET /api/cases/{cnr}/citations`: Retrieve citation network graph nodes & edges.
+  - `GET /api/cases/{cnr}/prediction`: Retrieve judicial outcome probability distribution.
+  - `GET /api/cases/{cnr}/headnote`: Retrieve publisher-grade headnote with held points.
+  - `GET /api/cases/{cnr}/era-analysis`: Retrieve BNS/BNSS/BSA era concordance analysis.
+  - `POST /api/cases/{cnr}/bookmark`: Toggle case bookmark.
+
+Order Intelligence Endpoints (/api/orders):
+  - `GET /api/orders/{doc_id}/markdown`: Retrieve clean judgment markdown text.
+  - `GET /api/orders/{doc_id}/analysis`: Retrieve 60-field AI extraction & citator table.
+
+Chat Endpoints (/api/chat):
+  - `GET /api/chat/conversations`: List user conversations.
+  - `POST /api/chat/conversations`: Create a new conversation thread.
+  - `GET /api/chat/conversations/{id}`: Retrieve conversation details & history.
+  - `DELETE /api/chat/conversations/{id}`: Delete a conversation thread.
+  - `GET /api/chat/conversations/{id}/messages`: List all messages in thread.
+  - `POST /api/chat/conversations/{id}/messages`: Send user prompt & stream SSE tokens.
+
+Bookmarks Endpoints (/api/bookmarks):
+  - `GET /api/bookmarks`: List all bookmarked cases for current user.
+  - `POST /api/bookmarks`: Add a case bookmark.
+  - `DELETE /api/bookmarks/{id}`: Remove a case bookmark.
+
+History Endpoints (/api/history):
+  - `GET /api/history`: Retrieve chronological viewing history.
+  - `POST /api/history/{cnr}`: Record a case view event.
+  - `DELETE /api/history`: Clear all viewing history.
+
+Analytics Endpoints (/api/analytics):
+  - `GET /api/analytics/practice-insights`: Aggregated metrics (top acts, court tiers).
+  - `GET /api/analytics/activity-heatmap`: 365-day research activity per calendar day.
+
+Research Vault Endpoints (/api/files):
+  - `GET /api/files`: List saved Kanoon documents in vault.
+  - `POST /api/files`: Save a Kanoon document to vault.
+  - `DELETE /api/files/{id}`: Delete document from vault.
+
+User Document Endpoints (/api/documents):
+  - `POST /api/documents/upload`: Upload file (multipart form data, max 25MB).
+  - `GET /api/documents/{id}`: Retrieve document metadata, text & AI analysis.
+  - `DELETE /api/documents/{id}`: Delete document and its chunk embeddings.
+  - `POST /api/documents/{id}/analyze`: Trigger full AI extraction on document.
+  - `GET /api/documents/{id}/search?q={query}`: Vector semantic search across chunks.
+  - `PUT /api/documents/{id}/notes`: Update user notes on document.
+  - `PUT /api/documents/{id}/highlights`: Save positional text highlights.
+  - `PUT /api/documents/{id}/tags`: Update document classification tags.
+
+Statutory Concordance Endpoints (/api/statutes):
+  - `GET /api/statutes/era-concordance`: Export complete BNS/BNSS/BSA concordance table.
+
+Adversarial Defense Endpoints (/api/defense):
+  - `POST /api/defense/analyze-plaint`: Chunk plaint text & detect statutory bars.
+  - `POST /api/defense/generate-ws`: Generate Order VIII CPC Written Statement HTML.
+
+Health & System Endpoints (/api/health):
+  - `GET /api/health`: General system health check (DB, Redis).
+  - `GET /api/health/prediction`: Prediction client model readiness check.
+  - `GET /api/health/ollama`: Local Ollama daemon connectivity & model status.
+
+================================================================================
+14. DETAILED SEQUENCE DIAGRAMS & REQUEST/RESPONSE FLOWS
+================================================================================
+
+14.1 FLOW 1: CASE LOOKUP & AI SYNTHESIS SEQUENCE
+--------------------------------------------------------------------------------
+
+Client (React)              FastAPI Backend              Redis / DB          eCourts / Kanoon API        Gemini AI
+      |                           |                           |                       |                      |
+      | 1. GET /cases/{cnr}       |                           |                       |                      |
+      |-------------------------->|                           |                       |                      |
+      |                           | 2. Check Cache            |                       |                      |
+      |                           |-------------------------->|                       |                      |
+      |                           |    Cache Miss             |                       |                      |
+      |                           |<--------------------------|                       |                      |
+      |                           |                           |                       |                      |
+      |                           | 3. Fetch Docket           |                       |                      |
+      |                           |-------------------------------------------------->|                      |
+      |                           |    Docket JSON Payload    |                       |                      |
+      |                           |<--------------------------------------------------|                      |
+      |                           |                           |                       |                      |
+      |                           | 4. Fetch Kanoon Data      |                       |                      |
+      |                           |-------------------------------------------------->|                      |
+      |                           |    Full Text & Citations  |                       |                      |
+      |                           |<--------------------------------------------------|                      |
+      |                           |                           |                       |                      |
+      |                           | 5. Normalize Dates, Timeline & Classify Criminal  |                      |
+      |                           | 6. Write to Cache         |                       |                      |
+      |                           |-------------------------->|                       |                      |
+      | 7. CaseDetailsResponse    |                           |                       |                      |
+      |<--------------------------|                           |                       |                      |
+      |                           |                           |                       |                      |
+      | [Client renders CaseDashboardPage]                    |                       |                      |
+      |                           |                           |                       |                      |
+      | 8. Parallel Lazy AI Calls |                           |                       |                      |
+      |    (Prediction, Headnote) |                           |                       |                      |
+      |-------------------------->| 9. Retrieve Precedents    |                       |                      |
+      |                           |-------------------------->|                       |                      |
+      |                           |    Top 6 Precedents       |                       |                      |
+      |                           |<--------------------------|                       |                      |
+      |                           | 10. InLegalBERT RRS       |                       |                      |
+      |                           | 11. Invoke Thinking AI    |                       |                      |
+      |                           |------------------------------------------------------------------------->|
+      |                           |     Synthesized Predictions & Headnotes JSON                             |
+      |                           |<-------------------------------------------------------------------------|
+      | 12. Return AI Results     |                           |                       |                      |
+      |<--------------------------|                           |                       |                      |
+
+14.2 FLOW 2: ADVERSARIAL DEFENSE ENGINE (WRITTEN STATEMENT GENERATION)
+--------------------------------------------------------------------------------
+
+Advocate (Browser)             Frontend Modal              FastAPI Defense Router        CounterPleadingService       Gemini AI
+      |                              |                               |                              |                     |
+      | 1. Paste Plaint Text         |                               |                              |                     |
+      |    Click 'Analyze Plaint'    |                               |                              |                     |
+      |----------------------------->| 2. POST /api/defense/analyze  |                              |                     |
+      |                              |------------------------------>| 3. Invoke chunk_plaint()     |                     |
+      |                              |                               |----------------------------->|                     |
+      |                              |                               |    Regex PARA_PATTERN        |                     |
+      |                              |                               |    Classify FORMAL/SUBST     |                     |
+      |                              |                               | 4. Detect Statutory Bars     |                     |
+      |                              |                               |    (S.12A CCA, Limitation)   |                     |
+      |                              |                               |    [Paragraphs + Bars]       |                     |
+      |                              |                               |<-----------------------------|                     |
+      |                              | 5. HTTP 200 AnalyzeResponse   |                              |                     |
+      |                              |<------------------------------|                              |                     |
+      | [Reviews detected bars &     |                               |                              |                     |
+      |  configures denial options]  |                               |                              |                     |
+      | 6. Click 'Generate WS'       |                               |                              |                     |
+      |----------------------------->| 7. POST /api/defense/generate |                              |                     |
+      |                              |------------------------------>| 8. Assemble WS Skeleton      |                     |
+      |                              |                               |----------------------------->|                     |
+      |                              |                               |    Boilerplate for Formal    |                     |
+      |                              |                               | 9. Substantive Allegations   |                     |
+      |                              |                               |--------------------------------------------------->|
+      |                              |                               |    Adversarial Traversal Text                      |
+      |                              |                               |<---------------------------------------------------|
+      |                              |                               | 10. Assemble Order VIII HTML |                     |
+      |                              |                               |<-----------------------------|                     |
+      |                              | 11. Return WS HTML Payload    |                              |                     |
+      |                              |<------------------------------|                              |                     |
+      | 12. Preview Written Statement|                               |                              |                     |
+      | 13. Click 'Insert to Editor' |                               |                              |                     |
+      |----------------------------->|                               |                              |                     |
+      |                              |                               |                              |                     |
+      | [HTML Injected into LegalEditor.tsx -> Ready for A4 Print/DOCX Export]                     |                     |
+
+================================================================================
+15. COMPLETE PROJECT FILE TREE WITH EXPLANATIONS
+================================================================================
+
+e:/Projects/Suits/
++-- .gitignore                   # Git exclusion rules (node_modules, venv, .env, *.db)
++-- LICENSE                      # MIT Open Source License
++-- README.md                    # Repository introduction and setup instructions
++-- docker-compose.yml           # Redis 7-alpine service configuration for local dev
++-- start-all.ps1                # PowerShell script: launches backend, frontend & Redis
++-- SUITS INFO.txt               # This comprehensive master documentation file
++-- backend/
+|   +-- pyproject.toml           # Python build config, dependencies & ruff rules
+|   +-- suits.db                 # SQLite database file (WAL mode enabled)
+|   +-- .env                     # Local environment secrets & API credentials
+|   +-- .env.example             # Template of all required environment variables
+|   +-- data/
+|   |   +-- criminal_statutes_concordance.py  # 100+ BNS/BNSS/BSA statute pairs
+|   |   +-- uploads/             # Root directory for user document storage
+|   |   +-- models/
+|   |       +-- inlegalbert_whitening.npz     # Precomputed W and mu whitening matrices
+|   +-- tests/
+|   |   +-- test_counter_pleading.py # Tests for plaint chunking & bar detection
+|   +-- app/
+|       +-- main.py              # FastAPI app factory, lifespan & router mounts
+|       +-- api/                 # 12 HTTP Router modules
+|       |   +-- auth.py          # /api/auth
+|       |   +-- search.py        # /api/search
+|       |   +-- cases.py         # /api/cases
+|       |   +-- orders.py        # /api/orders
+|       |   +-- chat.py          # /api/chat
+|       |   +-- bookmarks.py     # /api/bookmarks
+|       |   +-- history.py       # /api/history
+|       |   +-- analytics.py     # /api/analytics
+|       |   +-- files.py         # /api/files
+|       |   +-- documents.py     # /api/documents
+|       |   +-- statutes.py      # /api/statutes
+|       |   +-- counter_pleading.py # /api/defense
+|       +-- clients/             # 7 API and AI Client wrappers
+|       |   +-- ecourts_client.py
+|       |   +-- kanoon_client.py
+|       |   +-- gemini_client.py
+|       |   +-- openrouter_client.py
+|       |   +-- groq_client.py
+|       |   +-- ollama_client.py
+|       |   +-- prediction_gemini_client.py
+|       +-- core/
+|       |   +-- config.py        # Pydantic BaseSettings configuration
+|       |   +-- exceptions.py    # Custom domain exceptions
+|       +-- database/
+|       |   +-- base.py          # SQLAlchemy DeclarativeBase
+|       |   +-- session.py       # Async engine & sessionmaker
+|       +-- dependencies/
+|       |   +-- auth.py          # get_current_user JWT dependency
+|       +-- middleware/
+|       |   +-- ai_provider.py   # X-AI-Provider header extractor
+|       |   +-- logging.py       # Structlog request logger
+|       |   +-- rate_limit.py    # Redis token-bucket rate limiter
+|       +-- models/              # 18 SQLAlchemy ORM entity definitions
+|       +-- prompts/
+|       |   +-- system.py        # MASTER_SYSTEM_PROMPT
+|       |   +-- counter_pleading_prompts.py # Written statement prompts
+|       +-- repositories/
+|       |   +-- cache_repository.py
+|       |   +-- document_repository.py
+|       +-- schemas/             # Pydantic v2 schemas for request/response
+|       +-- services/            # 14 Core business logic service modules
+|       +-- utils/
+|           +-- kanoon_formatter.py # HTML to Markdown converter
++-- frontend/
+    +-- index.html               # Single page HTML entry point
+    +-- vite.config.ts           # Vite build configuration & alias mappings
+    +-- package.json             # NPM package manifests & build scripts
+    +-- tsconfig.json            # Root TypeScript compiler options
+    +-- tsconfig.app.json        # Client app TypeScript config
+    +-- tsconfig.node.json       # Node scripts TypeScript config
+    +-- .env                     # Frontend environment variables (VITE_API_URL)
+    +-- src/
+        +-- main.tsx             # React DOM bootstrap
+        +-- App.tsx              # Provider wrapper (OAuth, Router)
+        +-- index.css            # 31KB global CSS design tokens & layout
+        +-- routes/
+        |   +-- index.tsx        # createBrowserRouter route definitions
+        |   +-- protected-route.tsx # JWT route guard
+        +-- pages/               # 18 Lazy-loaded page components
+        +-- components/          # 40+ UI components
+        |   +-- layout/          # AppLayout, Sidebar, TopSearchBar
+        |   +-- common/          # SuitsLoader, Skeletons, CommandPalette, Modals
+        |   +-- case/            # 16 Case intelligence cards
+        |   |   +-- citation/    # D3 force-directed citation graph
+        |   +-- chat/            # ChatPanel, GlobalVoiceDictation
+        |   +-- document/        # LegalEditor (multi-page A4 drafting engine)
+        |   +-- defense/         # CounterPleadingModal
+        |   +-- files/           # ResearchBriefModal
+        +-- services/            # 9 Axios API service wrappers
+        +-- types/               # 6 TypeScript interface files
+        +-- store/               # 3 Zustand store definitions
+        +-- lib/                 # Axios client, error handlers, dictation engine
+        +-- hooks/               # Custom React hooks
+        +-- locales/             # i18n JSON translations
+
+================================================================================
+16. TECHNOLOGY STACK MATRIX (WHAT, WHERE, WHY & ALTERNATIVES)
+================================================================================
+
+--------------------------------------------------------------------------------
+Component           | Technology Selected   | Why Selected & Tradeoffs
+--------------------------------------------------------------------------------
+Frontend Framework  | React 19.2            | Concurrent rendering, modern hooks,
+                    |                       | massive ecosystem. (vs Vue/Svelte:
+                    |                       | richer legal component libraries).
+--------------------------------------------------------------------------------
+Build Tool          | Vite 8.2              | Sub-second HMR, native ESM support,
+                    |                       | optimized Rollup production builds.
+--------------------------------------------------------------------------------
+State Management    | Zustand 5.0           | Zero-boilerplate atomic stores, tiny
+                    |                       | bundle size (vs Redux: far less code).
+--------------------------------------------------------------------------------
+CSS & Design System | Vanilla CSS Tokens    | Full control over glassmorphism, fluid
+                    | + TailwindCSS v4      | animations, and print @media rules.
+--------------------------------------------------------------------------------
+Backend Framework   | Python 3.12 / FastAPI | Native async/await, automatic OpenAPI
+                    |                       | docs, seamless integration with ML/AI.
+--------------------------------------------------------------------------------
+ASGI Server         | Uvicorn 0.30          | High-throughput ASGI server with
+                    |                       | uvloop performance.
+--------------------------------------------------------------------------------
+Database ORM        | SQLAlchemy 2.0 Async  | Strict type safety, clean separation
+                    |                       | between engine and session, asyncpg.
+--------------------------------------------------------------------------------
+Primary AI Model    | Gemini 3.5 Flash      | Massive context window (1M tokens),
+                    |                       | low latency, cost-effective reasoning.
+--------------------------------------------------------------------------------
+Legal NLP Model     | law-ai/InLegalBERT    | Pre-trained on 5.4M Indian judgments;
+                    |                       | understands common law judicial roles.
+--------------------------------------------------------------------------------
+Offline AI Model    | Ollama (Qwen 2.5 7B)  | Runs locally on user hardware for 100%
+                    |                       | private, confidential client drafting.
+--------------------------------------------------------------------------------
+Cache Layer         | Redis 7 + SQLite      | Microsecond in-memory lookups with
+                    |                       | persistent relational fallback.
+--------------------------------------------------------------------------------
+
+================================================================================
+17. DEPLOYMENT, INFRASTRUCTURE & DEVOPS ARCHITECTURE
+================================================================================
+
+17.1 LOCAL DEVELOPMENT WORKFLOW
+  - Prerequisites: Python 3.12+, Node.js 20+, Docker (for Redis).
+  - Launching:
+    ```powershell
+    # Run the automated launch script
+    .\start-all.ps1
+    ```
+    This script concurrently boots:
+    1. FastAPI Backend on `http://localhost:8000` via Uvicorn reload.
+    2. React Frontend on `http://localhost:5173` via Vite dev server.
+    3. Redis 7 container on port 6379 via `docker-compose up -d`.
+
+17.2 PRODUCTION ARCHITECTURE & ENVIRONMENT CONFIGURATION
+  - Containerization: Backend and Frontend are packaged into multi-stage Dockerfiles.
+  - Reverse Proxy (Nginx): Terminates SSL/TLS, routes `/api/*` to Uvicorn, and
+    serves static frontend assets with aggressive gzip/brotli compression.
+  - Production Environment Variables:
+    * `DATABASE_URL`: `postgresql+asyncpg://user:pass@db:5432/suits`
+    * `REDIS_URL`: `redis://redis:6379/0`
+    * `ENVIRONMENT`: `production` (disables `/docs` and `/redoc` Swagger endpoints)
+    * `CORS_ORIGINS`: `https://suits.yourdomain.com`
+
+17.3 HORIZONTAL SCALING & BOTTLENECK MITIGATION
+  - Stateless Web Tier: FastAPI backend instances do not maintain in-process session
+    state. They scale horizontally behind AWS ALB, GCP Cloud Load Balancing, or Nginx.
+  - Database Connection Pooling: `asyncpg` with `NullPool` ensures that scaling to
+    dozens of container instances does not exhaust PostgreSQL connection limits.
+  - InLegalBERT Memory Footprint: The PyTorch InLegalBERT model runs in-process,
+    consuming ~450MB of RAM per worker with CPU threads capped at 2 to prevent CPU
+    starvation.
+
+================================================================================
+18. TROUBLESHOOTING & OPERATIONAL RUNBOOK
+================================================================================
+
+1. Problem: "database is locked" error in development.
+   - Cause: SQLite does not support concurrent write transactions across multiple
+     processes or non-pooled connections.
+   - Fix: Ensure `DATABASE_URL` uses `sqlite+aiosqlite:///./suits.db` with `StaticPool`
+     and `PRAGMA journal_mode=WAL` (configured automatically in `session.py`).
+
+2. Problem: Cloud AI calls fail with HTTP 429 (`ONLINE_AI_LIMIT_REACHED`).
+   - Cause: Gemini or OpenRouter daily/minute API rate limits exceeded.
+   - Automatic Mitigation: The frontend automatically displays `SwitchToOllamaModal`.
+     Clicking "Switch to Local AI" redirects inference to the local Ollama daemon.
+
+3. Problem: Ollama local model reports "Model not found".
+   - Fix: Ensure Ollama is running (`ollama serve`) and pull the required model:
+     ```bash
+     ollama run qwen2.5:7b
+     ```
+
+4. Problem: PDF OCR extraction fails or returns empty text.
+   - Cause: Tesseract OCR binary is not installed on the system PATH.
+   - Fix: Install Tesseract (`winget install UB-Mannheim.TesseractOCR` on Windows or
+     `apt-get install tesseract-ocr` on Linux) and restart the backend.
+
+================================================================================
+                              END OF SUITS INFO
+================================================================================
+Generated: 2026-09-22
+SUITS Version: 1.0.0
+Total Sections: 18 Comprehensive Chapters
+Total Line Count: 1,600+ Lines of Technical Documentation
+Coverage: Complete Frontend, Backend, AI Pipelines, Database Schema,
+          API Manual, System Diagrams, Sequence Flows, Legal Frameworks.
+================================================================================

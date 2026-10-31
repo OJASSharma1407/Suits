@@ -281,6 +281,119 @@ export function cleanHighlightRects(rects: HighlightRect[]): HighlightRect[] {
   });
 }
 
+interface CaretPoint {
+  node: Text;
+  offset: number;
+}
+
+/**
+ * Resolves the precise text character and node at screen coordinates (clientX, clientY)
+ * within a given page's .textLayer. Avoids Chromium's runaway selection bug across
+ * absolute positioned spans and whitespace gaps.
+ */
+function getCaretPoint(
+  clientX: number,
+  clientY: number,
+  textLayer: HTMLElement
+): CaretPoint | null {
+  // 1. Try standard document.caretRangeFromPoint (Chromium / WebKit)
+  if (typeof document.caretRangeFromPoint === "function") {
+    try {
+      const range = document.caretRangeFromPoint(clientX, clientY);
+      if (range && range.startContainer) {
+        if (range.startContainer.nodeType === Node.TEXT_NODE) {
+          if (textLayer.contains(range.startContainer)) {
+            return {
+              node: range.startContainer as Text,
+              offset: range.startOffset,
+            };
+          }
+        } else if (range.startContainer.nodeType === Node.ELEMENT_NODE) {
+          const el = range.startContainer as HTMLElement;
+          const span = el.closest("span");
+          if (span && textLayer.contains(span) && span.firstChild?.nodeType === Node.TEXT_NODE) {
+            const textNode = span.firstChild as Text;
+            return {
+              node: textNode,
+              offset: Math.min(range.startOffset, textNode.length),
+            };
+          }
+        }
+      }
+    } catch {}
+  }
+
+  // 2. Fallback / Whitespace snapping: Geometry-based hit test against textLayer spans
+  const spans = Array.from(textLayer.querySelectorAll("span")).filter(
+    (s): s is HTMLSpanElement =>
+      s.firstChild?.nodeType === Node.TEXT_NODE && (s.textContent?.trim().length || 0) > 0
+  );
+
+  if (spans.length === 0) return null;
+
+  let bestSpan: HTMLSpanElement | null = null;
+  let bestDist = Infinity;
+
+  for (const span of spans) {
+    const r = span.getBoundingClientRect();
+    const dx = clientX < r.left ? r.left - clientX : clientX > r.right ? clientX - r.right : 0;
+    const dy = clientY < r.top ? r.top - clientY : clientY > r.bottom ? clientY - r.bottom : 0;
+    // 4x vertical penalty so pointer prioritizes staying on the current line
+    const dist = dx * dx + (dy * 4) * (dy * 4);
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestSpan = span;
+    }
+  }
+
+  if (!bestSpan || !bestSpan.firstChild) return null;
+  const textNode = bestSpan.firstChild as Text;
+  const r = bestSpan.getBoundingClientRect();
+
+  if (clientX <= r.left) {
+    return { node: textNode, offset: 0 };
+  }
+  if (clientX >= r.right) {
+    return { node: textNode, offset: textNode.length };
+  }
+
+  // Interpolate character offset based on horizontal ratio within the span
+  const ratio = (clientX - r.left) / Math.max(r.width, 1);
+  const approxOffset = Math.round(ratio * textNode.length);
+  return {
+    node: textNode,
+    offset: Math.max(0, Math.min(textNode.length, approxOffset)),
+  };
+}
+
+/**
+ * Creates a normalized DOM Range between two CaretPoints, handling forward and backward drags.
+ */
+function createPreciseRange(startPoint: CaretPoint, endPoint: CaretPoint): Range | null {
+  try {
+    let forward = true;
+    if (startPoint.node === endPoint.node) {
+      forward = startPoint.offset <= endPoint.offset;
+    } else {
+      const pos = startPoint.node.compareDocumentPosition(endPoint.node);
+      if (pos & Node.DOCUMENT_POSITION_PRECEDING) {
+        forward = false;
+      }
+    }
+
+    const trueStart = forward ? startPoint : endPoint;
+    const trueEnd = forward ? endPoint : startPoint;
+
+    const range = document.createRange();
+    range.setStart(trueStart.node, trueStart.offset);
+    range.setEnd(trueEnd.node, trueEnd.offset);
+    return range;
+  } catch (err) {
+    console.warn("createPreciseRange error:", err);
+    return null;
+  }
+}
+
 export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerProps>(
   function CustomPDFViewer(
     {
@@ -347,6 +460,18 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
       pageNum: number;
       rects: HighlightRect[];
     } | null>(null);
+
+    // Track mouse drag selection origin & state
+    const mouseDownPos = useRef<{
+      x: number;
+      y: number;
+      pageNum: number;
+      textLayerDiv: HTMLDivElement;
+    } | null>(null);
+    const isMouseDown = useRef<boolean>(false);
+    const dragStartPoint = useRef<CaretPoint | null>(null);
+
+
 
     // Expose scrollToPage to parent component via ref
     useImperativeHandle(ref, () => ({
@@ -486,6 +611,9 @@ export const CustomPDFViewer = forwardRef<CustomPDFViewerRef, CustomPDFViewerPro
 
             activeTextLayers.current.set(pageNumber, textLayer);
             await textLayer.render();
+
+            // Strip any internal PDF.js .highlight background classes from text spans
+            textLayerDiv.querySelectorAll(".highlight").forEach((el) => el.classList.remove("highlight"));
           }
 
           renderedPages.current.add(pageNumber);
@@ -599,18 +727,45 @@ function getTextNodesInRange(range: Range): { node: Text; start: number; end: nu
   let endOffset = range.endOffset;
 
   if (startNode.nodeType === Node.ELEMENT_NODE && startNode.hasChildNodes()) {
-    const child = startNode.childNodes[Math.min(startOffset, startNode.childNodes.length - 1)];
+    const el = startNode as Element;
+    const idx = Math.min(Math.max(0, startOffset), el.childNodes.length - 1);
+    const child = el.childNodes[idx];
     if (child) {
-      startNode = child;
-      startOffset = 0;
+      if (child.nodeType === Node.TEXT_NODE) {
+        startNode = child;
+        startOffset = 0;
+      } else {
+        const tw = document.createTreeWalker(child, NodeFilter.SHOW_TEXT);
+        const tn = tw.nextNode();
+        if (tn) {
+          startNode = tn;
+          startOffset = 0;
+        }
+      }
     }
   }
 
   if (endNode.nodeType === Node.ELEMENT_NODE && endNode.hasChildNodes()) {
-    const child = endNode.childNodes[Math.min(Math.max(0, endOffset - 1), endNode.childNodes.length - 1)];
+    const el = endNode as Element;
+    const idx = Math.min(Math.max(0, endOffset > 0 ? endOffset - 1 : 0), el.childNodes.length - 1);
+    const child = el.childNodes[idx];
     if (child) {
-      endNode = child;
-      endOffset = child.nodeType === Node.TEXT_NODE ? (child as Text).length : 0;
+      if (child.nodeType === Node.TEXT_NODE) {
+        endNode = child;
+        endOffset = (child as Text).length;
+      } else {
+        const tw = document.createTreeWalker(child, NodeFilter.SHOW_TEXT);
+        let lastTn: Node | null = null;
+        let tn = tw.nextNode();
+        while (tn) {
+          lastTn = tn;
+          tn = tw.nextNode();
+        }
+        if (lastTn) {
+          endNode = lastTn;
+          endOffset = (lastTn as Text).length;
+        }
+      }
     }
   }
 
@@ -628,7 +783,14 @@ function getTextNodesInRange(range: Range): { node: Text; start: number; end: nu
 
   const root = range.commonAncestorContainer;
   const container = root.nodeType === Node.TEXT_NODE ? root.parentElement || root : root;
-  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+    acceptNode(node) {
+      if ((node.parentElement as HTMLElement)?.classList?.contains("endOfContent")) {
+        return NodeFilter.FILTER_REJECT;
+      }
+      return NodeFilter.FILTER_ACCEPT;
+    },
+  });
 
   let started = false;
   let currentNode = walker.nextNode();
@@ -676,40 +838,81 @@ function getTextNodesInRange(range: Range): { node: Text; start: number; end: nu
   return result;
 }
 
-    // Handle Text Selection for Floating Highlighter (with ZERO offset calculation)
-    const handleMouseUp = () => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed) {
-        setSelectionPopup(null);
-        return;
-      }
-      const text = selection.toString().trim();
-      if (!text || text.length < 2) {
-        setSelectionPopup(null);
+    // Ground-up Precision Drag Selection Handlers
+    const handleMouseDown = (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      // Do not interrupt when interacting with the floating toolbar
+      if (target.closest(".floating-highlighter-toolbar")) {
         return;
       }
 
-      const range = selection.getRangeAt(0);
-      const rect = range.getBoundingClientRect();
-      if (!rect || rect.width === 0) {
+      const pageContainer = target.closest("[data-page-number]") as HTMLElement | null;
+      const pageNum = Number(pageContainer?.getAttribute("data-page-number")) || currentPage;
+      const textLayerDiv =
+        (target.closest(".textLayer") as HTMLDivElement | null) ||
+        pageContainer?.querySelector<HTMLDivElement>(".textLayer");
+
+      if (!textLayerDiv) {
+        // Clicked outside paper/textLayer (e.g. padding/background)
         setSelectionPopup(null);
+        window.getSelection()?.removeAllRanges();
+        mouseDownPos.current = null;
+        isMouseDown.current = false;
+        dragStartPoint.current = null;
         return;
       }
 
-      // Find which page container this selection is inside
-      let node: HTMLElement | null = range.commonAncestorContainer as HTMLElement;
-      while (node && !node.getAttribute?.("data-page-number") && node.parentElement) {
-        node = node.parentElement;
-      }
-      const pageNum = Number(node?.getAttribute?.("data-page-number")) || currentPage;
+      isMouseDown.current = true;
+      mouseDownPos.current = {
+        x: e.clientX,
+        y: e.clientY,
+        pageNum,
+        textLayerDiv,
+      };
 
-      // Get exact paper sheet rect to prevent any scaling or margin offsets
+      dragStartPoint.current = getCaretPoint(e.clientX, e.clientY, textLayerDiv);
+    };
+
+    const handleMouseMove = (e: React.MouseEvent) => {
+      if (!isMouseDown.current || !mouseDownPos.current || !dragStartPoint.current) {
+        return;
+      }
+
+      const { x, y, textLayerDiv } = mouseDownPos.current;
+      const dx = e.clientX - x;
+      const dy = e.clientY - y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      // Once mouse moves more than 6px, update the visual selection live
+      if (dist >= 6) {
+        if (selectionPopup) {
+          setSelectionPopup(null);
+        }
+
+        const currentPoint = getCaretPoint(e.clientX, e.clientY, textLayerDiv);
+        if (currentPoint) {
+          const liveRange = createPreciseRange(dragStartPoint.current, currentPoint);
+          if (liveRange && !liveRange.collapsed) {
+            const sel = window.getSelection();
+            if (sel) {
+              sel.removeAllRanges();
+              sel.addRange(liveRange);
+            }
+          }
+        }
+      }
+    };
+
+    const processSelectionRange = (range: Range, pageNum: number, text: string) => {
       const paperSheet = paperSheetRefs.current.get(pageNum);
       const paperRect = paperSheet ? paperSheet.getBoundingClientRect() : null;
+      if (!paperRect || paperRect.width <= 0 || paperRect.height <= 0) {
+        console.warn("[Selection] No paperRect for pageNum:", pageNum);
+        setSelectionPopup(null);
+        return;
+      }
 
       const relativeRects: HighlightRect[] = [];
-
-      // Measure character sub-ranges directly to exclude <br> artifacts and trailing line-break boxes
       const clientRects: DOMRect[] = [];
       const textNodes = getTextNodesInRange(range);
 
@@ -720,39 +923,49 @@ function getTextNodesInRange(range: Range): { node: Text; start: number; end: nu
             subRange.setStart(item.node, item.start);
             subRange.setEnd(item.node, item.end);
             const rects = subRange.getClientRects();
-            for (let i = 0; i < rects.length; i++) {
-              clientRects.push(rects[i]);
+            if (rects.length > 0) {
+              for (let i = 0; i < rects.length; i++) {
+                clientRects.push(rects[i]);
+              }
+            } else {
+              const b = subRange.getBoundingClientRect();
+              if (b && b.width > 0) clientRects.push(b);
             }
           } catch {}
         }
-      } else {
-        clientRects.push(...Array.from(range.getClientRects()));
+      }
+      if (clientRects.length === 0) {
+        const rangeRects = Array.from(range.getClientRects());
+        if (rangeRects.length > 0) {
+          clientRects.push(...rangeRects);
+        } else {
+          const b = range.getBoundingClientRect();
+          if (b && b.width > 0) clientRects.push(b);
+        }
       }
 
-      if (paperRect && paperRect.width > 0 && paperRect.height > 0) {
-        for (let i = 0; i < clientRects.length; i++) {
-          const cr = clientRects[i];
-          if (cr.width < 3 || cr.height < 3) continue;
+      for (let i = 0; i < clientRects.length; i++) {
+        const cr = clientRects[i];
+        if (cr.width < 3 || cr.height < 3) continue;
 
-          const top = cr.top - paperRect.top;
-          const left = cr.left - paperRect.left;
-          const width = cr.width;
-          const height = cr.height;
+        const top = cr.top - paperRect.top;
+        const left = cr.left - paperRect.left;
+        const width = cr.width;
+        const height = cr.height;
 
-          // Ensure rect is within paper sheet bounds
-          if (left < 0 || top < 0 || left >= paperRect.width || top >= paperRect.height) continue;
+        // Ensure rect is within paper sheet bounds
+        if (left < 0 || top < 0 || left >= paperRect.width || top >= paperRect.height) continue;
 
-          relativeRects.push({
-            top,
-            left,
-            width,
-            height,
-            topPct: (top / paperRect.height) * 100,
-            leftPct: (left / paperRect.width) * 100,
-            widthPct: (width / paperRect.width) * 100,
-            heightPct: (height / paperRect.height) * 100,
-          });
-        }
+        relativeRects.push({
+          top,
+          left,
+          width,
+          height,
+          topPct: (top / paperRect.height) * 100,
+          leftPct: (left / paperRect.width) * 100,
+          widthPct: (width / paperRect.width) * 100,
+          heightPct: (height / paperRect.height) * 100,
+        });
       }
 
       const mergedRects = cleanHighlightRects(relativeRects);
@@ -761,13 +974,87 @@ function getTextNodesInRange(range: Range): { node: Text; start: number; end: nu
         return;
       }
 
+      const rangeRect = range.getBoundingClientRect();
+      const firstClient = clientRects[0] || rangeRect;
+
       setSelectionPopup({
-        x: rect.left + rect.width / 2,
-        y: rect.top - 10,
+        x: firstClient.left + firstClient.width / 2,
+        y: Math.max(firstClient.top - 12, 70),
         text,
         pageNum,
         rects: mergedRects,
       });
+    };
+
+    const handleMouseUp = (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (target.closest(".floating-highlighter-toolbar")) {
+        return;
+      }
+
+      const down = mouseDownPos.current;
+      const startPoint = dragStartPoint.current;
+      const wasMouseDown = isMouseDown.current;
+
+      isMouseDown.current = false;
+      mouseDownPos.current = null;
+      dragStartPoint.current = null;
+
+      if (!wasMouseDown || !down) {
+        return;
+      }
+
+      const dx = e.clientX - down.x;
+      const dy = e.clientY - down.y;
+      const dragDist = Math.sqrt(dx * dx + dy * dy);
+
+      // Double-click word selection support
+      if (dragDist < 6 && e.detail >= 2) {
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount > 0 && !sel.isCollapsed) {
+          const range = sel.getRangeAt(0);
+          const text = range.toString().trim();
+          if (text && text.length >= 2) {
+            processSelectionRange(range, down.pageNum, text);
+            return;
+          }
+        }
+      }
+
+      // Single click or minimal movement -> clear popup & selection
+      if (dragDist < 6) {
+        setSelectionPopup(null);
+        window.getSelection()?.removeAllRanges();
+        return;
+      }
+
+      // Drag selection finished: resolve precision endpoints
+      const endPoint = getCaretPoint(e.clientX, e.clientY, down.textLayerDiv);
+      if (!startPoint || !endPoint) {
+        setSelectionPopup(null);
+        return;
+      }
+
+      const cleanRange = createPreciseRange(startPoint, endPoint);
+      if (!cleanRange || cleanRange.collapsed) {
+        setSelectionPopup(null);
+        return;
+      }
+
+      // Update window.getSelection() to match cleanRange exactly
+      const sel = window.getSelection();
+      if (sel) {
+        sel.removeAllRanges();
+        sel.addRange(cleanRange);
+      }
+
+      const text = cleanRange.toString().trim();
+      if (!text || text.length < 2) {
+        setSelectionPopup(null);
+        return;
+      }
+
+      processSelectionRange(cleanRange, down.pageNum, text);
     };
 
     const handleApplyHighlight = (color: HighlightColor, andAddToResearch = false) => {
@@ -877,12 +1164,14 @@ function getTextNodesInRange(range: Range): { node: Text; start: number; end: nu
       <div
         className="w-full h-full flex flex-col overflow-hidden relative"
         style={{ background: "var(--bg)" }}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
       >
         {/* Floating Selection Highlighter Toolbar */}
         {selectionPopup && onAddHighlight && (
           <div
-            className="fixed z-50 transform -translate-x-1/2 -translate-y-full flex items-center gap-1.5 p-1.5 rounded-xl border backdrop-blur-xl shadow-2xl animate-fade-in select-none"
+            className="floating-highlighter-toolbar fixed z-50 transform -translate-x-1/2 -translate-y-full flex items-center gap-1.5 p-1.5 rounded-xl border backdrop-blur-xl shadow-2xl animate-fade-in select-none"
             style={{
               left: `${selectionPopup.x}px`,
               top: `${selectionPopup.y}px`,

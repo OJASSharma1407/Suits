@@ -57,7 +57,7 @@ export default function Navbar() {
               color: "var(--ink)",
             }}
           >
-            SUITS.
+            SUIT.
           </span>
         </Link>
       </div>

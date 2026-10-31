@@ -80,14 +80,22 @@ class EmailService:
         </html>
         """
 
-        # Log OTP to developer console
-        logger.info(
-            "email_verification_code",
-            recipient=email,
-            otp=otp,
-            expiry_minutes=settings.otp_expiry_minutes,
-            has_resend_api_key=bool(settings.resend_api_key),
-        )
+        # Log OTP only in development mode for security
+        if settings.environment == "development":
+            logger.info(
+                "email_verification_code",
+                recipient=email,
+                otp=otp,
+                expiry_minutes=settings.otp_expiry_minutes,
+                has_resend_api_key=bool(settings.resend_api_key),
+            )
+        else:
+            logger.info(
+                "email_verification_code_dispatched",
+                recipient=email,
+                expiry_minutes=settings.otp_expiry_minutes,
+                has_resend_api_key=bool(settings.resend_api_key),
+            )
 
         if settings.resend_api_key:
             try:

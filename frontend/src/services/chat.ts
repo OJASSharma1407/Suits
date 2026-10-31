@@ -59,6 +59,10 @@ export const chatService = {
           headers: {
             "Content-Type": "application/json",
             Authorization: `Bearer ${accessToken}`,
+            // Forward local AI provider header if active
+            ...(localStorage.getItem("ai_provider") === "local"
+              ? { "X-AI-Provider": "ollama" }
+              : {}),
           },
           body: JSON.stringify({ message, order_filename: orderFilename }),
           signal: controller.signal,

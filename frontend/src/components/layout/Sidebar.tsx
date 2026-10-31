@@ -1,8 +1,10 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { Sun, Moon } from "lucide-react";
+import { Sun, Moon, Cpu, Cloud, WifiOff } from "lucide-react";
 import { motion } from "motion/react";
+import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth-store";
 import { useThemeStore } from "@/store/theme-store";
+import { useAIModeStore } from "@/store/ai-mode-store";
 
 // SVG icons matching the reference design (stroke-based, 18×18)
 function WorkspaceIcon() {
@@ -55,6 +57,26 @@ function AnalyticsIcon() {
     </svg>
   );
 }
+function TransitionIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 17H4M4 17l4-4M4 17l4 4M4 7h16M20 7l-4-4M20 7l4 4" />
+    </svg>
+  );
+}
+
+function DocumentIcon() {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+      <path d="M14 2v6h6" />
+      <path d="M16 13H8" />
+      <path d="M16 17H8" />
+      <path d="M10 9H8" />
+    </svg>
+  );
+}
+
 function ScalesIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7">
@@ -67,7 +89,9 @@ const navItems = [
   { path: "/dashboard",  label: "Workspace",  Icon: WorkspaceIcon },
   { path: "/bookmarks",  label: "Bookmarks",  Icon: BookmarkIcon },
   { path: "/files",      label: "Files",      Icon: FilesIcon },
+  { path: "/document",   label: "Document",   Icon: DocumentIcon },
   { path: "/research",   label: "Research",   Icon: ResearchIcon },
+  { path: "/transition", label: "Transition", Icon: TransitionIcon },
   { path: "/analytics",  label: "Analytics",  Icon: AnalyticsIcon },
   { path: "/history",    label: "History",    Icon: HistoryIcon },
 ];
@@ -77,8 +101,42 @@ export default function Sidebar() {
   const navigate = useNavigate();
   const { user } = useAuthStore();
   const { theme, toggleTheme } = useThemeStore();
+  const {
+    mode,
+    isOffline,
+    setMode,
+    getEffectiveProvider,
+    checkOllamaHealth,
+  } = useAIModeStore();
 
   const isDark = theme === "dark";
+  const effectiveProvider = getEffectiveProvider();
+
+  const handleToggleAIMode = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    if (isOffline) {
+      toast.info("Offline Mode: Local Ollama Qwen 7B is automatically active.");
+      return;
+    }
+
+    const nextMode = mode === "cloud" ? "local" : "cloud";
+    setMode(nextMode);
+
+    if (nextMode === "local") {
+      checkOllamaHealth().then(() => {
+        const status = useAIModeStore.getState().ollamaStatus;
+        if (status.running) {
+          toast.success("Switched to Local Ollama (Qwen 7B) — 100% private offline inference");
+        } else {
+          toast.warning("Local AI selected. Make sure Ollama daemon is running (`ollama serve`).");
+        }
+      });
+    } else {
+      toast.success("Switched to Cloud AI (Gemini & OpenRouter)");
+    }
+  };
 
   return (
     <aside className="sidebar">
@@ -86,45 +144,127 @@ export default function Sidebar() {
       <div className="sidebar-top">
         <div className="wordmark">
           <ScalesIcon />
-          <span className="mark">SUITS.</span>
+          <span className="mark">SUIT.</span>
         </div>
 
         {/* Nav */}
         <nav className="sidebar-nav">
-          {navItems.map(({ path, label, Icon }) => {
-            const isActive =
-              location.pathname === path ||
-              (path !== "/dashboard" && location.pathname.startsWith(path));
-            return (
-              <Link
-                key={path}
-                to={path}
-                className={`nav-item${isActive ? " active" : ""}`}
-                title={label}
-              >
-                {isActive && (
-                  <motion.div
-                    layoutId="sidebar-active-pill"
-                    className="nav-item-active-pill"
-                    transition={{
-                      type: "spring",
-                      stiffness: 380,
-                      damping: 28,
-                      mass: 0.7,
+          <div className="flex flex-col gap-1">
+            {navItems.map(({ path, label, Icon }) => {
+              const isActive =
+                location.pathname === path ||
+                (path !== "/dashboard" && location.pathname.startsWith(path));
+              return (
+                <Link
+                  key={path}
+                  to={path}
+                  className={`nav-item${isActive ? " active" : ""}`}
+                  title={label}
+                >
+                  {isActive && (
+                    <motion.div
+                      layoutId="sidebar-active-pill"
+                      className="nav-item-active-pill"
+                      transition={{
+                        type: "spring",
+                        stiffness: 380,
+                        damping: 28,
+                        mass: 0.7,
+                      }}
+                    />
+                  )}
+                  <span className="nav-item-inner">
+                    <Icon />
+                    <span className="nav-label">{label}</span>
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+
+          {/* AI Engine Toggle pinned at bottom of navbar */}
+          <div className="mt-auto pt-2 flex flex-col gap-1">
+            <div
+              className="my-1.5 mx-3 border-t"
+              style={{ borderColor: "var(--hairline)", opacity: 0.35 }}
+            />
+
+            {/* Fluent Merged AI Engine Nav Item */}
+            <div
+              onClick={handleToggleAIMode}
+              className="nav-item select-none cursor-pointer group"
+              style={{
+                background:
+                  effectiveProvider === "local"
+                    ? "rgba(39, 174, 96, 0.08)"
+                    : undefined,
+                borderColor:
+                  effectiveProvider === "local"
+                    ? "rgba(39, 174, 96, 0.28)"
+                    : "transparent",
+              }}
+              title={
+                effectiveProvider === "local"
+                  ? "Local AI Active (Ollama Qwen 7B) — Click to switch to Cloud AI"
+                  : "Cloud AI Active (Gemini / OpenRouter) — Click to switch to Local Ollama"
+              }
+            >
+              <div className="nav-item-inner flex items-center justify-between w-full">
+                <div className="flex items-center gap-3">
+                  {isOffline ? (
+                    <WifiOff size={18} className="text-amber-500 shrink-0" />
+                  ) : effectiveProvider === "local" ? (
+                    <Cpu size={18} className="text-emerald-500 shrink-0" />
+                  ) : (
+                    <Cloud size={18} style={{ color: "var(--brass-bright)" }} className="shrink-0" />
+                  )}
+                  <div className="nav-label flex flex-col text-left leading-tight">
+                    <span className="text-[14px] font-medium" style={{ color: "var(--ink)" }}>
+                      AI Engine
+                    </span>
+                    <span
+                      className="text-[10px] font-mono tracking-tight"
+                      style={{
+                        color:
+                          effectiveProvider === "local"
+                            ? "#27ae60"
+                            : isOffline
+                            ? "#d48806"
+                            : "var(--ink-faint)",
+                      }}
+                    >
+                      {isOffline
+                        ? "Offline (Qwen 7B)"
+                        : effectiveProvider === "local"
+                        ? "Local (Qwen 7B)"
+                        : "Cloud (Gemini)"}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Smooth Micro-Toggle Switch */}
+                <div
+                  className="relative inline-flex h-5 w-9 shrink-0 items-center rounded-full transition-colors duration-200 ease-in-out cursor-pointer"
+                  style={{
+                    backgroundColor:
+                      effectiveProvider === "local" ? "var(--brass)" : "var(--hairline)",
+                  }}
+                >
+                  <motion.span
+                    animate={{
+                      x: effectiveProvider === "local" ? 17 : 2,
                     }}
+                    transition={{ type: "spring", stiffness: 500, damping: 30 }}
+                    className="inline-block h-3.5 w-3.5 rounded-full bg-white shadow-sm"
                   />
-                )}
-                <span className="nav-item-inner">
-                  <Icon />
-                  <span className="nav-label">{label}</span>
-                </span>
-              </Link>
-            );
-          })}
+                </div>
+              </div>
+            </div>
+          </div>
         </nav>
       </div>
 
-      {/* Footer: Profile pill → /profile + Theme toggle */}
+      {/* Footer: Clean Profile pill → /profile + Theme toggle */}
       <div className="sidebar-foot">
         <div className="sidebar-foot-row">
           {/* Clicking anywhere on the pill goes to /profile */}

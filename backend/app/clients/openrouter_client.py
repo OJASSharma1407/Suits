@@ -24,17 +24,21 @@ logger = structlog.get_logger()
 # Free model pool — ordered by quality / reliability preference
 # Add or remove slugs here to adjust the routing pool.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Free model pool — ordered by quality / reliability preference
+# Verified live models on OpenRouter with free tier (:free)
+# ---------------------------------------------------------------------------
 _FREE_MODEL_POOL: list[str] = [
-    "z-ai/glm-5.2",                              # Z.ai GLM 5.2 — strong reasoning, 1M ctx
+    "openrouter/free",                           # OpenRouter auto-router across all healthy free models
+    "google/gemma-4-31b-it:free",                # Gemma 4 31B (verified live, 262k ctx, JSON support)
+    "google/gemma-4-26b-a4b-it:free",            # Gemma 4 26B (verified live, 262k ctx, JSON support)
+    "nvidia/nemotron-3-super-120b-a12b:free",    # Nemotron 3 Super 120B (verified live, JSON support)
+    "nex-agi/nex-n2.5-pro:free",                 # Nex N2.5 Pro (verified live, JSON support)
+    "nex-agi/nex-n2.5-mini:free",                # Nex N2.5 Mini (verified live, JSON support)
+    "qwen/qwen3.8-27b:free",                     # Qwen 3.8 27B (verified live)
+    "nvidia/nemotron-3-ultra-550b-a55b:free",    # Nemotron 3 Ultra 550B (verified live)
     "z-ai/glm-5.2:free",                         # GLM 5.2 free tier
-    "thudm/glm-4-32b:free",                      # GLM-4 32B free
-    "microsoft/phi-4-reasoning-plus:free",       # Phi-4 reasoning
-    "google/gemma-3-27b-it:free",                # Gemma 3 27B
-    "meta-llama/llama-3.3-70b-instruct:free",    # Llama 3.3 70B
-    "meta-llama/llama-3.1-8b-instruct:free",     # Llama 3.1 8B (fast fallback)
-    "mistralai/mistral-7b-instruct:free",        # Mistral 7B (universal fallback)
-    "qwen/qwen3-8b:free",                        # Qwen3 8B
-    "deepseek/deepseek-r1-0528:free",            # DeepSeek R1
+    "liquid/lfm-2.5-2.6b:free",                  # Liquid LFM 2.5 2.6B
 ]
 
 # Error status codes that indicate rate limiting / overload (trigger cooldown)
@@ -78,6 +82,11 @@ class _FreeModelRouter:
         if preferred and preferred in available:
             ordered.append(preferred)
             rest = [m for m in available if m != preferred]
+        elif preferred and preferred not in self._pool:
+            # If preferred model is a custom slug from .env, try it first if not cooled down
+            if self._is_available(preferred):
+                ordered.append(preferred)
+            rest = available
         else:
             rest = available
 
@@ -122,8 +131,14 @@ def _get_preferred_model() -> str | None:
 
 
 def _is_rate_limit_error(exc: Exception) -> tuple[bool, float]:
-    """Returns (is_rate_limit, retry_after_seconds)."""
+    """Returns (is_rate_limit, retry_after_seconds). Also handles 404 dead slugs and 402 credit exhaustion."""
     msg = str(exc)
+    # Check for dead model (404 / unavailable for free): cooldown for 24h
+    if "404" in msg or "unavailable for free" in msg.lower() or "no endpoints found" in msg.lower():
+        return True, 86400.0  # 24 hours
+    # Check for credit depletion on paid model (402): cooldown for 1 hour
+    if "402" in msg or "requires more credits" in msg.lower():
+        return True, 3600.0  # 1 hour
     # Check HTTP status code
     for code in _RATE_LIMIT_CODES:
         if f"Error code: {code}" in msg or f"'{code}'" in msg or f"{code}" in msg[:50]:
@@ -286,20 +301,43 @@ class OpenRouterClient:
 
         for model in _router.get_ordered(preferred):
             try:
-                response = await self.client.chat.completions.create(  # type: ignore[union-attr]
-                    model=model,
-                    messages=[
-                        {"role": "system", "content": system_prompt + "\nReturn ONLY valid JSON."},
-                        {"role": "user", "content": user_prompt},
-                    ],
-                    temperature=temperature,
-                    max_tokens=max_output_tokens,
-                    response_format={"type": "json_object"},
-                )
+                try:
+                    response = await self.client.chat.completions.create(  # type: ignore[union-attr]
+                        model=model,
+                        messages=[
+                            {"role": "system", "content": system_prompt + "\nReturn ONLY valid JSON with no conversational prefix."},
+                            {"role": "user", "content": user_prompt},
+                        ],
+                        temperature=temperature,
+                        max_tokens=max_output_tokens,
+                        response_format={"type": "json_object"},
+                    )
+                except Exception as rf_exc:
+                    rf_msg = str(rf_exc).lower()
+                    if "response_format" in rf_msg or "400" in rf_msg or "schema" in rf_msg or "not supported" in rf_msg:
+                        response = await self.client.chat.completions.create(  # type: ignore[union-attr]
+                            model=model,
+                            messages=[
+                                {"role": "system", "content": system_prompt + "\nReturn ONLY valid raw JSON with no conversational prefix or markdown backticks."},
+                                {"role": "user", "content": user_prompt},
+                            ],
+                            temperature=temperature,
+                            max_tokens=max_output_tokens,
+                        )
+                    else:
+                        raise rf_exc
+
                 if response and response.choices and response.choices[0].message.content:
+                    content = response.choices[0].message.content.strip()
+                    if content.startswith("```"):
+                        import re
+                        content = re.sub(r"^```(?:json)?\s*", "", content)
+                        content = re.sub(r"\s*```$", "", content)
+                    content = content.strip()
+                    parsed = json.loads(content)
                     logger.info("openrouter_json_success", model=model)
                     _router.advance()
-                    return json.loads(response.choices[0].message.content)
+                    return parsed
             except Exception as exc:
                 last_error = exc
                 is_rl, retry_after = _is_rate_limit_error(exc)

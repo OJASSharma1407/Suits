@@ -20,6 +20,91 @@ from app.prompts.templates import build_case_context
 logger = structlog.get_logger()
 
 
+def _generate_suggested_questions(
+    case_context: str,
+    order_context: str | None,
+    ai_response: str,
+    n: int = 4,
+) -> list[str]:
+    """Generate follow-up question chips locally — zero API calls.
+
+    Inspects available case fields, order context, and the last AI response
+    for legal keywords, then selects the most relevant questions from a
+    curated pool.
+    """
+    ctx = f"{case_context or ''} {order_context or ''} {ai_response or ''}".lower()
+    pool: list[str] = []
+
+    # --- Criminal law signals ---
+    if any(kw in ctx for kw in ("bail", "fir", "arrest", "remand", "custody")):
+        pool.extend([
+            "What are the grounds for granting or denying bail in this case?",
+            "Are there any conditions imposed on the bail order?",
+            "What is the FIR status and investigation timeline?",
+        ])
+    if any(kw in ctx for kw in ("ipc", "bns", "crpc", "bnss", "section 302", "section 420", "cheating", "murder", "theft")):
+        pool.append("Which criminal statutes and sections are invoked, and what are the penalties?")
+
+    # --- Constitutional / Writ signals ---
+    if any(kw in ctx for kw in ("writ", "article 226", "article 32", "fundamental right", "constitutional")):
+        pool.extend([
+            "What fundamental rights are alleged to be violated?",
+            "What is the scope of judicial review applicable here?",
+        ])
+
+    # --- Civil / Contract signals ---
+    if any(kw in ctx for kw in ("contract", "agreement", "arbitration", "specific performance", "damages")):
+        pool.extend([
+            "What are the key contractual obligations in dispute?",
+            "Is the arbitration clause enforceable under Section 11?",
+        ])
+
+    # --- Precedent / Citation signals ---
+    if any(kw in ctx for kw in ("precedent", "cited", "ratio decidendi", "relied upon", "distinguished")):
+        pool.append("What precedents did the court rely upon, and are they binding?")
+
+    # --- Statutes / Acts signals ---
+    if any(kw in ctx for kw in ("act", "section", "statute", "ordinance", "regulation", "rule")):
+        pool.append("List all statutes and specific sections applied by the court.")
+
+    # --- Outcome / Directions signals ---
+    if any(kw in ctx for kw in ("dismissed", "allowed", "disposed", "granted", "directed", "ordered", "relief")):
+        pool.extend([
+            "What specific directions or relief were ordered by the Court?",
+            "What is the practical impact of this order on the parties?",
+        ])
+
+    # --- Hearing / Timeline signals ---
+    if any(kw in ctx for kw in ("next hearing", "adjourned", "listed", "hearing date")):
+        pool.append("What is the next hearing date and what is expected to happen?")
+
+    # --- Evidence signals ---
+    if any(kw in ctx for kw in ("evidence", "witness", "exhibit", "document", "affidavit")):
+        pool.append("What key evidence or documents has the court considered?")
+
+    # --- Always-relevant fallbacks ---
+    fallbacks = [
+        "What is the ratio decidendi established in this case?",
+        "Explain the court's substantive reasoning on the merits.",
+        "What are the key legal issues before the court?",
+        "Summarize the arguments made by both parties.",
+    ]
+
+    # De-duplicate while preserving order, then fill with fallbacks
+    seen: set[str] = set()
+    result: list[str] = []
+    for q in pool + fallbacks:
+        if q not in seen:
+            seen.add(q)
+            result.append(q)
+        if len(result) >= n:
+            break
+
+    return result[:n]
+
+
+
+
 class AIService:
     def __init__(self, db: AsyncSession) -> None:
         self.db = db
@@ -124,26 +209,15 @@ class AIService:
         except Exception:
             pass
 
-        # Generate response via OpenRouter Nemotron 3 Ultra (with Gemini fallback)
-        try:
-            ai_response = await openrouter_client.generate_with_context(
-                system_prompt=MASTER_SYSTEM_PROMPT,
-                conversation_history=history,
-                user_message=user_message,
-                case_context=case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available."),
-                order_context=order_context,
-            )
-            if not ai_response or not ai_response.strip():
-                raise RuntimeError("Empty response from OpenRouter")
-        except Exception as or_err:
-            logger.warning("openrouter_generate_failed_using_gemini", error=str(or_err))
-            ai_response = await gemini_client.generate_with_context(
-                system_prompt=MASTER_SYSTEM_PROMPT,
-                conversation_history=history,
-                user_message=user_message,
-                case_context=case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available."),
-                order_context=order_context,
-            )
+        # Generate response via AI Orchestrator (Ollama Qwen 7B if local/offline, else Cloud AI)
+        from app.services.ai_orchestrator import ai_orchestrator
+        ai_response = await ai_orchestrator.generate_with_context(
+            system_prompt=MASTER_SYSTEM_PROMPT,
+            conversation_history=history,
+            user_message=user_message,
+            case_context=case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available."),
+            order_context=order_context,
+        )
 
         assistant_msg = Message(
             conversation_id=conversation_id,
@@ -152,10 +226,10 @@ class AIService:
         )
         await self.conversation_repo.add_message(assistant_msg)
 
-        suggested = await openrouter_client.generate_suggested_questions(
-            case_context=case_context or "",
-            last_ai_response=ai_response,
-            n=4,
+        suggested = _generate_suggested_questions(
+            case_context=case_context,
+            order_context=order_context,
+            ai_response=ai_response,
         )
 
         return ChatResponse(
@@ -194,35 +268,20 @@ class AIService:
             is_general = not cnr or cnr.upper() == "GENERAL"
             effective_context = case_context if case_context else ("This is a general legal inquiry. No specific case is loaded. Answer using your general legal knowledge about Indian law." if is_general else "No case context available.")
 
-            # Stream tokens via OpenRouter (gpt-oss-120b) with Gemini fallback
+            # Stream tokens via AI Orchestrator (Ollama Qwen 7B if local/offline, else Cloud AI)
+            from app.services.ai_orchestrator import ai_orchestrator
             full_response: list[str] = []
-            try:
-                async for token in openrouter_client.generate_with_context_stream(
-                    system_prompt=MASTER_SYSTEM_PROMPT,
-                    conversation_history=history,
-                    user_message=user_message,
-                    case_context=effective_context,
-                    order_context=order_context,
-                ):
-                    if token:
-                        full_response.append(token)
-                        chunk_json = json.dumps({"token": token})
-                        yield f"data: {chunk_json}\n\n"
-                if not full_response:
-                    raise RuntimeError("OpenRouter produced empty stream")
-            except Exception as stream_err:
-                logger.warning("openrouter_stream_failed_using_gemini", error=str(stream_err))
-                async for token in gemini_client.generate_with_context_stream(
-                    system_prompt=MASTER_SYSTEM_PROMPT,
-                    conversation_history=history,
-                    user_message=user_message,
-                    case_context=effective_context,
-                    order_context=order_context,
-                ):
-                    if token:
-                        full_response.append(token)
-                        chunk_json = json.dumps({"token": token})
-                        yield f"data: {chunk_json}\n\n"
+            async for token in ai_orchestrator.generate_with_context_stream(
+                system_prompt=MASTER_SYSTEM_PROMPT,
+                conversation_history=history,
+                user_message=user_message,
+                case_context=effective_context,
+                order_context=order_context,
+            ):
+                if token:
+                    full_response.append(token)
+                    chunk_json = json.dumps({"token": token})
+                    yield f"data: {chunk_json}\n\n"
 
             # Save completed assistant message
             ai_response = "".join(full_response)
@@ -233,13 +292,12 @@ class AIService:
             )
             await self.conversation_repo.add_message(assistant_msg)
 
-            # Fast contextual suggested questions
-            suggested = [
-                "What is the ratio decidendi established in this case?",
-                "List all precedents and statutes cited.",
-                "Explain the court's substantive reasoning on the merits.",
-                "What specific directions or relief were ordered by the Court?",
-            ]
+            # Fast contextual suggested questions (zero API calls)
+            suggested = _generate_suggested_questions(
+                case_context=effective_context,
+                order_context=order_context,
+                ai_response=ai_response,
+            )
 
             done_payload = json.dumps({"done": True, "suggested_questions": suggested})
             yield f"data: {done_payload}\n\n"

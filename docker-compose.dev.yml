@@ -1,0 +1,99 @@
+name: suits_dev
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: suits_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-suits}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-suits}
+      POSTGRES_DB: ${POSTGRES_DB:-suits}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_dev_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-suits}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - suits_dev_network
+
+  redis:
+    image: redis:7-alpine
+    container_name: suits_redis_dev
+    restart: unless-stopped
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    networks:
+      - suits_dev_network
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: suits_backend_dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-suits}:${POSTGRES_PASSWORD:-suits}@postgres:5432/${POSTGRES_DB:-suits}
+      REDIS_URL: redis://redis:6379/0
+      ENVIRONMENT: development
+      LOG_LEVEL: DEBUG
+      JWT_SECRET: ${JWT_SECRET:-dev-secret-key-32-chars-minimum}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-key-32-chars}
+      ECOURTS_API_KEY: ${ECOURTS_API_KEY:-}
+      KANOON_API_TOKEN: ${KANOON_API_TOKEN:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      GROQ_API_KEY: ${GROQ_API_KEY:-}
+      OLLAMA_BASE_URL: ${OLLAMA_BASE_URL:-http://host.docker.internal:11434}
+      CORS_ORIGINS: http://localhost:5173,http://localhost:3000,http://127.0.0.1:5173
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+    ports:
+      - "8000:8000"
+    command: ["uvicorn", "app.main:app", "--reload", "--host", "0.0.0.0", "--port", "8000"]
+    networks:
+      - suits_dev_network
+
+  frontend:
+    image: node:20-alpine
+    container_name: suits_frontend_dev
+    working_dir: /app
+    depends_on:
+      - backend
+    environment:
+      VITE_API_URL: http://localhost:8000/api
+      VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+    volumes:
+      - ./frontend:/app
+      - frontend_dev_node_modules:/app/node_modules
+    ports:
+      - "5173:5173"
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0 --port 5173"
+    networks:
+      - suits_dev_network
+
+volumes:
+  postgres_dev_data:
+  frontend_dev_node_modules:
+
+networks:
+  suits_dev_network:
+    driver: bridge
+

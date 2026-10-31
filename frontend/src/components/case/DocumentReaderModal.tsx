@@ -749,7 +749,7 @@ export function DocumentReaderModal({
         <div className="flex-1 w-full h-full overflow-hidden relative flex" style={{ background: "var(--bg)" }}>
           {/* MODE 1: CUSTOM IN-APP PDF VIEWER (PDF.js Canvas Engine, default 155% zoom) */}
           {mode === "pdf" && (
-            <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden">
+            <div className="w-full h-full flex flex-col relative overflow-hidden">
               {pdfLoading && !pdfData ? (
                 <div className="flex flex-col items-center justify-center h-full">
                   <SuitsLoader

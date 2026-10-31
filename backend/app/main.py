@@ -1,4 +1,4 @@
-"""SUITS Backend - FastAPI Application Entry Point."""
+"""SUIT Backend - FastAPI Application Entry Point."""
 
 from contextlib import asynccontextmanager
 
@@ -11,8 +11,9 @@ from app.core.config import settings
 from app.core.exceptions import SuitsBaseException
 from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
-from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics, files, documents
+from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics, files, documents, statutes, counter_pleading
 from app.clients.ecourts_client import ecourts_client
+from app.clients.kanoon_client import kanoon_client
 from app.services.cache_service import cache_service
 from app.database.session import engine, init_db
 from app.database.base import Base
@@ -71,6 +72,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     await ecourts_client.close()
+    await kanoon_client.close()
     await cache_service.close()
     logger.info("suits_stopped")
 
@@ -84,32 +86,41 @@ app = FastAPI(
     redoc_url="/redoc" if settings.environment == "development" else None,
 )
 
+from app.middleware.ai_provider import AIProviderMiddleware
+from app.clients.ollama_client import ollama_client
+
 # --- Middleware (order matters: last added = first executed) ---
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_origin_regex=r"^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
-)
+cors_kwargs = {
+    "allow_origins": settings.cors_origins_list,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+    "expose_headers": ["Content-Disposition", "X-AI-Provider"],
+}
+if settings.environment == "development":
+    cors_kwargs["allow_origin_regex"] = r"^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$"
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)
+app.add_middleware(AIProviderMiddleware)
 
 # --- Global Exception Handler ---
 
 @app.exception_handler(SuitsBaseException)
 async def suits_exception_handler(request: Request, exc: SuitsBaseException):
+    content = {
+        "success": False,
+        "message": exc.detail,
+        "error_code": exc.error_code,
+    }
+    if exc.error_code == "ONLINE_AI_LIMIT_REACHED":
+        content["can_switch_to_ollama"] = True
     return JSONResponse(
         status_code=exc.status_code,
-        content={
-            "success": False,
-            "message": exc.detail,
-            "error_code": exc.error_code,
-        },
+        content=content,
     )
 
 
@@ -137,8 +148,42 @@ app.include_router(history.router, prefix="/api")
 app.include_router(analytics.router, prefix="/api")
 app.include_router(files.router, prefix="/api")
 app.include_router(documents.router, prefix="/api")
+app.include_router(statutes.router, prefix="/api")
+app.include_router(counter_pleading.router, prefix="/api")
+
+
+@app.get("/")
+@app.get("/api")
+async def root():
+    return {
+        "status": "online",
+        "service": "SUITS Court Intelligence Platform",
+        "version": "1.0.0",
+        "endpoints": {
+            "docs": "/docs",
+            "health": "/api/health",
+            "prediction": "/api/health/prediction",
+        },
+    }
 
 
 @app.get("/api/health")
 async def health_check():
     return {"status": "healthy", "version": "1.0.0"}
+
+
+@app.get("/api/health/prediction")
+async def prediction_health_check():
+    has_key = bool(settings.gemini_api_key and settings.gemini_api_key.strip())
+    return {
+        "status": "configured" if has_key else "unconfigured",
+        "service": "Judicial Outcome Prediction Engine",
+        "model": settings.prediction_gemini_model,
+        "key_present": has_key,
+    }
+
+
+@app.get("/api/health/ollama")
+async def ollama_health_check():
+    """Verify connectivity to local Ollama daemon and target Qwen 7B model status."""
+    return await ollama_client.check_health()

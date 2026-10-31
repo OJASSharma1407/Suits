@@ -36,7 +36,6 @@ export default function RegisterPage() {
   };
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
-    console.log("Google Credential response received on Register:", credentialResponse);
     if (!credentialResponse?.credential) {
       toast.error("Google sign-in failed: No credential token received from Google.");
       return;
@@ -44,7 +43,6 @@ export default function RegisterPage() {
     setLoading(true);
     try {
       const result = await authService.googleLogin({ credential: credentialResponse.credential });
-      console.log("Google Register API Success:", result);
       localStorage.setItem("access_token", result.tokens.access_token);
       localStorage.setItem("refresh_token", result.tokens.refresh_token);
       setUser(result.user);
@@ -95,7 +93,7 @@ export default function RegisterPage() {
             shape="rectangular"
             size="large"
             text="signup_with"
-            width="100%"
+            width="320"
           />
         </div>
 

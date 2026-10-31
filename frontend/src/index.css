@@ -1125,15 +1125,6 @@ input, button, select, textarea {
   transform-origin: 0% 0%;
 }
 
-.textLayer ::selection {
-  background: rgba(245, 158, 11, 0.35) !important;
-  color: transparent !important;
-}
-
-.textLayer ::-moz-selection {
-  background: rgba(245, 158, 11, 0.35) !important;
-  color: transparent !important;
-}
 
 /* ============================================================
    SUITS CONIC LOADING ANIMATION (From Loading.css & #13)
@@ -1177,3 +1168,190 @@ input, button, select, textarea {
     transform: rotate(1turn);
   }
 }
+
+/* ============================================================
+   PDF VIEWER – Precision Text Selection & Selection Guard
+   ============================================================ */
+
+/* PDF.js endOfContent guard element:
+   Crucial Chromium selection guard. When positioned after the active
+   selection anchor, it blocks Chromium from cascading selections
+   across line gaps and empty whitespace into entire paragraphs. */
+.textLayer .endOfContent {
+  display: block !important;
+  position: absolute !important;
+  inset: 100% 0 0 !important;
+  z-index: 0 !important;
+  cursor: default !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  pointer-events: none;
+}
+
+.textLayer.selecting .endOfContent {
+  top: 0 !important;
+  display: block !important;
+}
+
+/* Remove PDF.js built-in highlight backgrounds on text spans */
+.textLayer .highlight {
+  background-color: transparent !important;
+  --highlight-bg-color: transparent !important;
+  --highlight-selected-bg-color: transparent !important;
+}
+
+/* Subtle, clean selection color for intentional drag-highlights */
+.textLayer ::selection {
+  background: rgba(245, 158, 11, 0.35) !important;
+  color: transparent !important;
+}
+.textLayer ::-moz-selection {
+  background: rgba(245, 158, 11, 0.35) !important;
+  color: transparent !important;
+}
+
+.textLayer br::selection {
+  background: transparent !important;
+}
+.textLayer br::-moz-selection {
+  background: transparent !important;
+}
+
+/* ============================================================
+   INDIAN LEGAL DOCUMENT EDITOR & COURT PRINT RULES
+   ============================================================ */
+.legal-document-sheet {
+  box-sizing: border-box;
+}
+
+/* High-contrast text selection for legal document sheet in all modes */
+.legal-document-sheet ::selection {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+.legal-document-sheet ::-moz-selection {
+  background: #2563eb !important;
+  color: #ffffff !important;
+}
+
+[data-theme="dark"] ::selection {
+  background: rgba(62, 124, 166, 0.55);
+  color: #ffffff;
+}
+
+.court-block-wrapper {
+  margin: 1.25em 0;
+  display: block;
+}
+
+.legal-editor-content p {
+  margin: 0 0 0.85em 0;
+  line-height: inherit;
+  text-align: inherit;
+}
+
+.court-page-break {
+  page-break-after: always;
+}
+
+.legal-editor-content:empty:before {
+  content: attr(placeholder);
+  color: var(--ink-faint);
+  opacity: 0.5;
+  pointer-events: none;
+  display: block;
+}
+
+@media print {
+  html, body, #root, .app-shell, .main-column, .main-content, .main-inner, .dashboard-layout {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide app shell, sidebar, topbar, toolbars, buttons, drawers during court print */
+  .sidebar,
+  .topbar,
+  .btn,
+  button,
+  select,
+  input,
+  .court-page-guide,
+  .court-page-footer,
+  .legal-page-header button,
+  .legal-editor-topbar,
+  .legal-editor-toolbar,
+  .legal-add-page-btn,
+  .document-chat-drawer-container,
+  .command-palette,
+  .global-voice-dictation,
+  .switch-to-ollama-modal,
+  .editor-dropdown-container,
+  header,
+  nav,
+  .no-print {
+    display: none !important;
+  }
+
+  .legal-editor-canvas-container {
+    padding: 0 !important;
+    margin: 0 !important;
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+    overflow: visible !important;
+    min-height: 0 !important;
+    display: block !important;
+    width: 100% !important;
+  }
+
+  .legal-editor-canvas-container > div {
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  .legal-document-sheet {
+    box-shadow: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+    min-height: auto !important;
+    padding: 1.0in !important;
+    background: #ffffff !important;
+    color: #000000 !important;
+    border: none !important;
+    page-break-inside: auto !important;
+    break-inside: auto !important;
+    margin: 0 !important;
+    position: relative !important;
+  }
+
+  .legal-document-sheet:not(:last-child) {
+    page-break-after: always !important;
+    break-after: page !important;
+  }
+
+  .legal-document-sheet:last-child {
+    page-break-after: auto !important;
+    break-after: auto !important;
+  }
+
+  .legal-editor-content {
+    min-height: auto !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 0;
+  }
+}

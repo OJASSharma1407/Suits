@@ -87,10 +87,6 @@ class KanoonClient:
                             data = response.json()
                             # Log fetched data preview
                             preview = str(data)[:300]
-                            print(f"\\n\\033[92m=== KANOON API FETCH SUCCESS ===\\033[0m")
-                            print(f"Endpoint: {endpoint}")
-                            print(f"Elapsed: {elapsed_ms}ms")
-                            print(f"Data Preview: {preview}\\n")
                             logger.info(
                                 "KANOON_DATA_FETCHED",
                                 endpoint=endpoint,
@@ -101,13 +97,9 @@ class KanoonClient:
                             )
                             return data
                         except json.JSONDecodeError:
-                            print(f"\\n\\033[91m=== KANOON API JSON ERROR ===\\033[0m\\n{response.text[:200]}\\n")
                             logger.warning("KANOON_DATA_JSON_DECODE_ERROR", endpoint=endpoint, text=response.text[:200])
                             return {"raw": response.text}
                     # Return raw text if not JSON
-                    print(f"\\n\\033[93m=== KANOON API RETURNED HTML/TEXT ===\\033[0m")
-                    print(f"Endpoint: {endpoint} | Size: {len(response.text)} bytes")
-                    print(f"Preview: {response.text[:300]}\\n")
                     logger.info("KANOON_DATA_RAW_TEXT", endpoint=endpoint, elapsed_ms=elapsed_ms, size=len(response.text))
                     return {"raw": response.text}
 
