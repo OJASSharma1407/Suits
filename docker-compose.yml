@@ -143,3 +143,4 @@ networks:
   suits_network:
     name: suits_network
     driver: bridge
+

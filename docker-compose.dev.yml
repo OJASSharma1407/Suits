@@ -96,3 +96,4 @@ volumes:
 networks:
   suits_dev_network:
     driver: bridge
+
