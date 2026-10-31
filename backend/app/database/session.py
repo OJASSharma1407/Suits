@@ -74,6 +74,9 @@ async def init_db() -> None:
     from sqlalchemy import text
 
     async with engine.begin() as conn:
+        if not _is_sqlite:
+            # Advisory lock prevents concurrent Uvicorn workers from racing on CREATE TYPE
+            await conn.execute(text("SELECT pg_advisory_xact_lock(424242);"))
         await conn.run_sync(Base.metadata.create_all)
         
         if _is_sqlite:

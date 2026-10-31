@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { GoogleLogin } from "@react-oauth/google";
 import { authService } from "@/services/auth";
@@ -20,9 +20,31 @@ function ScalesIcon() {
   );
 }
 
+// Memoized Google Login to prevent re-initializing GSI on every keystroke
+const MemoizedGoogleLogin = React.memo(function MemoizedGoogleLogin({
+  onSuccess,
+  onError,
+}: {
+  onSuccess: (credentialResponse: any) => void;
+  onError: () => void;
+}) {
+  return (
+    <GoogleLogin
+      onSuccess={onSuccess}
+      onError={onError}
+      theme="filled_black"
+      shape="rectangular"
+      size="large"
+      text="continue_with"
+      width="320"
+    />
+  );
+});
+
 export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAuthStore((s: { isAuthenticated: boolean }) => s.isAuthenticated);
@@ -41,6 +63,9 @@ export default function LoginPage() {
   }, [isAuthenticated, navigate]);
 
   const extractErrorMessage = (err: any): string => {
+    if (err.response?.status === 401) {
+      return "Invalid email or password. Please check your credentials and try again.";
+    }
     if (err.response?.status === 502) {
       return "Backend service is currently unavailable (502 Bad Gateway). Please verify that the backend is running.";
     }
@@ -51,9 +76,14 @@ export default function LoginPage() {
       return err.response.data.message;
     }
     if (err.response?.data?.detail) {
-      return typeof err.response.data.detail === "string"
-        ? err.response.data.detail
-        : JSON.stringify(err.response.data.detail);
+      const detail = err.response.data.detail;
+      if (typeof detail === "string") return detail;
+      if (Array.isArray(detail)) {
+        return detail
+          .map((item: any) => (item.msg ? item.msg.replace(/^Value error,\s*/i, "") : JSON.stringify(item)))
+          .join(". ");
+      }
+      return JSON.stringify(detail);
     }
     if (err.message === "Network Error") {
       return "Unable to connect to SUITS API server. Please check your network connection.";
@@ -82,7 +112,7 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleSuccess = async (credentialResponse: any) => {
+  const handleGoogleSuccess = useCallback(async (credentialResponse: any) => {
     setError(null);
     if (!credentialResponse?.credential) {
       const msg = "Google sign-in failed: No credential token received from Google.";
@@ -105,7 +135,13 @@ export default function LoginPage() {
     } finally {
       setLoading(false);
     }
-  };
+  }, [setUser, navigate]);
+
+  const handleGoogleError = useCallback(() => {
+    const msg = "Google sign-in was cancelled or encountered an error.";
+    setError(msg);
+    toast.error(msg);
+  }, []);
 
   return (
     <div
@@ -181,22 +217,10 @@ export default function LoginPage() {
           </p>
         </div>
 
-        {/* Google OAuth Login Button */}
+        {/* Google OAuth Login Button (Memoized) */}
         <div style={{ marginBottom: 20, display: "flex", justifyContent: "center" }}>
           <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
-            <GoogleLogin
-              onSuccess={handleGoogleSuccess}
-              onError={() => {
-                const msg = "Google sign-in was cancelled or encountered an error.";
-                setError(msg);
-                toast.error(msg);
-              }}
-              theme="filled_black"
-              shape="rectangular"
-              size="large"
-              text="continue_with"
-              width="320"
-            />
+            <MemoizedGoogleLogin onSuccess={handleGoogleSuccess} onError={handleGoogleError} />
           </div>
         </div>
 
@@ -282,16 +306,39 @@ export default function LoginPage() {
             >
               Password
             </label>
-            <input
-              type="password"
-              required
-              value={password}
-              onChange={(e) => {
-                setPassword(e.target.value);
-                if (error) setError(null);
-              }}
-              placeholder="••••••••"
-            />
+            <div style={{ position: "relative" }}>
+              <input
+                type={showPassword ? "text" : "password"}
+                required
+                value={password}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (error) setError(null);
+                }}
+                placeholder="••••••••"
+                style={{ paddingRight: 50, width: "100%" }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                tabIndex={-1}
+                aria-label={showPassword ? "Hide password" : "Show password"}
+                style={{
+                  position: "absolute",
+                  right: 12,
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "transparent",
+                  border: "none",
+                  cursor: "pointer",
+                  fontSize: 12,
+                  color: "var(--ink-dim)",
+                  padding: "4px 6px",
+                }}
+              >
+                {showPassword ? "Hide" : "Show"}
+              </button>
+            </div>
           </div>
 
           <button
