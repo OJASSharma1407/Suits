@@ -30,8 +30,8 @@ RUN rm -rf /usr/share/nginx/html/*
 # Copy built artifacts from builder stage
 COPY --from=builder /app/dist /usr/share/nginx/html
 
-# Copy custom Nginx configuration from Docker(suits)
-COPY Docker(suits)/frontend/nginx.conf /etc/nginx/conf.d/default.conf
+# Copy custom Nginx configuration
+COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
 
 EXPOSE 80
 

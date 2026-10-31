@@ -24,6 +24,11 @@ RUN pip install --no-cache-dir torch>=2.3.0 --index-url https://download.pytorch
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Pre-cache InLegalBERT model and tokenizer into default huggingface cache
+RUN python -c "from transformers import AutoModel, AutoTokenizer; \
+    AutoModel.from_pretrained('law-ai/InLegalBERT'); \
+    AutoTokenizer.from_pretrained('law-ai/InLegalBERT')"
+
 # Remove build-essential to reduce image footprint
 RUN apt-get purge -y --auto-remove build-essential && rm -rf /var/lib/apt/lists/*
 
@@ -31,11 +36,14 @@ RUN apt-get purge -y --auto-remove build-essential && rm -rf /var/lib/apt/lists/
 RUN mkdir -p /app/data/uploads /app/data/pdf_cache /app/data/models
 
 # Copy backend application source
-COPY backend/ .
+COPY backend/ /app/
 
-# Set up non-root user for security
+# Set up non-root user for security and configure permissions
 RUN useradd -m -u 1000 appuser && \
-    chown -R appuser:appuser /app
+    mkdir -p /home/appuser/.cache && \
+    (cp -r /root/.cache/* /home/appuser/.cache/ 2>/dev/null || true) && \
+    chown -R appuser:appuser /app /home/appuser
+
 USER appuser
 
 EXPOSE 8000
@@ -44,4 +52,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=15s --timeout=5s --start-period=30s --retries=3 \
     CMD curl -f http://localhost:8000/api/health || exit 1
 
-CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "4", "--proxy-headers"]

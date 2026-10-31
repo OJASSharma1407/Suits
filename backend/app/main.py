@@ -13,6 +13,7 @@ from app.middleware.logging import RequestLoggingMiddleware
 from app.middleware.rate_limit import RateLimitMiddleware
 from app.api import auth, search, cases, orders, chat, bookmarks, history, analytics, files, documents, statutes, counter_pleading
 from app.clients.ecourts_client import ecourts_client
+from app.clients.kanoon_client import kanoon_client
 from app.services.cache_service import cache_service
 from app.database.session import engine, init_db
 from app.database.base import Base
@@ -71,6 +72,7 @@ async def lifespan(app: FastAPI):
 
     # Cleanup
     await ecourts_client.close()
+    await kanoon_client.close()
     await cache_service.close()
     logger.info("suits_stopped")
 
@@ -89,15 +91,17 @@ from app.clients.ollama_client import ollama_client
 
 # --- Middleware (order matters: last added = first executed) ---
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
-    allow_origin_regex=r"^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition", "X-AI-Provider"],
-)
+cors_kwargs = {
+    "allow_origins": settings.cors_origins_list,
+    "allow_credentials": True,
+    "allow_methods": ["*"],
+    "allow_headers": ["*"],
+    "expose_headers": ["Content-Disposition", "X-AI-Provider"],
+}
+if settings.environment == "development":
+    cors_kwargs["allow_origin_regex"] = r"^https?://(?:localhost|127\.0\.0\.1)(?::\d+)?$"
+
+app.add_middleware(CORSMiddleware, **cors_kwargs)
 
 app.add_middleware(RequestLoggingMiddleware)
 app.add_middleware(RateLimitMiddleware)

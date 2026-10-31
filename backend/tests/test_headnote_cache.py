@@ -77,6 +77,12 @@ async def test_headnote_service_db_cache_hit():
         test_cnr = "TESTCNR999999999"
         test_hash = "hash999888777"
 
+        from sqlalchemy import delete
+        from app.models.cached_order import CachedOrder
+        await db_session.execute(delete(CachedOrder).where(CachedOrder.cnr == test_cnr))
+        await db_session.execute(delete(CachedHeadnote).where(CachedHeadnote.cnr == test_cnr))
+        await db_session.commit()
+
         # Pre-seed DB cache directly
         headnote_data = {
             "catchwords": ["Constitutional Law", "Article 226", "Writ of Mandamus"],
@@ -106,8 +112,12 @@ async def test_headnote_service_db_cache_hit():
 
         # Instantiate HeadnoteService and request headnote
         svc = HeadnoteService(db_session)
-        # Even without order text, it should hit the DB fallback cache
-        res = await svc.get_or_generate_headnote(test_cnr)
+        # Without order text from court portal, it should hit the DB fallback cache
+        from unittest.mock import patch, AsyncMock
+        with patch.object(svc.order_service, "get_markdown", new_callable=AsyncMock) as mock_get_md:
+            from app.schemas.order import OrderMarkdownResponse
+            mock_get_md.return_value = OrderMarkdownResponse(cnr=test_cnr, filename="primary", markdown="")
+            res = await svc.get_or_generate_headnote(test_cnr)
         assert res is not None
         assert res.is_cached is True
         assert res.target_cnr == test_cnr

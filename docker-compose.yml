@@ -48,8 +48,8 @@ services:
   # -------------------------------------------------------------
   backend:
     build:
-      context: ..
-      dockerfile: Docker(suits)/backend/Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     container_name: suits_backend
     restart: unless-stopped
     depends_on:
@@ -68,13 +68,13 @@ services:
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-30}
       JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-7}
 
-      # External APIs (Provided via .env file)
+      # External APIs
       ECOURTS_API_KEY: ${ECOURTS_API_KEY:-}
       ECOURTS_BASE_URL: ${ECOURTS_BASE_URL:-https://api.ecourts.gov.in/partner}
       KANOON_API_TOKEN: ${KANOON_API_TOKEN:-}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
-      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.1-flash-lite}
-      PREDICTION_GEMINI_MODEL: ${PREDICTION_GEMINI_MODEL:-gemini-3.1-flash-lite}
+      GEMINI_MODEL: ${GEMINI_MODEL:-gemini-3.5-flash}
+      PREDICTION_GEMINI_MODEL: ${PREDICTION_GEMINI_MODEL:-gemini-3.5-flash}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       OPENROUTER_MODEL: ${OPENROUTER_MODEL:-openrouter/free}
       OPENROUTER_MAX_TOKENS: ${OPENROUTER_MAX_TOKENS:-2048}
@@ -90,10 +90,10 @@ services:
       EMAIL_FROM: ${EMAIL_FROM:-Suits Legal <onboarding@resend.dev>}
 
       # Application Configuration
-      ENVIRONMENT: ${ENVIRONMENT:-development}
+      ENVIRONMENT: ${ENVIRONMENT:-production}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost,http://localhost:80,http://localhost:5173,http://127.0.0.1:5173}
-      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-60}
+      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE:-120}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     ports:
@@ -109,8 +109,8 @@ services:
   # -------------------------------------------------------------
   frontend:
     build:
-      context: ..
-      dockerfile: Docker(suits)/frontend/Dockerfile
+      context: .
+      dockerfile: frontend/Dockerfile
       args:
         VITE_API_URL: ${VITE_API_URL:-/api}
         VITE_GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
@@ -120,8 +120,6 @@ services:
       - backend
     ports:
       - "${FRONTEND_PORT:-5173}:80"
-    volumes:
-      - ./frontend/nginx.conf:/etc/nginx/conf.d/default.conf:ro
     networks:
       - suits_network
 

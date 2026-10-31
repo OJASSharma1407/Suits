@@ -23,6 +23,18 @@ class CacheService:
         self._redis: redis.Redis | None = None
         self._memory_cache: dict[str, tuple[float | None, Any]] = {}
 
+    def _prune_memory_cache(self) -> None:
+        """Keep in-memory cache bounded under 2000 items to prevent unbounded memory growth."""
+        max_entries = 2000
+        if len(self._memory_cache) > max_entries:
+            now = time.time()
+            expired = [k for k, (exp, _) in self._memory_cache.items() if exp is not None and now >= exp]
+            for k in expired:
+                self._memory_cache.pop(k, None)
+            if len(self._memory_cache) > max_entries:
+                for k in list(self._memory_cache.keys())[:500]:
+                    self._memory_cache.pop(k, None)
+
     async def _get_redis(self) -> redis.Redis | None:
         """Get Redis connection, returning None if unavailable (graceful degradation)."""
         if self._redis is None:
@@ -58,6 +70,7 @@ class CacheService:
                     logger.debug("redis_cache_hit", key=key)
                     parsed = json.loads(value)
                     self._memory_cache[key] = (time.time() + 3600, parsed)
+                    self._prune_memory_cache()
                     return parsed
             except Exception as exc:
                 logger.debug("redis_cache_get_error", key=key, error=str(exc))
@@ -69,6 +82,7 @@ class CacheService:
         # 1. Save to in-memory cache
         expiry = time.time() + ttl_seconds if ttl_seconds else None
         self._memory_cache[key] = (expiry, value)
+        self._prune_memory_cache()
 
         # 2. Save to Redis if available
         r = await self._get_redis()

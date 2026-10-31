@@ -9,5 +9,27 @@ frontend/dist/
 *.db-wal
 __pycache__/
 *.pyc
+*.pyo
+*.pyd
 .pytest_cache/
 .ruff_cache/
+*.egg-info/
+backend/*.egg-info/
+
+# Storage caches and uploads
+backend/data/uploads/*
+!backend/data/uploads/.gitkeep
+backend/data/pdf_cache/*
+!backend/data/pdf_cache/.gitkeep
+
+# Tests and dev scripts
+backend/tests/
+backend/eval/
+backend/scripts/dev/
+docs/
+
+# Environment files
+.env
+.env.*
+backend/.env
+frontend/.env
