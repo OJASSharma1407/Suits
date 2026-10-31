@@ -62,3 +62,4 @@ def test_change_password_request_validation():
         new_password="NewP@ssw0rd2026",
     )
     assert req.new_password == "NewP@ssw0rd2026"
+

@@ -24,7 +24,12 @@ export default function App() {
 
   return (
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
-      <Toaster position="top-right" richColors closeButton duration={5000} />
+      <Toaster
+        position="bottom-right"
+        closeButton
+        duration={4500}
+        gap={10}
+      />
       <AppRouter />
     </GoogleOAuthProvider>
   );

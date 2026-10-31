@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { Bookmark, ExternalLink } from "lucide-react";
 import api from "@/lib/axios";
 
 interface SearchHistoryItem {
@@ -10,14 +9,6 @@ interface SearchHistoryItem {
   category?: string;
   created_at?: string;
 }
-
-const DEFAULT_RECOMMENDED_SEARCHES: SearchHistoryItem[] = [
-  { query: "Anticipatory Bail — Supreme Court", category: "Recent", type: "case_type" },
-  { query: "Bachan Singh", category: "Recent", type: "case" },
-  { query: "Vinayak Road Carriers vs SBI — NCLAT Insolvency", category: "Suggested", type: "case" },
-  { query: "Section 9 IBC Demand Notice", category: "Precedent", type: "legal_issue" },
-  { query: "Harish Salve — Senior Advocate", category: "Advocate", type: "advocate" },
-];
 
 export default function DashboardPage() {
   const [stats, setStats] = useState({ bookmarks: 0, conversations: 0, searches: 0 });
@@ -34,34 +25,36 @@ export default function DashboardPage() {
           api.get("/history/searches"),
         ]);
 
-        if (statsRes.status === "fulfilled") {
-          setStats(statsRes.value.data.data || { bookmarks: 0, conversations: 2, searches: 7 });
+        if (statsRes.status === "fulfilled" && statsRes.value?.data?.data) {
+          const d = statsRes.value.data.data;
+          setStats({
+            bookmarks: typeof d.bookmarks === "number" ? d.bookmarks : 0,
+            conversations: typeof d.conversations === "number" ? d.conversations : 0,
+            searches: typeof d.searches === "number" ? d.searches : 0,
+          });
         }
 
         if (bookmarkRes.status === "fulfilled") {
           setBookmarks(bookmarkRes.value.data.data?.slice(0, 4) || []);
         }
 
-        if (searchRes.status === "fulfilled" && Array.isArray(searchRes.value.data.data) && searchRes.value.data.data.length > 0) {
+        if (
+          searchRes.status === "fulfilled" &&
+          Array.isArray(searchRes.value.data.data) &&
+          searchRes.value.data.data.length > 0
+        ) {
           const userSearches = searchRes.value.data.data.map((s: any) => ({
             id: s.id,
             query: s.query,
             category: "Recent",
             created_at: s.created_at,
           }));
-          const combined = [...userSearches, ...DEFAULT_RECOMMENDED_SEARCHES];
-          const seen = new Set<string>();
-          const deduped = combined.filter((item) => {
-            if (seen.has(item.query.toLowerCase())) return false;
-            seen.add(item.query.toLowerCase());
-            return true;
-          });
-          setSearchHistory(deduped);
+          setSearchHistory(userSearches);
         } else {
-          setSearchHistory(DEFAULT_RECOMMENDED_SEARCHES);
+          setSearchHistory([]);
         }
       } catch {
-        setSearchHistory(DEFAULT_RECOMMENDED_SEARCHES);
+        setSearchHistory([]);
       }
     }
     loadData();
@@ -75,18 +68,28 @@ export default function DashboardPage() {
           <div className="kpi-label">Bookmarked</div>
           <div className="kpi-num">{stats.bookmarks}</div>
           <div className="kpi-delta">
-            {stats.bookmarks === 0 ? "Nothing tracked yet" : `${stats.bookmarks} cases tracked`}
+            {stats.bookmarks === 0
+              ? "Nothing tracked yet"
+              : `${stats.bookmarks} case${stats.bookmarks === 1 ? "" : "s"} tracked`}
           </div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Active Chats</div>
-          <div className="kpi-num">{stats.conversations || 2}</div>
-          <div className="kpi-delta">1 opened today</div>
+          <div className="kpi-num">{stats.conversations}</div>
+          <div className="kpi-delta">
+            {stats.conversations === 0
+              ? "No active discussions"
+              : `${stats.conversations} conversation${stats.conversations === 1 ? "" : "s"}`}
+          </div>
         </div>
         <div className="kpi">
           <div className="kpi-label">Searches This Week</div>
-          <div className="kpi-num">{stats.searches || 7}</div>
-          <div className="kpi-delta">Last: today, 5h ago</div>
+          <div className="kpi-num">{stats.searches}</div>
+          <div className="kpi-delta">
+            {stats.searches === 0
+              ? "No searches run yet"
+              : `${stats.searches} quer${stats.searches === 1 ? "y" : "ies"} logged`}
+          </div>
         </div>
       </div>
 
@@ -94,40 +97,88 @@ export default function DashboardPage() {
       <div className="dashboard-section">
         <div className="section-heading">
           <h3>Recent searches</h3>
-          <Link to="/history" className="section-link">
-            View history →
-          </Link>
+          {searchHistory.length > 0 && (
+            <Link to="/history" className="section-link">
+              View history →
+            </Link>
+          )}
         </div>
         <div className="section-sub">Resume where you left off.</div>
 
-        <div className="ledger-list">
-          {searchHistory.slice(0, 4).map((item, idx) => (
-            <div
-              key={item.id || idx}
-              className="ledger-row"
-              onClick={() => navigate(`/search?query=${encodeURIComponent(item.query)}`)}
-            >
-              <div className="ledger-row-left">
-                <span className="ledger-tag">{item.category || "Recent"}</span>
-                <span className="ledger-name">{item.query}</span>
-              </div>
-              <div className="ledger-row-right">
-                {item.created_at ? (
-                  <span className="ledger-date">
-                    {new Date(item.created_at).toLocaleDateString("en-GB", {
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                    })}
-                  </span>
-                ) : (
-                  <span className="ledger-date">22 Aug 2026</span>
-                )}
-                <span className="ledger-arrow">→</span>
-              </div>
+        {searchHistory.length === 0 ? (
+          <div>
+            <div className="empty-note">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <span>No recent searches yet. Search for court cases, legal citations, or statutes above to get started.</span>
             </div>
-          ))}
-        </div>
+
+            <div style={{ marginTop: 14, display: "flex", flexWrap: "wrap", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 12, color: "var(--ink-faint)" }}>Suggested topics:</span>
+              {[
+                "Anticipatory Bail Supreme Court",
+                "Section 9 IBC Demand Notice",
+                "Arbitration Act Section 34",
+                "Cheque Bounce Section 138 NI Act",
+              ].map((suggested) => (
+                <button
+                  key={suggested}
+                  type="button"
+                  onClick={() => navigate(`/search?query=${encodeURIComponent(suggested)}`)}
+                  style={{
+                    fontSize: 12,
+                    padding: "4px 10px",
+                    borderRadius: "var(--radius-sm, 4px)",
+                    background: "var(--surface-raised)",
+                    border: "1px solid var(--hairline)",
+                    color: "var(--ink-dim)",
+                    cursor: "pointer",
+                    transition: "all 0.15s ease",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "var(--ink)";
+                    e.currentTarget.style.borderColor = "var(--brass)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "var(--ink-dim)";
+                    e.currentTarget.style.borderColor = "var(--hairline)";
+                  }}
+                >
+                  {suggested} →
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="ledger-list">
+            {searchHistory.slice(0, 4).map((item, idx) => (
+              <div
+                key={item.id || idx}
+                className="ledger-row"
+                onClick={() => navigate(`/search?query=${encodeURIComponent(item.query)}`)}
+              >
+                <div className="ledger-row-left">
+                  <span className="ledger-tag">{item.category || "Recent"}</span>
+                  <span className="ledger-name">{item.query}</span>
+                </div>
+                <div className="ledger-row-right">
+                  {item.created_at && (
+                    <span className="ledger-date">
+                      {new Date(item.created_at).toLocaleDateString("en-GB", {
+                        day: "numeric",
+                        month: "short",
+                        year: "numeric",
+                      })}
+                    </span>
+                  )}
+                  <span className="ledger-arrow">→</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* ── Bookmarked Cases ── */}

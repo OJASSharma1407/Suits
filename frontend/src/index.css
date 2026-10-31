@@ -1354,4 +1354,102 @@ input, button, select, textarea {
     size: A4 portrait;
     margin: 0;
   }
-}
+}
+
+
+/* ============================================================
+   SUITS – Custom Notification & Toast System (Sonner)
+   Matched to the Ledger Minimal Design System
+   ============================================================ */
+
+[data-sonner-toaster] {
+  font-family: var(--font-sans) !important;
+  z-index: 999999 !important;
+}
+
+[data-sonner-toaster][data-y-position="bottom"][data-x-position="right"] {
+  bottom: 24px !important;
+  right: 24px !important;
+}
+
+[data-sonner-toast] {
+  background: var(--surface) !important;
+  color: var(--ink) !important;
+  border: 1px solid var(--hairline) !important;
+  border-radius: var(--radius-md, 9px) !important;
+  box-shadow: var(--shadow-float) !important;
+  font-family: var(--font-sans) !important;
+  padding: 14px 16px !important;
+  gap: 12px !important;
+  backdrop-filter: blur(16px) !important;
+  -webkit-backdrop-filter: blur(16px) !important;
+  letter-spacing: -0.01em !important;
+}
+
+[data-sonner-toast] [data-content] {
+  gap: 3px !important;
+}
+
+[data-sonner-toast] [data-title] {
+  color: var(--ink) !important;
+  font-weight: 550 !important;
+  font-size: 13.5px !important;
+  line-height: 1.35 !important;
+}
+
+[data-sonner-toast] [data-description] {
+  color: var(--ink-dim) !important;
+  font-size: 12.5px !important;
+  line-height: 1.45 !important;
+}
+
+/* Close button styled to match ledger buttons */
+[data-sonner-toast] [data-close-button] {
+  background: var(--surface-raised) !important;
+  color: var(--ink-faint) !important;
+  border: 1px solid var(--hairline) !important;
+  border-radius: var(--radius-sm, 4px) !important;
+  transition: all 0.15s ease !important;
+  top: 10px !important;
+  right: 10px !important;
+  left: auto !important;
+}
+
+[data-sonner-toast] [data-close-button]:hover {
+  background: var(--surface-hover) !important;
+  color: var(--ink) !important;
+  border-color: var(--hairline-soft) !important;
+}
+
+/* Type accents: Subtle Ledger seal borders and icons */
+[data-sonner-toast][data-type="success"] {
+  border-left: 3.5px solid var(--seal-disposed, #3F7A54) !important;
+  background: var(--surface) !important;
+}
+[data-sonner-toast][data-type="success"] [data-icon] {
+  color: var(--seal-disposed, #3F7A54) !important;
+}
+
+[data-sonner-toast][data-type="error"] {
+  border-left: 3.5px solid var(--danger, #F87171) !important;
+  background: var(--surface) !important;
+}
+[data-sonner-toast][data-type="error"] [data-icon] {
+  color: var(--danger, #F87171) !important;
+}
+
+[data-sonner-toast][data-type="warning"] {
+  border-left: 3.5px solid var(--seal-pending, #D4B24A) !important;
+  background: var(--surface) !important;
+}
+[data-sonner-toast][data-type="warning"] [data-icon] {
+  color: var(--seal-pending, #D4B24A) !important;
+}
+
+[data-sonner-toast][data-type="info"] {
+  border-left: 3.5px solid var(--brass, #C4A06D) !important;
+  background: var(--surface) !important;
+}
+[data-sonner-toast][data-type="info"] [data-icon] {
+  color: var(--brass, #C4A06D) !important;
+}
