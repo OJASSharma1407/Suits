@@ -24,6 +24,7 @@ export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAuthStore((s: { isAuthenticated: boolean }) => s.isAuthenticated);
   const setUser = useAuthStore((s: { setUser: (user: any) => void }) => s.setUser);
   const navigate = useNavigate();
@@ -39,8 +40,30 @@ export default function LoginPage() {
     }
   }, [isAuthenticated, navigate]);
 
+  const extractErrorMessage = (err: any): string => {
+    if (err.response?.status === 502) {
+      return "Backend service is currently unavailable (502 Bad Gateway). Please verify that the backend is running.";
+    }
+    if (err.response?.status === 500) {
+      return "Internal server error. Please try again later.";
+    }
+    if (err.response?.data?.message) {
+      return err.response.data.message;
+    }
+    if (err.response?.data?.detail) {
+      return typeof err.response.data.detail === "string"
+        ? err.response.data.detail
+        : JSON.stringify(err.response.data.detail);
+    }
+    if (err.message === "Network Error") {
+      return "Unable to connect to SUITS API server. Please check your network connection.";
+    }
+    return err.message || "Invalid email or password.";
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
     try {
       const tokenData = await authService.login({ email, password });
@@ -51,20 +74,20 @@ export default function LoginPage() {
       toast.success("Welcome back!");
       navigate("/dashboard");
     } catch (err: any) {
-      const msg = err.response?.data?.message || "Invalid credentials.";
+      const msg = extractErrorMessage(err);
+      setError(msg);
       toast.error(msg);
-      // If unverified, redirect to OTP verification screen
-      if (err.response?.status === 403 && msg.toLowerCase().includes("verify your email")) {
-        navigate(`/verify-otp?email=${encodeURIComponent(email)}`);
-      }
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
+    setError(null);
     if (!credentialResponse?.credential) {
-      toast.error("Google sign-in failed: No credential token received from Google.");
+      const msg = "Google sign-in failed: No credential token received from Google.";
+      setError(msg);
+      toast.error(msg);
       return;
     }
     setLoading(true);
@@ -76,8 +99,9 @@ export default function LoginPage() {
       toast.success("Signed in with Google!");
       navigate("/dashboard");
     } catch (err: any) {
-      console.error("Google login backend error:", err);
-      toast.error(err.response?.data?.message || "Google authentication failed on server.");
+      const msg = extractErrorMessage(err);
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -162,7 +186,11 @@ export default function LoginPage() {
           <div style={{ width: "100%", display: "flex", justifyContent: "center" }}>
             <GoogleLogin
               onSuccess={handleGoogleSuccess}
-              onError={() => toast.error("Google sign-in was cancelled or failed.")}
+              onError={() => {
+                const msg = "Google sign-in was cancelled or encountered an error.";
+                setError(msg);
+                toast.error(msg);
+              }}
               theme="filled_black"
               shape="rectangular"
               size="large"
@@ -190,6 +218,29 @@ export default function LoginPage() {
           <div style={{ flex: 1, height: 1, background: "var(--hairline)" }} />
         </div>
 
+        {/* Inline Error Alert Box */}
+        {error && (
+          <div
+            role="alert"
+            style={{
+              marginBottom: 16,
+              padding: "12px 14px",
+              borderRadius: "8px",
+              background: "rgba(239, 68, 68, 0.12)",
+              border: "1px solid rgba(239, 68, 68, 0.35)",
+              color: "#f87171",
+              fontSize: 13,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              lineHeight: 1.4,
+            }}
+          >
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit}>
           <div style={{ marginBottom: 16 }}>
             <label
@@ -209,7 +260,10 @@ export default function LoginPage() {
               type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="you@example.com"
             />
           </div>
@@ -232,7 +286,10 @@ export default function LoginPage() {
               type="password"
               required
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="••••••••"
             />
           </div>
@@ -258,19 +315,21 @@ export default function LoginPage() {
           style={{
             marginTop: 24,
             textAlign: "center",
-            fontSize: 13.5,
-            color: "var(--ink-faint)",
+            fontSize: 13,
+            color: "var(--ink-dim)",
           }}
         >
           Don't have an account?{" "}
           <Link
             to="/register"
             style={{
-              color: "var(--brass)",
+              color: "var(--ink)",
               fontWeight: 500,
+              textDecoration: "underline",
+              textUnderlineOffset: 3,
             }}
           >
-            Create one
+            Create account
           </Link>
         </p>
       </div>

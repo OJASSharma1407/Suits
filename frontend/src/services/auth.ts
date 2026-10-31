@@ -18,8 +18,8 @@ export const authService = {
   },
 
   register: async (data: RegisterRequest) => {
-    const res = await api.post<APIResponse<User>>("/auth/register", data);
-    return res.data;
+    const res = await api.post<APIResponse<AuthSuccessPayload>>("/auth/register", data);
+    return res.data.data;
   },
 
   verifyOtp: async (data: VerifyOtpRequest) => {

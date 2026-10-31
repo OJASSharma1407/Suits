@@ -22,13 +22,16 @@ from app.core.exceptions import UnauthorizedError
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
-@router.post("/register", response_model=APIResponse[UserResponse])
+@router.post("/register", response_model=APIResponse[dict[str, Any]])
 async def register(request: RegisterRequest, db: DbSession):
     service = AuthService(db)
-    user = await service.register(request.full_name, request.email, request.password)
+    result = await service.register(request.full_name, request.email, request.password)
     return APIResponse(
-        data=UserResponse.model_validate(user),
-        message="Registration initiated. A 6-digit verification code has been sent to your email.",
+        data={
+            "user": UserResponse.model_validate(result["user"]).model_dump(mode="json"),
+            "tokens": result["tokens"].model_dump(mode="json"),
+        },
+        message="Registration successful.",
     )
 
 

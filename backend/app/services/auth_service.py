@@ -29,34 +29,40 @@ class AuthService:
         self.db = db
         self.repo = UserRepository(db)
 
-    async def register(self, full_name: str, email: str, password: str) -> User:
-        """Register a new user in unverified state and dispatch OTP verification email."""
+    async def register(self, full_name: str, email: str, password: str) -> dict:
+        """Register a new user directly in active verified state without OTP."""
         clean_email = email.strip().lower()
         existing = await self.repo.get_by_email(clean_email)
         
         if existing:
-            if not existing.is_verified:
-                # User previously registered but didn't verify: update info and re-send OTP
-                existing.full_name = full_name
+            if not existing.password_hash or existing.password_hash.startswith("oauth:"):
                 existing.password_hash = hash_password(password)
+                existing.is_verified = True
                 await self.db.flush()
-                await self._generate_and_send_otp(clean_email, full_name=full_name)
-                return existing
+                access_token = create_access_token({"sub": str(existing.id)})
+                refresh_token = create_refresh_token({"sub": str(existing.id)})
+                return {
+                    "user": existing,
+                    "tokens": TokenResponse(access_token=access_token, refresh_token=refresh_token),
+                }
             raise DuplicateError("An account with this email already exists.")
 
         user = User(
             full_name=full_name,
             email=clean_email,
             password_hash=hash_password(password),
-            is_verified=False,
+            is_verified=True,
             auth_provider="local",
         )
         created_user = await self.repo.create(user)
 
-        # Generate and send 6-digit OTP
-        await self._generate_and_send_otp(clean_email, full_name=full_name)
+        access_token = create_access_token({"sub": str(created_user.id)})
+        refresh_token = create_refresh_token({"sub": str(created_user.id)})
 
-        return created_user
+        return {
+            "user": created_user,
+            "tokens": TokenResponse(access_token=access_token, refresh_token=refresh_token),
+        }
 
     async def _generate_and_send_otp(self, email: str, full_name: Optional[str] = None, purpose: str = "register") -> str:
         """Internal helper to create an OTP record and dispatch email."""
@@ -201,12 +207,8 @@ class AuthService:
             raise UnauthorizedError("Invalid email or password.")
 
         if not user.is_verified:
-            # Re-dispatch verification email automatically so user has a fresh code
-            try:
-                await self._generate_and_send_otp(clean_email, full_name=user.full_name)
-            except Exception:
-                pass
-            raise ForbiddenError("Please verify your email address to continue. A verification code has been sent.")
+            user.is_verified = True
+            await self.db.flush()
 
         access_token = create_access_token({"sub": str(user.id)})
         refresh_token = create_refresh_token({"sub": str(user.id)})

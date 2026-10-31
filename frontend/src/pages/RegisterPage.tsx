@@ -10,6 +10,7 @@ export default function RegisterPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const isAuthenticated = useAuthStore((s: { isAuthenticated: boolean }) => s.isAuthenticated);
   const setUser = useAuthStore((s: { setUser: (user: any) => void }) => s.setUser);
   const navigate = useNavigate();
@@ -20,24 +21,59 @@ export default function RegisterPage() {
     }
   }, [isAuthenticated, navigate]);
 
+  const extractErrorMessage = (err: any): string => {
+    if (err.response?.status === 502) {
+      return "Backend service is currently unavailable (502 Bad Gateway). Please ensure the backend is running.";
+    }
+    if (err.response?.status === 500) {
+      return "Internal server error. Please try again later.";
+    }
+    if (err.response?.data?.message) {
+      return err.response.data.message;
+    }
+    if (err.response?.data?.detail) {
+      return typeof err.response.data.detail === "string"
+        ? err.response.data.detail
+        : JSON.stringify(err.response.data.detail);
+    }
+    if (err.message === "Network Error") {
+      return "Unable to connect to SUITS API server. Please check your network connection.";
+    }
+    return err.message || "Registration failed. Please try again.";
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setError(null);
     setLoading(true);
 
     try {
-      await authService.register({ full_name: fullName, email, password });
-      toast.success("Account created! Please verify your email with the 6-digit code.");
-      navigate(`/verify-otp?email=${encodeURIComponent(email)}`);
+      const result = await authService.register({ full_name: fullName, email, password });
+      if (result?.tokens?.access_token) {
+        localStorage.setItem("access_token", result.tokens.access_token);
+        localStorage.setItem("refresh_token", result.tokens.refresh_token);
+        setUser(result.user);
+        toast.success("Account created! Welcome to SUITS.");
+        navigate("/dashboard");
+      } else {
+        toast.success("Account created successfully! Please sign in.");
+        navigate("/login");
+      }
     } catch (err: any) {
-      toast.error(err.response?.data?.message || "Registration failed.");
+      const msg = extractErrorMessage(err);
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSuccess = async (credentialResponse: any) => {
+    setError(null);
     if (!credentialResponse?.credential) {
-      toast.error("Google sign-in failed: No credential token received from Google.");
+      const msg = "Google sign-in failed: No credential token received from Google.";
+      setError(msg);
+      toast.error(msg);
       return;
     }
     setLoading(true);
@@ -46,11 +82,12 @@ export default function RegisterPage() {
       localStorage.setItem("access_token", result.tokens.access_token);
       localStorage.setItem("refresh_token", result.tokens.refresh_token);
       setUser(result.user);
-      toast.success("Account created & verified with Google!");
+      toast.success("Account created & signed in with Google!");
       navigate("/dashboard");
     } catch (err: any) {
-      console.error("Google register backend error:", err);
-      toast.error(err.response?.data?.message || "Google registration failed on server.");
+      const msg = extractErrorMessage(err);
+      setError(msg);
+      toast.error(msg);
     } finally {
       setLoading(false);
     }
@@ -88,7 +125,11 @@ export default function RegisterPage() {
         <div style={{ display: "flex", justifyContent: "center", width: "100%" }}>
           <GoogleLogin
             onSuccess={handleGoogleSuccess}
-            onError={() => toast.error("Google sign-in was cancelled or failed.")}
+            onError={() => {
+              const msg = "Google sign-in was cancelled or encountered an error.";
+              setError(msg);
+              toast.error(msg);
+            }}
             theme="filled_black"
             shape="rectangular"
             size="large"
@@ -115,6 +156,28 @@ export default function RegisterPage() {
           <div style={{ flex: 1, height: 1, background: "var(--hairline)" }} />
         </div>
 
+        {/* Inline Error Alert Box */}
+        {error && (
+          <div
+            role="alert"
+            style={{
+              padding: "12px 14px",
+              borderRadius: "8px",
+              background: "rgba(239, 68, 68, 0.12)",
+              border: "1px solid rgba(239, 68, 68, 0.35)",
+              color: "#f87171",
+              fontSize: 13,
+              display: "flex",
+              alignItems: "flex-start",
+              gap: 10,
+              lineHeight: 1.4,
+            }}
+          >
+            <span style={{ fontSize: 16 }}>⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
             <label className="block text-xs font-medium mb-1.5 uppercase tracking-wider" style={{ color: "var(--text-muted)", letterSpacing: "0.05em" }}>
@@ -124,7 +187,10 @@ export default function RegisterPage() {
               type="text"
               required
               value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
+              onChange={(e) => {
+                setFullName(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="Your full name"
               className="w-full p-3 text-sm border outline-none"
               style={{
@@ -144,7 +210,10 @@ export default function RegisterPage() {
               type="email"
               required
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="you@example.com"
               className="w-full p-3 text-sm border outline-none"
               style={{
@@ -165,7 +234,10 @@ export default function RegisterPage() {
               required
               minLength={8}
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                if (error) setError(null);
+              }}
               placeholder="••••••••"
               className="w-full p-3 text-sm border outline-none"
               style={{

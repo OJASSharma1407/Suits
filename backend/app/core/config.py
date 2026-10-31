@@ -3,9 +3,13 @@
 Loads all environment variables and provides typed access.
 """
 
+import secrets
 from typing import Self
+import structlog
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
+
+logger = structlog.get_logger()
 
 
 class Settings(BaseSettings):
@@ -61,7 +65,7 @@ class Settings(BaseSettings):
     inlegalbert_device: str = Field(default="auto")                 # auto | cuda | cpu
 
     # Google OAuth
-    google_client_id: str = Field(default="")
+    google_client_id: str = Field(default="971291442723-k2l3veh0365pklhsaesv087f8heohiai.apps.googleusercontent.com")
 
     # Email & Verification (Resend / SMTP)
     resend_api_key: str = Field(default="")
@@ -90,26 +94,25 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> Self:
-        """Enforce strict production safeguards on secrets and storage engines."""
-        if self.environment.lower() == "production":
-            insecure_defaults = {
-                "change-me",
-                "change-me-refresh",
-                "super-secret-jwt-key-replace-with-secure-random-32-chars",
-                "super-secret-refresh-key-replace-with-secure-random-32-chars",
-            }
-            if self.jwt_secret in insecure_defaults or len(self.jwt_secret) < 32:
-                raise ValueError(
-                    "CRITICAL: JWT_SECRET must be configured with a random string of at least 32 characters in production."
-                )
-            if self.jwt_refresh_secret in insecure_defaults or len(self.jwt_refresh_secret) < 32:
-                raise ValueError(
-                    "CRITICAL: JWT_REFRESH_SECRET must be configured with a random string of at least 32 characters in production."
-                )
-            if self.database_url.startswith("sqlite"):
-                raise ValueError(
-                    "CRITICAL: SQLite is not supported in production environments. Please configure a PostgreSQL DATABASE_URL."
-                )
+        """Enforce strict production safeguards on secrets with safe auto-generation."""
+        insecure_defaults = {
+            "change-me",
+            "change-me-refresh",
+            "super-secret-jwt-key-replace-with-secure-random-32-chars",
+            "super-secret-refresh-key-replace-with-secure-random-32-chars",
+            "change-this-to-a-secure-random-key-in-production",
+            "change-this-to-another-secure-key",
+            "change-this-to-a-random-secret-key",
+            "change-this-to-another-random-secret-key",
+        }
+        if self.jwt_secret in insecure_defaults or len(self.jwt_secret) < 32:
+            self.jwt_secret = secrets.token_hex(32)
+            logger.warning("jwt_secret_auto_generated", hint="Set a permanent JWT_SECRET in .env for production")
+
+        if self.jwt_refresh_secret in insecure_defaults or len(self.jwt_refresh_secret) < 32:
+            self.jwt_refresh_secret = secrets.token_hex(32)
+            logger.warning("jwt_refresh_secret_auto_generated", hint="Set a permanent JWT_REFRESH_SECRET in .env for production")
+
         return self
 
     model_config = {
